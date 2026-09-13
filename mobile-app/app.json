@@ -1,0 +1,58 @@
+{
+  "expo": {
+    "name": "HIV Halisaha",
+    "slug": "hiv-halisaha",
+    "owner": "baranimoley",
+    "version": "1.0.0",
+    "description": "Halısahaya İhtiyacım Var — Maç bul, oyuncu bul, kulüp kur.",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "hivapp",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.hiv.halisaha",
+      "buildNumber": "1"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundColor": "#0e0e0e"
+      },
+      "package": "com.hiv.halisaha",
+      "versionCode": 1,
+      "navigationBarColor": "#0e0e0e",
+      "backgroundColor": "#0e0e0e"
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#0e0e0e",
+          "dark": {
+            "backgroundColor": "#0e0e0e"
+          }
+        }
+      ],
+      "@react-native-community/datetimepicker"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": false
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "464cba04-3e27-450c-8fff-272b77857e75"
+      }
+    }
+  }
+}

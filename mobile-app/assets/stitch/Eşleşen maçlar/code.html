@@ -1,0 +1,271 @@
+<!DOCTYPE html><html class="dark" lang="tr" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Search Results - Volt Kinetic Noir</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;600;700;800;900&amp;family=Manrope:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-container-high": "#201f1f",
+              "secondary-fixed-dim": "#acc3ff",
+              "primary-dim": "#2be800",
+              "surface-tint": "#8eff71",
+              "error-container": "#b92902",
+              "surface-variant": "#262626",
+              "on-background": "#ffffff",
+              "surface": "#0e0e0e",
+              "primary-fixed-dim": "#2be800",
+              "on-tertiary-fixed": "#003f43",
+              "secondary-dim": "#0f6df3",
+              "secondary-container": "#0058ca",
+              "surface-container-lowest": "#000000",
+              "on-tertiary": "#005d62",
+              "primary-container": "#2ff801",
+              "surface-dim": "#0e0e0e",
+              "error": "#ff7351",
+              "outline-variant": "#484847",
+              "tertiary-fixed-dim": "#00deea",
+              "on-tertiary-container": "#005458",
+              "tertiary-fixed": "#17eefa",
+              "on-primary-container": "#0b5800",
+              "background": "#0e0e0e",
+              "on-secondary-fixed": "#003076",
+              "surface-container-low": "#131313",
+              "primary": "#39FF14", /* Updated to Neon Green */
+              "tertiary-dim": "#00deea",
+              "on-tertiary-fixed-variant": "#005e63",
+              "surface-bright": "#2c2c2c",
+              "on-secondary-fixed-variant": "#004baf",
+              "on-surface": "#ffffff",
+              "on-error-container": "#ffd2c8",
+              "inverse-on-surface": "#565555",
+              "tertiary": "#88f6ff",
+              "surface-container": "#1a1919",
+              "error-dim": "#d53d18",
+              "tertiary-container": "#17eefa",
+              "on-secondary-container": "#f7f7ff",
+              "on-primary-fixed": "#064200",
+              "secondary": "#6e9bff",
+              "on-primary": "#0d6100",
+              "on-secondary": "#001d4e",
+              "surface-container-highest": "#262626",
+              "outline": "#767575",
+              "inverse-primary": "#106f00",
+              "primary-fixed": "#2ff801",
+              "inverse-surface": "#fcf9f8",
+              "secondary-fixed": "#c0d1ff",
+              "on-primary-fixed-variant": "#0d6200",
+              "on-error": "#450900",
+              "on-surface-variant": "#adaaaa"
+            },
+            fontFamily: {
+              "headline": ["Lexend"],
+              "body": ["Manrope"],
+              "label": ["Lexend"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .kinetic-gradient {
+        background: linear-gradient(135deg, #39FF14 0%, #2ff801 100%);
+      }
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      body {
+        min-height: max(884px, 100dvh);
+      }
+    </style>
+</head>
+<body class="bg-surface text-on-surface font-body selection:bg-primary selection:text-on-primary">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-black/40 backdrop-blur-lg flex items-center justify-between px-6 h-16 border-b border-outline-variant/10">
+<div class="flex items-center gap-4">
+<button class="text-primary active:scale-95 duration-200 p-2 hover:bg-surface-container-highest transition-colors rounded-lg" style="">
+<span class="material-symbols-outlined" data-icon="arrow_back" style="">arrow_back</span>
+</button>
+<h1 class="font-headline font-bold text-xl tracking-tight text-primary" style="">Arama Sonuçları</h1>
+</div>
+<button class="text-primary active:scale-95 duration-200 p-2 hover:bg-surface-container-highest transition-colors rounded-lg" style="">
+<span class="material-symbols-outlined" data-icon="tune" style="">tune</span>
+</button>
+</header>
+<main class="pt-20 pb-32 px-4 max-w-2xl mx-auto">
+<!-- Maç Tipi Filters -->
+<section class="mb-8">
+<p class="font-label text-[10px] text-on-surface-variant uppercase tracking-[0.2em] mb-3 ml-1" style="">Maç Tipi</p>
+<div class="flex flex-col gap-3">
+<!-- Primary Filters -->
+<div class="flex gap-2">
+<button class="flex-1 py-4 bg-surface-container-high border-2 border-primary text-primary rounded-xl flex flex-col items-center justify-center active:scale-95 transition-transform" style="">
+<span class="font-headline font-black text-xl" style="">7v7</span>
+<span class="text-[8px] uppercase tracking-widest font-bold" style="">Popüler</span>
+</button>
+<button class="flex-1 py-4 bg-surface-container-high border border-outline-variant/30 text-on-surface rounded-xl flex flex-col items-center justify-center active:scale-95 transition-transform" style="">
+<span class="font-headline font-black text-xl" style="">11v11</span>
+<span class="text-[8px] uppercase tracking-widest font-bold opacity-60" style="">Tam Saha</span>
+</button>
+</div>
+<!-- Secondary Filters -->
+<div class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+<button class="flex-shrink-0 px-5 py-2 bg-surface-container-low border border-outline-variant/20 rounded-lg text-xs font-bold text-on-surface-variant hover:text-on-surface hover:border-outline-variant transition-colors" style="">5v5</button>
+<button class="flex-shrink-0 px-5 py-2 bg-surface-container-low border border-outline-variant/20 rounded-lg text-xs font-bold text-on-surface-variant hover:text-on-surface hover:border-outline-variant transition-colors" style="">6v6</button>
+<button class="flex-shrink-0 px-5 py-2 bg-surface-container-low border border-outline-variant/20 rounded-lg text-xs font-bold text-on-surface-variant hover:text-on-surface hover:border-outline-variant transition-colors" style="">8v8</button>
+<button class="flex-shrink-0 px-5 py-2 bg-surface-container-low border border-outline-variant/20 rounded-lg text-xs font-bold text-on-surface-variant hover:text-on-surface hover:border-outline-variant transition-colors" style="">9v9</button>
+<button class="flex-shrink-0 px-5 py-2 bg-surface-container-low border border-outline-variant/20 rounded-lg text-xs font-bold text-on-surface-variant hover:text-on-surface hover:border-outline-variant transition-colors" style="">10v10</button>
+</div>
+</div>
+</section>
+<!-- Search Status/Summary -->
+<div class="flex items-baseline justify-between mb-6">
+<h2 class="font-headline font-extrabold text-2xl uppercase italic tracking-tighter" style=""><div><span style="font-size: 1.5rem; letter-spacing: -0.05em;">Eşleşen </span><span class="text-primary italic cursor-text" spellcheck="false" data-stitch-added-classes="cursor-text" style="font-size: 1.5rem; letter-spacing: -0.05em;">Rakipler&nbsp;</span></div></h2>
+<span class="font-label text-[10px] text-on-surface-variant uppercase tracking-[0.2em]" style="">12 Sonuç Bulundu</span>
+</div>
+<!-- Matches Grid -->
+<div class="space-y-4">
+<!-- Match Card 1 -->
+<div class="group relative bg-surface-container-low overflow-hidden rounded-lg transition-all hover:bg-surface-container-highest border-l-4 border-primary">
+<div class="p-5 flex flex-col gap-4">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-headline font-bold text-lg text-on-surface leading-tight" style="">Beşiktaş Arena</h3>
+<p class="font-body text-xs text-on-surface-variant flex items-center gap-1 mt-1" style="">
+<span class="material-symbols-outlined text-sm" data-icon="location_on" style="">location_on</span>
+                                Dikilitaş, Beşiktaş
+                            </p>
+</div>
+<div class="text-right">
+<div class="font-headline font-black text-2xl text-primary leading-none" style="">21:00</div>
+<div class="font-label text-[10px] text-on-surface-variant uppercase tracking-widest mt-1" style="">Bugün</div>
+</div>
+</div>
+<div class="flex flex-wrap gap-2">
+<span class="px-3 py-1 bg-surface-container-highest rounded-full text-[10px] font-label font-bold text-secondary uppercase tracking-widest border border-outline-variant/20" style="">7v7</span>
+<span class="px-3 py-1 bg-error-container/20 rounded-full text-[10px] font-label font-bold text-error uppercase tracking-widest" style="">Kaleci Lazım</span>
+<span class="px-3 py-1 bg-surface-container-high rounded-full text-[10px] font-label font-bold text-on-surface-variant uppercase tracking-widest border border-outline-variant/10" style="">Seviye: Rekabetçi</span>
+</div>
+<div class="flex items-center justify-between pt-2">
+<div class="flex -space-x-2">
+<div class="w-8 h-8 rounded-full border-2 border-surface bg-surface-container-highest overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="Football player profile" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBqNhwvjhoD0_bfKjTpJZg7NkRGk7m2TFfJme_vq4mYflWbASya9FEDfE6yPHttngfVfBf0OPweBbJGSgDawoisAgh3-N54tshNhSN3Zn3dNYb5Ey3_gznRljfK9hN5PdJziX0Da3TQjGDJiZ0JkABboU2PcjcvSQ5U81rhuP6oXRm6k7v6SsK2cRoc99vE5OkgW1onC6RnWcom3TDSZE54PticfHo6jZiNDXudi0_21Nv27JyV3dCbDTnvP1LypwfZhdFXOYzFCFsu" style="">
+</div>
+<div class="w-8 h-8 rounded-full border-2 border-surface bg-surface-container-highest overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="Football player profile" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC7itx33buw9L-OBr5IEGFcT9qqPQZCFZZNQiDuX4zXezhb_TaS6wUzg4MR1EcQFFTrwuiU9EbOYZ0UaPK2NaoH_9Jj0ya3nV6OSBqNlyeszTFsqtTT9ktNN2KZw-fUdPMuuMAhzRKW2HLxXe_Pm0pFvTHKkz706lY1f0SoIY1ktuSpXrdfjoQ2A8J-3PmF7WGQjAOJPFECuCHIM16NDJKvAlT4y6FhPvakkdJZikvr2Rnj_7PoJ-GTnClJikS2iyroHOS5UlnudhAN" style="">
+</div>
+<div class="w-8 h-8 rounded-full border-2 border-surface bg-surface-container-highest flex items-center justify-center text-[10px] font-bold text-on-surface-variant" style="">
+                                +12
+                            </div>
+</div>
+<button class="kinetic-gradient text-on-primary-fixed font-label font-extrabold text-xs px-8 py-2.5 rounded-lg active:scale-95 duration-200" style="">
+                            Katıl
+                        </button>
+</div>
+</div>
+</div>
+<!-- Match Card 2 -->
+<div class="group relative bg-surface-container-low overflow-hidden rounded-lg transition-all hover:bg-surface-container-highest border-l-4 border-outline-variant/30">
+<div class="p-5 flex flex-col gap-4">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-headline font-bold text-lg text-on-surface leading-tight" style="">Zeytinburnu Sahası</h3>
+<p class="font-body text-xs text-on-surface-variant flex items-center gap-1 mt-1" style="">
+<span class="material-symbols-outlined text-sm" data-icon="location_on" style="">location_on</span>
+                                Merkezefendi, Zeytinburnu
+                            </p>
+</div>
+<div class="text-right">
+<div class="font-headline font-black text-2xl text-on-surface leading-none" style="">22:30</div>
+<div class="font-label text-[10px] text-on-surface-variant uppercase tracking-widest mt-1" style="">Bugün</div>
+</div>
+</div>
+<div class="flex flex-wrap gap-2">
+<span class="px-3 py-1 bg-surface-container-highest rounded-full text-[10px] font-label font-bold text-secondary uppercase tracking-widest border border-outline-variant/20" style="">6v6</span>
+<span class="px-3 py-1 bg-surface-container-highest rounded-full text-[10px] font-label font-bold text-on-surface uppercase tracking-widest border border-primary/30" style="">Hücumcu Aranıyor</span>
+<span class="px-3 py-1 bg-surface-container-high rounded-full text-[10px] font-label font-bold text-on-surface-variant uppercase tracking-widest border border-outline-variant/10" style="">Seviye: Orta</span>
+</div>
+<div class="flex items-center justify-between pt-2">
+<div class="flex -space-x-2">
+<div class="w-8 h-8 rounded-full border-2 border-surface bg-surface-container-highest overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="Football player profile" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBftf1Sk2BbF29Q7cvDF9MiwSy3HVbb8wT5D7uYWfU6Wv_IeBrBQ-lBfLPLaK46eVL4z4lCjt4hIeSaLExHTZ3nFMDTtQV0hXaYxj4vADJBXGiA_5-eKm2bOFs7QejEjGIXwSpKg_I265VWEjFSTGrDRHNjk5mRoNvrFiwSDlQPQ5p5aaE7F_75z_W_cEMqnUxtnbDDdZlpNCdiaKsqcM730JtxSePd9lGXAhn6SXmEB1WiaXO0kngP5CsdbHrIN4tW2gv2ZywMItG5" style="">
+</div>
+<div class="w-8 h-8 rounded-full border-2 border-surface bg-surface-container-highest flex items-center justify-center text-[10px] font-bold text-on-surface-variant" style="">
+                                +11
+                            </div>
+</div>
+<button class="outline outline-1 outline-outline-variant/50 text-on-surface hover:bg-surface-container-highest font-label font-extrabold text-xs px-8 py-2.5 rounded-lg active:scale-95 duration-200" style="">
+                            İstek Gönder</button>
+</div>
+</div>
+</div>
+<!-- Match Card 3 -->
+<div class="group relative bg-surface-container-low overflow-hidden rounded-lg transition-all hover:bg-surface-container-highest border-l-4 border-outline-variant/30">
+<div class="p-5 flex flex-col gap-4">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-headline font-bold text-lg text-on-surface leading-tight" style="">Kadıköy Spor Parkı</h3>
+<p class="font-body text-xs text-on-surface-variant flex items-center gap-1 mt-1" style="">
+<span class="material-symbols-outlined text-sm" data-icon="location_on" style="">location_on</span>
+                                Osmanağa, Kadıköy
+                            </p>
+</div>
+<div class="text-right">
+<div class="font-headline font-black text-2xl text-on-surface leading-none" style="">20:00</div>
+<div class="font-label text-[10px] text-on-surface-variant uppercase tracking-widest mt-1" style="">Yarın</div>
+</div>
+</div>
+<div class="flex flex-wrap gap-2">
+<span class="px-3 py-1 bg-surface-container-highest rounded-full text-[10px] font-label font-bold text-secondary uppercase tracking-widest border border-outline-variant/20" style="">5v5</span>
+<span class="px-3 py-1 bg-surface-container-highest rounded-full text-[10px] font-label font-bold text-on-surface uppercase tracking-widest border border-primary/30" style="">Defansif Oyuncu</span>
+<span class="px-3 py-1 bg-surface-container-high rounded-full text-[10px] font-label font-bold text-on-surface-variant uppercase tracking-widest border border-outline-variant/10" style="">Seviye: Eğlence</span>
+</div>
+<div class="flex items-center justify-between pt-2">
+<div class="flex -space-x-2">
+<div class="w-8 h-8 rounded-full border-2 border-surface bg-surface-container-highest overflow-hidden">
+<img class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBqNhwvjhoD0_bfKjTpJZg7NkRGk7m2TFfJme_vq4mYflWbASya9FEDfE6yPHttngfVfBf0OPweBbJGSgDawoisAgh3-N54tshNhSN3Zn3dNYb5Ey3_gznRljfK9hN5PdJziX0Da3TQjGDJiZ0JkABboU2PcjcvSQ5U81rhuP6oXRm6k7v6SsK2cRoc99vE5OkgW1onC6RnWcom3TDSZE54PticfHo6jZiNDXudi0_21Nv27JyV3dCbDTnvP1LypwfZhdFXOYzFCFsu" style="">
+</div>
+<div class="w-8 h-8 rounded-full border-2 border-surface bg-surface-container-highest flex items-center justify-center text-[10px] font-bold text-on-surface-variant" style="">
+                                +8
+                            </div>
+</div>
+<button class="outline outline-1 outline-outline-variant/50 text-on-surface hover:bg-surface-container-highest font-label font-extrabold text-xs px-8 py-2.5 rounded-lg active:scale-95 duration-200" style="">
+                            İstek Gönder</button>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full flex justify-around items-center px-4 h-20 pb-safe bg-surface border-t border-outline-variant/15 z-50">
+<a class="flex flex-col items-center justify-center text-on-surface-variant py-1 px-3 hover:text-primary transition-all active:translate-y-[-2px] duration-300" href="#" style="">
+<span class="material-symbols-outlined mb-1" data-icon="home" style="">home</span>
+<span class="font-headline text-[9px] uppercase tracking-widest font-semibold" style="">Ana Sayfa</span>
+</a>
+<a class="flex flex-col items-center justify-center text-primary bg-surface-container-low rounded-xl py-1 px-3 transition-all active:translate-y-[-2px] duration-300" href="#" style="">
+<span class="material-symbols-outlined mb-1" data-icon="search" style="">search</span>
+<span class="font-headline text-[9px] uppercase tracking-widest font-semibold" style="">Arama</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant py-1 px-3 hover:text-primary transition-all active:translate-y-[-2px] duration-300" href="#" style="">
+<span class="material-symbols-outlined mb-1" data-icon="sports_soccer" style="">sports_soccer</span>
+<span class="font-headline text-[9px] uppercase tracking-widest font-semibold" style="">Maçlarım</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant py-1 px-3 hover:text-primary transition-all active:translate-y-[-2px] duration-300" href="#" style="">
+<span class="material-symbols-outlined mb-1" data-icon="groups" style="">groups</span>
+<span class="font-headline text-[9px] uppercase tracking-widest font-semibold" style="">Kulüpler</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant py-1 px-3 hover:text-primary transition-all active:translate-y-[-2px] duration-300" href="#" style="">
+<span class="material-symbols-outlined mb-1" data-icon="person" style="">person</span>
+<span class="font-headline text-[9px] uppercase tracking-widest font-semibold" style="">Profil</span>
+</a>
+</nav>
+</body></html>

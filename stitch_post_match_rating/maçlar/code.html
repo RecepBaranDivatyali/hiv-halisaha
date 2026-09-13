@@ -1,0 +1,216 @@
+<!DOCTYPE html><html class="dark" lang="tr"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Kinetic Noir - Maçlarım</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;700;800;900&amp;family=Manrope:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "on-tertiary-fixed": "#003f43",
+            "primary-fixed-dim": "#2be800",
+            "surface-container-highest": "#262626",
+            "on-tertiary-fixed-variant": "#005e63",
+            "on-primary": "#0d6100",
+            "on-surface": "#ffffff",
+            "on-primary-fixed": "#064200",
+            "surface": "#0e0e0e",
+            "error": "#ff7351",
+            "tertiary-dim": "#00deea",
+            "on-tertiary": "#005d62",
+            "surface-container": "#1a1919",
+            "inverse-primary": "#106f00",
+            "surface-dim": "#0e0e0e",
+            "on-secondary-fixed-variant": "#004baf",
+            "on-error": "#450900",
+            "on-surface-variant": "#adaaaa",
+            "on-primary-fixed-variant": "#0d6200",
+            "background": "#0e0e0e",
+            "on-error-container": "#ffd2c8",
+            "primary": "#8eff71",
+            "error-container": "#b92902",
+            "surface-container-lowest": "#000000",
+            "on-secondary-container": "#f7f7ff",
+            "on-secondary": "#001d4e",
+            "on-secondary-fixed": "#003076",
+            "secondary-dim": "#0f6df3",
+            "surface-container-high": "#201f1f",
+            "primary-container": "#2ff801",
+            "on-background": "#ffffff",
+            "on-tertiary-container": "#005458",
+            "outline-variant": "#484847",
+            "on-primary-container": "#0b5800",
+            "inverse-on-surface": "#565555",
+            "secondary": "#6e9bff",
+            "surface-bright": "#2c2c2c",
+            "inverse-surface": "#fcf9f8",
+            "primary-dim": "#2be800",
+            "surface-container-low": "#131313",
+            "secondary-container": "#0058ca",
+            "secondary-fixed": "#c0d1ff",
+            "surface-variant": "#262626",
+            "surface-tint": "#8eff71",
+            "secondary-fixed-dim": "#acc3ff",
+            "tertiary-fixed-dim": "#00deea",
+            "primary-fixed": "#2ff801",
+            "outline": "#767575",
+            "tertiary-container": "#17eefa",
+            "tertiary-fixed": "#17eefa",
+            "tertiary": "#88f6ff",
+            "error-dim": "#d53d18"
+          },
+          fontFamily: {
+            "headline": ["Lexend"],
+            "body": ["Manrope"],
+            "label": ["Lexend"]
+          },
+          borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+    .active-tab-glow {
+      box-shadow: 0 0 15px rgba(142, 255, 113, 0.3);
+    }
+    .kinetic-gradient-btn {
+      background: linear-gradient(135deg, #8eff71 0%, #2ff801 100%);
+    }
+    .noir-glass {
+      background: rgba(38, 38, 38, 0.2);
+      backdrop-filter: blur(16px);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-surface text-on-surface font-body selection:bg-primary selection:text-on-primary">
+<!-- TopAppBar Shell -->
+<header class="bg-[#0e0e0e]/80 backdrop-blur-md text-[#8eff71] fixed top-0 w-full z-50 border-b border-[#484847]/15 shadow-[0_24px_32px_-4px_rgba(255,255,255,0.06)]">
+<div class="flex justify-between items-center px-6 h-16 w-full max-w-5xl mx-auto">
+<button class="active:scale-95 duration-200" style="">
+<span class="material-symbols-outlined text-2xl" style="">menu</span>
+</button>
+<h1 class="font-['Lexend'] font-black italic uppercase tracking-tighter text-[#8eff71] text-2xl" style="">KINETIC NOIR</h1>
+<button class="active:scale-95 duration-200" style="">
+<span class="material-symbols-outlined text-2xl" style="">notifications</span>
+</button>
+</div>
+</header>
+<main class="pt-24 pb-32 px-4 max-w-5xl mx-auto">
+<!-- Screen Header & Filters -->
+<div class="flex flex-col gap-6 mb-8">
+<div class="flex justify-between items-end">
+<h2 class="font-headline font-black text-4xl italic uppercase tracking-tighter text-on-surface" style="">MAÇLARIM</h2>
+<button class="bg-surface-container-highest p-3 rounded-lg border border-outline-variant/15 active:scale-95 transition-transform" style="">
+<span class="material-symbols-outlined text-primary" style="">tune</span>
+</button>
+</div>
+<!-- Segmented Control (Top Switch) -->
+<div class="bg-surface-container-low p-1.5 flex rounded-lg">
+<button class="flex-1 py-3 text-center font-headline font-bold text-sm tracking-widest rounded-md bg-surface-container-highest text-primary active-tab-glow transition-all duration-300" style="">
+          AKTİF MAÇLARIM
+        </button>
+<button class="flex-1 py-3 text-center font-headline font-bold text-sm tracking-widest text-on-surface-variant hover:text-on-surface transition-all duration-300" style="">
+          GEÇMİŞ MAÇLAR
+        </button>
+</div>
+</div>
+<!-- My Active Matches List -->
+<section class="flex flex-col gap-4">
+<!-- Confirmed Match 1 -->
+<div class="bg-surface-container-low p-5 rounded-lg border-l-4 border-primary relative overflow-hidden group">
+<div class="absolute top-0 right-0 p-3">
+<span class="bg-primary/20 text-primary px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest" style="">KATILIYORUM</span>
+</div>
+<div class="flex flex-col gap-4">
+<div class="flex items-center gap-3">
+<div class="w-12 h-12 rounded bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-primary text-3xl" style="">sports_soccer</span>
+</div>
+<div>
+<h3 class="font-headline font-bold text-lg leading-tight uppercase" style="">Beşiktaş Arena</h3>
+<p class="text-on-surface-variant text-sm font-medium" style="">Bugün, 21:00 • 7v7 Karma</p>
+</div>
+</div>
+<div class="flex items-center justify-between mt-2">
+<div class="flex flex-col">
+<span class="text-on-surface font-black text-2xl italic uppercase tracking-tighter" style="">KADRO TAMAM</span>
+<span class="text-on-surface-variant text-xs font-bold tracking-widest uppercase" style="">Hazırlan: 45dk kaldı</span>
+</div>
+<button class="outline outline-1 outline-outline-variant/30 text-on-surface px-6 py-3 rounded-lg font-headline font-extrabold text-sm hover:bg-surface-container-highest transition-all" style="">
+              DETAY
+            </button>
+</div>
+</div>
+</div>
+<!-- Confirmed Match 2 -->
+<div class="bg-surface-container-low p-5 rounded-lg border-l-4 border-secondary relative overflow-hidden">
+<div class="absolute top-0 right-0 p-3">
+<span class="bg-secondary/20 text-secondary px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest" style="">İstek BEKLEMEDE</span>
+</div>
+<div class="flex flex-col gap-4">
+<div class="flex items-center gap-3">
+<div class="w-12 h-12 rounded bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary text-3xl" style="">stadium</span>
+</div>
+<div>
+<h3 class="font-headline font-bold text-lg leading-tight uppercase" style="">Kadıköy Parkı</h3>
+<p class="text-on-surface-variant text-sm font-medium" style="">Yarın, 20:00 • 6v6 Erkek</p>
+</div>
+</div>
+<div class="flex items-center justify-between mt-2">
+<div class="flex flex-col">
+<span class="text-on-surface font-black text-2xl italic uppercase tracking-tighter" style="">1 EKİSİK VAR</span>
+<span class="text-on-surface-variant text-xs font-bold tracking-widest uppercase" style="">Seviye: Orta-İleri</span>
+</div>
+<button class="outline outline-1 outline-outline-variant/30 text-on-surface px-6 py-3 rounded-lg font-headline font-extrabold text-sm hover:bg-surface-container-highest transition-all" style="">
+              DETAY
+            </button>
+</div>
+</div>
+</div>
+</section>
+<!-- Archive Section Header -->
+<!-- Past Matches (Vertical Feed) -->
+</main>
+<!-- FAB: Create Match (Floating neon green '+' button) -->
+<button class="fixed bottom-24 right-6 w-14 h-14 kinetic-gradient-btn rounded-full shadow-[0_8px_24px_rgba(142,255,113,0.4)] flex items-center justify-center active:scale-90 transition-all z-40 border-2 border-primary/20" style="">
+<span class="material-symbols-outlined text-on-primary-fixed text-3xl font-bold" style="">add</span>
+</button>
+<!-- BottomNavBar Shell -->
+<nav class="bg-[#0e0e0e] text-[#8eff71] fixed bottom-0 w-full z-50 rounded-t-none border-t border-[#484847]/15 shadow-[0_-8px_24px_rgba(0,0,0,0.5)]">
+<div class="flex justify-around items-center h-20 w-full pb-safe max-w-5xl mx-auto">
+<button class="flex flex-col items-center justify-center text-[#adaaaa] hover:bg-[#262626] transition-all active:scale-90 duration-200 px-3 py-1" style="">
+<span class="material-symbols-outlined" style="">home</span>
+<span class="font-['Lexend'] text-[10px] font-medium uppercase tracking-widest mt-1" style="">Ana Sayfa</span>
+</button>
+<button class="flex flex-col items-center justify-center text-[#adaaaa] hover:bg-[#262626] transition-all active:scale-90 duration-200 px-3 py-1" style="">
+<span class="material-symbols-outlined" style="">search</span>
+<span class="font-['Lexend'] text-[10px] font-medium uppercase tracking-widest mt-1" style="">Arama</span>
+</button>
+<button class="flex flex-col items-center justify-center text-[#8eff71] bg-[#131313] rounded-xl px-4 py-2 active:scale-90 duration-200" style="">
+<span class="material-symbols-outlined" style="font-variation-settings: &quot;FILL&quot; 1;">sports_soccer</span>
+<span class="font-['Lexend'] text-[10px] font-black uppercase tracking-widest mt-1" style="">Maçlar</span>
+</button>
+<button class="flex flex-col items-center justify-center text-[#adaaaa] hover:bg-[#262626] transition-all active:scale-90 duration-200 px-3 py-1" style="">
+<span class="material-symbols-outlined" style="">groups</span>
+<span class="font-['Lexend'] text-[10px] font-medium uppercase tracking-widest mt-1" style="">Kulüpler</span>
+</button>
+<button class="flex flex-col items-center justify-center text-[#adaaaa] hover:bg-[#262626] transition-all active:scale-90 duration-200 px-3 py-1" style="">
+<span class="material-symbols-outlined" style="">person</span>
+<span class="font-['Lexend'] text-[10px] font-medium uppercase tracking-widest mt-1" style="">Profil</span>
+</button>
+</div>
+</nav>
+</body></html>

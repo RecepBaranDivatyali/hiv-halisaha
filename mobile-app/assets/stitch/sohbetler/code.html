@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="tr"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800;900&amp;family=Manrope:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              colors: {
+                "surface-dim": "#0e0e0e",
+                "on-primary-container": "#0b5800",
+                "on-primary-fixed": "#064200",
+                "on-tertiary-fixed": "#003f43",
+                "surface-bright": "#2c2c2c",
+                "surface-container-highest": "#262626",
+                "secondary-fixed-dim": "#acc3ff",
+                "on-tertiary": "#005d62",
+                "secondary-dim": "#0f6df3",
+                "error": "#ff7351",
+                "on-secondary-fixed": "#003076",
+                "on-primary": "#0d6100",
+                "tertiary-fixed": "#17eefa",
+                "surface": "#0e0e0e",
+                "on-secondary-fixed-variant": "#004baf",
+                "primary": "#8eff71",
+                "error-dim": "#d53d18",
+                "inverse-primary": "#106f00",
+                "surface-container-lowest": "#000000",
+                "outline-variant": "#484847",
+                "inverse-surface": "#fcf9f8",
+                "inverse-on-surface": "#565555",
+                "on-background": "#ffffff",
+                "surface-container-high": "#201f1f",
+                "tertiary-fixed-dim": "#00deea",
+                "surface-tint": "#8eff71",
+                "background": "#0e0e0e",
+                "tertiary": "#88f6ff",
+                "secondary-fixed": "#c0d1ff",
+                "outline": "#767575",
+                "error-container": "#b92902",
+                "primary-fixed-dim": "#2be800",
+                "secondary": "#6e9bff",
+                "primary-dim": "#2be800",
+                "on-surface": "#ffffff",
+                "surface-variant": "#262626",
+                "tertiary-container": "#17eefa",
+                "on-surface-variant": "#adaaaa",
+                "surface-container-low": "#131313",
+                "on-tertiary-fixed-variant": "#005e63",
+                "on-secondary-container": "#f7f7ff",
+                "tertiary-dim": "#00deea",
+                "secondary-container": "#0058ca",
+                "on-tertiary-container": "#005458",
+                "primary-container": "#2ff801",
+                "on-primary-fixed-variant": "#0d6200",
+                "primary-fixed": "#2ff801",
+                "surface-container": "#1a1919",
+                "on-error-container": "#ffd2c8",
+                "on-error": "#450900",
+                "on-secondary": "#001d4e"
+              },
+              fontFamily: {
+                "headline": ["Lexend"],
+                "body": ["Manrope"],
+                "label": ["Lexend"]
+              },
+              borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+            },
+          },
+        }
+      </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .kinetic-glass {
+            background: rgba(14, 14, 14, 0.8);
+            backdrop-filter: blur(12px);
+        }
+        .shimmer-green {
+            background: linear-gradient(90deg, #8eff71, #2ff801);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-surface font-body text-on-surface selection:bg-primary selection:text-on-primary-fixed">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-[#0e0e0e]/80 backdrop-blur-lg flex justify-between items-center px-6 h-16 w-full shadow-[0_24px_32px_-4px_rgba(255,255,255,0.06)]">
+<div class="flex items-center gap-4">
+<button class="text-[#8eff71] hover:bg-[#262626] transition-colors p-2 rounded-lg active:scale-95 duration-200">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<h1 class="text-2xl font-black italic text-[#8eff71] font-lexend font-bold tracking-tight">SOHBET</h1>
+</div>
+<div class="flex items-center gap-2">
+<button class="text-[#8eff71] hover:bg-[#262626] transition-colors p-2 rounded-lg active:scale-95 duration-200">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+</div>
+</header>
+<main class="pt-20 pb-24 px-4 max-w-2xl mx-auto space-y-8"><section class="mb-8">
+<div class="grid grid-cols-1 gap-3">
+<!-- Club Team Chat Card -->
+<div class="group bg-surface-container-low p-4 rounded-lg flex items-center gap-4 hover:bg-surface-container-high transition-all active:scale-[0.98] duration-150 relative overflow-hidden">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>
+<div class="relative flex-shrink-0 w-14 h-14">
+<img alt="Takım Logosu" class="w-full h-full object-cover rounded-lg border border-outline-variant/20" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB9ajYvZlLwGKklQrdhNZj2Hw6UfNjRkinE7u1WI2aUCqKMIBvubgMs0lYgfGBObbyPffWxiRmf8vzMfpLq83EmiY9JBQtsCL0JmkWvdr1D4xg_D17lRZVxb6LrjxrW-NgGggmODKkZYEEiEWFThsfXNMWShj645JR0GZ7PDxxqwZAMsvIwLgpIsmh10Xogocg-F_KBpHmhapAGS3HNMxyva93y5CtC9-NwbMQM1AZzddHdezG_LjqGzSNyOf1hNYA1Uxuy79e41trH"/>
+</div>
+<div class="flex-grow min-w-0">
+<div class="flex justify-between items-center mb-1">
+<h3 class="font-headline font-bold text-on-surface truncate">Kuzey Kartalları FC</h3>
+<span class="text-[10px] font-label text-on-surface-variant">18:30</span>
+</div>
+<p class="text-sm text-on-surface-variant truncate font-body italic">Kaptan: Yarınki antrenman saati değişti.</p>
+</div>
+<div class="flex-shrink-0 flex flex-col items-end gap-2">
+<div class="w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+<span class="text-[10px] font-black text-on-primary-fixed">5</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Search Bar -->
+<!-- Match Chats (Maç Sohbetleri) -->
+<section>
+<div class="flex justify-between items-end mb-4 px-2">
+<h2 class="font-headline text-xl font-bold tracking-tight text-on-surface uppercase">Maç Sohbetleri</h2>
+<span class="font-label text-xs text-secondary font-medium uppercase tracking-widest">Canlı</span>
+</div>
+<div class="grid grid-cols-1 gap-3">
+<!-- Group Chat Card 1 -->
+<div class="group bg-surface-container-low p-4 rounded-lg flex items-center gap-4 hover:bg-surface-container-high transition-all active:scale-[0.98] duration-150 relative overflow-hidden">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>
+<div class="relative flex-shrink-0 w-14 h-14">
+<img alt="Saha Görseli" class="w-full h-full object-cover rounded-lg border border-outline-variant/20" data-alt="Futbol sahası ve top yakın çekim" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC1of4J-6ttYMHSxwuLolrDWJ81o6oeUqF4tBjTatsA6D1IE1fp__HxfumVpLjYRL0GjSxJhHIDHdFbAv28wiQIQEUIDydDzz3lfcmcEmaIkFbW2n2Iat8PC0l6gh3Hy--IR4MQtVPwOtAe-t_rpzkYXGxob9657TKiXg17dJazAjwjFO20z4VbrTLjzSmP2G3OpusTpF4X9NQMSH3dI_WP7lmZ8i2IS5za3qBxVqjvLw8o-g_cNC7ERYVPgp49iIr12PbEttO93cFB"/>
+<div class="absolute -bottom-1 -right-1 bg-primary text-on-primary-fixed text-[10px] font-black px-1.5 py-0.5 rounded-sm">CANLI</div>
+</div>
+<div class="flex-grow min-w-0">
+<div class="flex justify-between items-center mb-1">
+<h3 class="font-headline font-bold text-on-surface truncate">Kadıköy 7x7 | Akşam Grubu</h3>
+<span class="text-[10px] font-label text-on-surface-variant">19:42</span>
+</div>
+<p class="text-sm text-on-surface-variant truncate font-body italic">"Beyler kaleci lazım, kim geliyor?"</p>
+</div>
+<div class="flex-shrink-0 flex flex-col items-end gap-2">
+<div class="w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+<span class="text-[10px] font-black text-on-primary-fixed">12</span>
+</div>
+</div>
+</div>
+<!-- Group Chat Card 2 -->
+<div class="group bg-surface-container-low p-4 rounded-lg flex items-center gap-4 hover:bg-surface-container-high transition-all active:scale-[0.98] duration-150">
+<div class="relative flex-shrink-0 w-14 h-14">
+<img alt="Turnuva Görseli" class="w-full h-full object-cover rounded-lg border border-outline-variant/20" data-alt="Gece aydınlatılmış halı saha turnuvası" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB9ajYvZlLwGKklQrdhNZj2Hw6UfNjRkinE7u1WI2aUCqKMIBvubgMs0lYgfGBObbyPffWxiRmf8vzMfpLq83EmiY9JBQtsCL0JmkWvdr1D4xg_D17lRZVxb6LrjxrW-NgGggmODKkZYEEiEWFThsfXNMWShj645JR0GZ7PDxxqwZAMsvIwLgpIsmh10Xogocg-F_KBpHmhapAGS3HNMxyva93y5CtC9-NwbMQM1AZzddHdezG_LjqGzSNyOf1hNYA1Uxuy79e41trH"/>
+</div>
+<div class="flex-grow min-w-0">
+<div class="flex justify-between items-center mb-1">
+<h3 class="font-headline font-bold text-on-surface truncate">Kinetic Pro Cup Sezon 4</h3>
+<span class="text-[10px] font-label text-on-surface-variant">Dün</span>
+</div>
+<p class="text-sm text-on-surface-variant truncate font-body">Kaptan: Maç saatleri güncellendi.</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Direct Messages -->
+<section>
+<div class="flex justify-between items-end mb-4 px-2">
+<h2 class="font-headline text-xl font-bold tracking-tight text-on-surface uppercase">Oyuncular</h2>
+<button class="font-label text-xs text-primary font-medium uppercase tracking-widest hover:underline">Tümünü Gör</button>
+</div>
+<div class="space-y-1">
+<!-- Chat Item 1 -->
+<div class="group bg-surface p-4 rounded-lg flex items-center gap-4 hover:bg-surface-container-low transition-all active:scale-[0.98] duration-150">
+<div class="relative flex-shrink-0">
+<img alt="Oyuncu 1" class="w-12 h-12 object-cover rounded-full" data-alt="Genç sporcu portresi stüdyo çekimi" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCl2n8X-3eGGDFE7mZ1zAF_AaY8YYRl0bhQM9XKb5COjdw4b__QrKC7pkASjYrTHLE8sJfxPqcSsiqth9PWhnkLdpbf0EGCq_0aZGOspXmncO-8-1r0SzhntrvsX1llUgtTQfcgfMpefsqt1QzTzBPamBhOw896obyjzis3VrVSJjXTvzdZoHKvqkJifFaKWypEZqf0E921XXw9kyGf3jwukAos91pk5c6lvLhCkBRdypMUbEw6DlKE4rcplDshZ_bLwDzdfggaM4qm"/>
+<div class="absolute bottom-0 right-0 w-3.5 h-3.5 bg-primary border-2 border-surface rounded-full"></div>
+</div>
+<div class="flex-grow min-w-0 border-b border-outline-variant/10 pb-4 group-last:border-none">
+<div class="flex justify-between items-center mb-1">
+<h3 class="font-headline font-semibold text-on-surface truncate">Emre Yılmaz</h3>
+<span class="text-[10px] font-label text-primary font-bold">AZ ÖNCE</span>
+</div>
+<p class="text-sm text-on-surface font-medium truncate font-body">Yarınki maç için kramponları getireyim mi?</p>
+</div>
+<div class="flex-shrink-0 border-b border-outline-variant/10 pb-4 group-last:border-none">
+<div class="w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+<span class="text-[10px] font-black text-on-primary-fixed">3</span>
+</div>
+</div>
+</div>
+<!-- Chat Item 2 -->
+<div class="group bg-surface p-4 rounded-lg flex items-center gap-4 hover:bg-surface-container-low transition-all active:scale-[0.98] duration-150">
+<div class="relative flex-shrink-0">
+<img alt="Oyuncu 2" class="w-12 h-12 object-cover rounded-full" data-alt="Gülümseyen atletik erkek portresi" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD1OGJzHT7EmMMTQcuVwDirdil_S8JSX3Q6TES7a8VnpWn5cR9-0KIyR-L2BYfYEyhK1Nr90R8H-xR0vwVJgnzfO03p427Jvhi1Wjz7V5yTQVliZVRnmLK3V0vBxv3zL992ALMuZ8Vx5f19pXKsPB0K9NmsCudT0cbRw589Ju9EBFYV5Ij0sIdvLGOKRcvLOySGpYE-uxjbfFL-4mDKZoT_k_jBVIL4wXG1ZE4gyvTAKO6jbjNQh4ObaKSQQceu42Jun9kGRiI3LjTm"/>
+<div class="absolute bottom-0 right-0 w-3.5 h-3.5 bg-outline border-2 border-surface rounded-full"></div>
+</div>
+<div class="flex-grow min-w-0 border-b border-outline-variant/10 pb-4 group-last:border-none">
+<div class="flex justify-between items-center mb-1">
+<h3 class="font-headline font-semibold text-on-surface truncate">Burak Kaya</h3>
+<span class="text-[10px] font-label text-on-surface-variant">14:20</span>
+</div>
+<p class="text-sm text-on-surface-variant truncate font-body">Harika maçtı dostum, tebrikler!</p>
+</div>
+</div>
+<!-- Chat Item 3 -->
+<div class="group bg-surface p-4 rounded-lg flex items-center gap-4 hover:bg-surface-container-low transition-all active:scale-[0.98] duration-150">
+<div class="relative flex-shrink-0">
+<img alt="Oyuncu 3" class="w-12 h-12 object-cover rounded-full" data-alt="Aktif kadın sporcu gülümseyen portre" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBWgBRu9jZ7DA3TOi4O379Z_IYBEpGsYYd5e81Ei_we1bi_0pI2Rn1kfxhYuGDlSEPuCSQL2Lxn8pJuZcW-c1cf5aBY5TzP1IP_jCSOocoEvAMC1YEhUUp8g6sM7_fQxHpl9nHCv41mwiex1jzGI19Doc4wDL5PZPReAMIdRMDGwQ5KfMKW09G5CMTiUfTyC9E4hKanTX0BDCO6NXuaCn6jAGs5QTY9tSpa4T0tBVH8x2TlyvsFVl63ZJY_2I40dizkd86VjtSkdZQW"/>
+<div class="absolute bottom-0 right-0 w-3.5 h-3.5 bg-primary border-2 border-surface rounded-full"></div>
+</div>
+<div class="flex-grow min-w-0 border-b border-outline-variant/10 pb-4 group-last:border-none">
+<div class="flex justify-between items-center mb-1">
+<h3 class="font-headline font-semibold text-on-surface truncate">Selina Aras</h3>
+<span class="text-[10px] font-label text-on-surface-variant">09:15</span>
+</div>
+<p class="text-sm text-on-surface-variant truncate font-body">Sakatlık durumu nasıl?</p>
+</div>
+</div>
+<!-- Chat Item 4 -->
+<div class="group bg-surface p-4 rounded-lg flex items-center gap-4 hover:bg-surface-container-low transition-all active:scale-[0.98] duration-150">
+<div class="relative flex-shrink-0">
+<img alt="Oyuncu 4" class="w-12 h-12 object-cover rounded-full" data-alt="Modern giyimli genç erkek portresi" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAg5H_LeIVdQupXvK5eDelL5OdiNkBu3E0m6BBaTLh80lnOh7CbWFXRmOWJAzld5vcmxkkUzInESXguk2UHVt-ak5iwSkrmkx8gCO8dZeF-XmIm0a1DxDZWa3S8HyWRKf7D7xKQaFkUGqKSL4e0A--ouEvV2X7Ym8a_77IlblRPcCqvpWKPGGbWUU3KoAwkD8nG54rLQdyeKCjKwGOLKquXAm2GxOSq-oocKQ40nafsu39onLHY5zf4Amges0rZeEfy1SXxhGbkimUH"/>
+<div class="absolute bottom-0 right-0 w-3.5 h-3.5 bg-outline border-2 border-surface rounded-full"></div>
+</div>
+<div class="flex-grow min-w-0 border-b border-outline-variant/10 pb-4 group-last:border-none">
+<div class="flex justify-between items-center mb-1">
+<h3 class="font-headline font-semibold text-on-surface truncate">Mert Demir</h3>
+<span class="text-[10px] font-label text-on-surface-variant">Dün</span>
+</div>
+<p class="text-sm text-on-surface-variant truncate font-body">Tamamdır, görüşürüz.</p>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- FAB for New Chat -->
+<button class="fixed bottom-24 right-6 w-14 h-14 shimmer-green rounded-full shadow-lg shadow-primary/20 flex items-center justify-center text-on-primary-fixed active:scale-90 transition-transform z-40">
+<span class="material-symbols-outlined text-3xl" style="font-variation-settings: 'FILL' 1;">add_comment</span>
+</button>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 w-full z-50 rounded-t-lg bg-[#0e0e0e]/90 backdrop-blur-md border-t border-[#484847]/15 flex justify-around items-center w-full h-20 pb-safe px-2">
+<a class="flex flex-col items-center justify-center text-[#adaaaa] px-3 py-1 hover:text-white transition-all active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined">home</span>
+<span class="font-lexend text-[10px] uppercase font-medium tracking-widest mt-1">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#adaaaa] px-3 py-1 hover:text-white transition-all active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined">search</span>
+<span class="font-lexend text-[10px] uppercase font-medium tracking-widest mt-1">Search</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#adaaaa] px-3 py-1 hover:text-white transition-all active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined">sports_soccer</span>
+<span class="font-lexend text-[10px] uppercase font-medium tracking-widest mt-1">Matches</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#8eff71] bg-[#8eff71]/10 rounded-xl px-3 py-1 hover:text-white transition-all active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">groups</span>
+<span class="font-lexend text-[10px] uppercase font-medium tracking-widest mt-1">Club</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#adaaaa] px-3 py-1 hover:text-white transition-all active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined">person</span>
+<span class="font-lexend text-[10px] uppercase font-medium tracking-widest mt-1">Profile</span>
+</a>
+</nav>
+</body></html>

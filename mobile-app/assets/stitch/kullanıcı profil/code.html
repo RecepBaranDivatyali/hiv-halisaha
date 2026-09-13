@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="tr"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@100..900&amp;family=Manrope:wght@200..800&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-tertiary-fixed": "#003f43",
+              "primary-fixed-dim": "#2be800",
+              "surface-container-highest": "#262626",
+              "on-tertiary-fixed-variant": "#005e63",
+              "on-primary": "#0d6100",
+              "on-surface": "#ffffff",
+              "on-primary-fixed": "#064200",
+              "surface": "#0e0e0e",
+              "error": "#ff7351",
+              "tertiary-dim": "#00deea",
+              "on-tertiary": "#005d62",
+              "surface-container": "#1a1919",
+              "inverse-primary": "#106f00",
+              "surface-dim": "#0e0e0e",
+              "on-secondary-fixed-variant": "#004baf",
+              "on-error": "#450900",
+              "on-surface-variant": "#adaaaa",
+              "on-primary-fixed-variant": "#0d6200",
+              "background": "#0e0e0e",
+              "on-error-container": "#ffd2c8",
+              "primary": "#8eff71",
+              "error-container": "#b92902",
+              "surface-container-lowest": "#000000",
+              "on-secondary-container": "#f7f7ff",
+              "on-secondary": "#001d4e",
+              "on-secondary-fixed": "#003076",
+              "secondary-dim": "#0f6df3",
+              "surface-container-high": "#201f1f",
+              "primary-container": "#2ff801",
+              "on-background": "#ffffff",
+              "on-tertiary-container": "#005458",
+              "outline-variant": "#484847",
+              "on-primary-container": "#0b5800",
+              "inverse-on-surface": "#565555",
+              "secondary": "#6e9bff",
+              "surface-bright": "#2c2c2c",
+              "inverse-surface": "#fcf9f8",
+              "primary-dim": "#2be800",
+              "surface-container-low": "#131313",
+              "secondary-container": "#0058ca",
+              "secondary-fixed": "#c0d1ff",
+              "surface-variant": "#262626",
+              "surface-tint": "#8eff71",
+              "secondary-fixed-dim": "#acc3ff",
+              "tertiary-fixed-dim": "#00deea",
+              "primary-fixed": "#2ff801",
+              "outline": "#767575",
+              "tertiary-container": "#17eefa",
+              "tertiary-fixed": "#17eefa",
+              "tertiary": "#88f6ff",
+              "error-dim": "#d53d18"
+            },
+            fontFamily: {
+              "headline": ["Lexend"],
+              "body": ["Manrope"],
+              "label": ["Lexend"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .bg-kinetic-gradient {
+        background: linear-gradient(135deg, #8eff71 0%, #2ff801 100%);
+      }
+      .glass-header {
+        background: rgba(14, 14, 14, 0.8);
+        backdrop-filter: blur(16px);
+      }
+    </style>
+</head>
+<body class="bg-surface text-on-surface font-body min-h-screen pb-24">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-[#0e0e0e]/80 backdrop-blur-md border-b border-[#484847]/15 shadow-[0_24px_32px_-4px_rgba(255,255,255,0.06)] flex justify-between items-center px-6 h-16">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-[#8eff71] active:scale-95 duration-200 cursor-pointer">menu</span>
+<h1 class="text-[#8eff71] text-2xl font-black italic uppercase tracking-tighter font-['Lexend']">KINETIC NOIR</h1>
+</div>
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-[#8eff71] active:scale-95 duration-200 cursor-pointer">notifications</span>
+</div>
+</header>
+<main class="pt-16 px-4 space-y-8">
+<!-- Player Info: Hero Section -->
+<section class="relative mt-6 overflow-hidden rounded-xl bg-surface-container-low p-6 flex flex-col items-center min-h-[400px]">
+<div class="absolute inset-0 opacity-20 grayscale pointer-events-none">
+<img alt="Abstract football stadium lights texture" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD4hbENQjPa5K4IPRbacjZSrUZHdHhNFKuHssqPfE4QQWMxCHmnb5UFSDiu5HImiXtKyoxGBVD0V6pIVjETW5LUqWy7-hdE9kl2uGTHdRMf6BTV-BgnU9KFkpQVpTT3o_FIxdHrL7MFtXDe4PkI4LXp74wyoE0IntiIJnxnoXaP0THmgCf483Q6Jgj-7_gj7_v3HvxBUsCjENNE_LrSUK0jNe02C_mjmjAzyulwh6Zc3XhD61ur2b3nR-MLrDe43Ak_N6tuURvhI0H-"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container-low via-transparent to-transparent"></div>
+</div>
+<div class="relative z-10 flex flex-col items-center w-full text-center">
+<div class="relative mb-6">
+<div class="w-32 h-32 rounded-full border-4 border-primary p-1 bg-surface">
+<img alt="Arda Güler" class="w-full h-full object-cover rounded-full" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG"/>
+</div>
+<div class="absolute -bottom-2 -right-2 bg-primary text-on-primary-fixed px-3 py-1 rounded-full font-headline font-black italic text-sm">
+                        LVL 42
+                    </div>
+</div>
+<p class="text-primary font-headline font-bold uppercase tracking-widest text-xs mb-1">FORVET • SOL KANAT</p>
+<h2 class="text-4xl font-headline font-black italic uppercase tracking-tighter leading-none mb-3">ARDA GÜLER</h2>
+<div class="flex items-center justify-center gap-4 mb-8">
+<div class="flex items-center gap-1 bg-surface-container-highest px-3 py-1 rounded-lg">
+<span class="material-symbols-outlined text-secondary text-sm">location_on</span>
+<span class="text-xs font-label uppercase">İSTANBUL</span>
+</div>
+<div class="flex items-center gap-1 bg-surface-container-highest px-3 py-1 rounded-lg">
+<span class="material-symbols-outlined text-primary text-sm">verified</span>
+<span class="text-xs font-label uppercase">DOĞRULANMIŞ</span>
+</div>
+</div>
+<!-- Integrated Genel Puan Section from SCREEN_2 -->
+<div class="w-full max-w-xs bg-surface-container/50 backdrop-blur-sm p-5 rounded-xl border border-primary/20 relative">
+<div class="flex justify-between items-start mb-2">
+<div class="text-left">
+<p class="font-label text-[10px] text-on-surface-variant uppercase tracking-widest mb-1">GENEL PUAN</p>
+<div class="flex items-baseline gap-1">
+<span class="text-6xl font-headline font-black text-on-surface leading-none">8.7</span>
+<span class="text-primary font-headline font-bold text-xl">/10</span>
+</div>
+</div>
+<div class="bg-primary/20 p-2 rounded-lg">
+<span class="material-symbols-outlined text-primary text-2xl" style="font-variation-settings: 'FILL' 1;">star</span>
+</div>
+</div>
+<div class="flex items-end gap-1.5 h-10 mt-2">
+<div class="flex-1 bg-primary/20 h-[40%] rounded-sm"></div>
+<div class="flex-1 bg-primary/40 h-[60%] rounded-sm"></div>
+<div class="flex-1 bg-primary/60 h-[80%] rounded-sm"></div>
+<div class="flex-1 bg-primary/80 h-[90%] rounded-sm"></div>
+<div class="flex-1 bg-primary h-[100%] rounded-sm"></div>
+</div>
+</div>
+</div>
+</section>
+<!-- Güvenilirlik Uyarısı -->
+<section class="bg-error-container/10 border border-error/20 p-4 rounded-xl flex items-start gap-4">
+<span class="material-symbols-outlined text-error mt-1" style="font-variation-settings: 'FILL' 1;">warning</span>
+<div>
+<h4 class="font-headline font-bold text-error uppercase text-sm tracking-wider">GÜVENİLİRLİK UYARISI</h4>
+<p class="text-on-surface-variant text-sm mt-1">Son 3 maçta 1 kez geç kaldınız. Güvenilirlik puanınız %88'e düştü. Art arda 2 maçta sorunsuz katılım puanınızı eski haline getirir.</p>
+</div>
+</section>
+<!-- Sezon İstatistikleri -->
+<section class="space-y-4">
+<h3 class="font-headline font-black italic uppercase text-xl tracking-tight flex items-center gap-2">
+<span class="w-1 h-6 bg-primary"></span>
+                SEZON İSTATİSTİKLERİ
+            </h3>
+<div class="grid grid-cols-2 gap-4">
+<div class="bg-surface-container-low p-6 rounded-xl flex flex-col justify-between h-32 relative overflow-hidden group">
+<span class="material-symbols-outlined absolute -right-4 -bottom-4 text-8xl text-on-surface/5 group-hover:scale-110 transition-transform">sports_soccer</span>
+<span class="text-on-surface-variant font-label text-xs uppercase tracking-widest">GOL</span>
+<span class="text-5xl font-headline font-black italic text-primary">24</span>
+</div>
+<div class="bg-surface-container-low p-6 rounded-xl flex flex-col justify-between h-32 relative overflow-hidden group">
+<span class="material-symbols-outlined absolute -right-4 -bottom-4 text-8xl text-on-surface/5 group-hover:scale-110 transition-transform">assist_walker</span>
+<span class="text-on-surface-variant font-label text-xs uppercase tracking-widest">ASİST</span>
+<span class="text-5xl font-headline font-black italic text-secondary">12</span>
+</div>
+<div class="bg-surface-container-low p-6 rounded-xl flex flex-col justify-between h-32 relative overflow-hidden group">
+<span class="material-symbols-outlined absolute -right-4 -bottom-4 text-8xl text-on-surface/5 group-hover:scale-110 transition-transform">timer</span>
+<span class="text-on-surface-variant font-label text-xs uppercase tracking-widest">MAÇ</span>
+<span class="text-5xl font-headline font-black italic text-tertiary">18</span>
+</div>
+<div class="bg-surface-container-low p-6 rounded-xl flex flex-col justify-between h-32 relative overflow-hidden group border-l-4 border-primary">
+<span class="material-symbols-outlined absolute -right-4 -bottom-4 text-8xl text-on-surface/5 group-hover:scale-110 transition-transform">stars</span>
+<span class="text-on-surface-variant font-label text-xs uppercase tracking-widest">MVP</span>
+<span class="text-5xl font-headline font-black italic text-white">5</span>
+</div>
+</div>
+</section>
+<!-- Başarılar -->
+<section class="space-y-4">
+<h3 class="font-headline font-black italic uppercase text-xl tracking-tight flex items-center gap-2">
+<span class="w-1 h-6 bg-secondary"></span>
+                BAŞARILAR
+            </h3>
+<div class="flex flex-wrap gap-4">
+<div class="flex items-center gap-3 bg-surface-container-high px-4 py-3 rounded-full border border-outline-variant/20">
+<div class="w-8 h-8 rounded-full bg-kinetic-gradient flex items-center justify-center shadow-lg shadow-primary/20">
+<span class="material-symbols-outlined text-on-primary-fixed text-sm" style="font-variation-settings: 'FILL' 1;">bolt</span>
+</div>
+<div>
+<p class="text-xs font-headline font-bold uppercase leading-none">Haftada 3+ Maç</p>
+<p class="text-[10px] text-on-surface-variant font-body">Kondisyon Canavarı</p>
+</div>
+</div>
+<div class="flex items-center gap-3 bg-surface-container-high px-4 py-3 rounded-full border border-outline-variant/20">
+<div class="w-8 h-8 rounded-full bg-secondary flex items-center justify-center shadow-lg shadow-secondary/20">
+<span class="material-symbols-outlined text-white text-sm" style="font-variation-settings: 'FILL' 1;">calendar_today</span>
+</div>
+<div>
+<p class="text-xs font-headline font-bold uppercase leading-none">100 Maç Ayarlama</p>
+<p class="text-[10px] text-on-surface-variant font-body">Sadık Organizatör</p>
+</div>
+</div>
+<div class="flex items-center gap-3 bg-surface-container-high px-4 py-3 rounded-full border border-outline-variant/20 opacity-50">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant text-sm">military_tech</span>
+</div>
+<div>
+<p class="text-xs font-headline font-bold uppercase leading-none">Seri Galibiyet</p>
+<p class="text-[10px] text-on-surface-variant font-body">Henüz kazanılmadı</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Son Maçlar -->
+<section class="space-y-4">
+<div class="flex justify-between items-end">
+<h3 class="font-headline font-black italic uppercase text-xl tracking-tight flex items-center gap-2">
+<span class="w-1 h-6 bg-white"></span>
+                    SON MAÇLAR
+                </h3>
+<a class="text-primary text-xs font-label uppercase tracking-widest border-b border-primary/30 pb-0.5" href="#">TÜMÜNÜ GÖR</a>
+</div>
+<div class="space-y-3">
+<!-- Match Item 1 -->
+<div class="bg-surface-container-low rounded-xl overflow-hidden flex items-stretch">
+<div class="w-1 bg-primary"></div>
+<div class="p-4 flex-1 flex items-center justify-between">
+<div class="flex flex-col">
+<span class="text-[10px] text-on-surface-variant font-label uppercase">12 OCAK • KAMPÜS ARENA</span>
+<span class="font-headline font-bold text-sm">FC SHARDS VS DARK KNIGHTS</span>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex flex-col items-center">
+<span class="text-xs font-label text-on-surface-variant">SKOR</span>
+<span class="text-lg font-headline font-black italic text-primary">5 - 2</span>
+</div>
+<div class="bg-surface-container-highest w-8 h-8 rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-primary text-sm">thumb_up</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Match Item 2 -->
+<div class="bg-surface-container-low rounded-xl overflow-hidden flex items-stretch">
+<div class="w-1 bg-error"></div>
+<div class="p-4 flex-1 flex items-center justify-between">
+<div class="flex flex-col">
+<span class="text-[10px] text-on-surface-variant font-label uppercase">08 OCAK • OLYMPIC TURF</span>
+<span class="font-headline font-bold text-sm">CITY BOYS VS FC SHARDS</span>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex flex-col items-center">
+<span class="text-xs font-label text-on-surface-variant">SKOR</span>
+<span class="text-lg font-headline font-black italic text-error">1 - 4</span>
+</div>
+<div class="bg-surface-container-highest w-8 h-8 rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-error text-sm">thumb_down</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Match Item 3 -->
+<div class="bg-surface-container-low rounded-xl overflow-hidden flex items-stretch">
+<div class="w-1 bg-secondary"></div>
+<div class="p-4 flex-1 flex items-center justify-between">
+<div class="flex flex-col">
+<span class="text-[10px] text-on-surface-variant font-label uppercase">02 OCAK • KAMPÜS ARENA</span>
+<span class="font-headline font-bold text-sm">NOIR UNITED VS FC SHARDS</span>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex flex-col items-center">
+<span class="text-xs font-label text-on-surface-variant">SKOR</span>
+<span class="text-lg font-headline font-black italic text-secondary">3 - 3</span>
+</div>
+<div class="bg-surface-container-highest w-8 h-8 rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary text-sm">drag_handle</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 w-full z-50 bg-[#0e0e0e] border-t border-[#484847]/15 shadow-[0_-8px_24px_rgba(0,0,0,0.5)] flex justify-around items-center h-20 pb-safe">
+<a class="flex flex-col items-center justify-center text-[#adaaaa] hover:text-white transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">home</span>
+<span class="font-['Lexend'] text-[10px] font-medium uppercase tracking-widest">Ana Sayfa</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#adaaaa] hover:text-white transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">search</span>
+<span class="font-['Lexend'] text-[10px] font-medium uppercase tracking-widest">Arama</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#adaaaa] hover:text-white transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">sports_soccer</span>
+<span class="font-['Lexend'] text-[10px] font-medium uppercase tracking-widest">Maçlar</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#adaaaa] hover:text-white transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">groups</span>
+<span class="font-['Lexend'] text-[10px] font-medium uppercase tracking-widest">Kulüpler</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#8eff71] bg-[#131313] rounded-xl px-4 py-1.5 active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">person</span>
+<span class="font-['Lexend'] text-[10px] font-bold uppercase tracking-widest">Profil</span>
+</a>
+</nav>
+</body></html>

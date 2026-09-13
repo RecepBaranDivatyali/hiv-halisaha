@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="tr"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>KINETIC NOIR - KULÜPLER</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;700;800;900&amp;family=Manrope:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-tertiary-fixed": "#003f43",
+              "primary-fixed-dim": "#2be800",
+              "surface-container-highest": "#262626",
+              "on-tertiary-fixed-variant": "#005e63",
+              "on-primary": "#0d6100",
+              "on-surface": "#ffffff",
+              "on-primary-fixed": "#064200",
+              "surface": "#0e0e0e",
+              "error": "#ff7351",
+              "tertiary-dim": "#00deea",
+              "on-tertiary": "#005d62",
+              "surface-container": "#1a1919",
+              "inverse-primary": "#106f00",
+              "surface-dim": "#0e0e0e",
+              "on-secondary-fixed-variant": "#004baf",
+              "on-error": "#450900",
+              "on-surface-variant": "#adaaaa",
+              "on-primary-fixed-variant": "#0d6200",
+              "background": "#0e0e0e",
+              "on-error-container": "#ffd2c8",
+              "primary": "#8eff71",
+              "error-container": "#b92902",
+              "surface-container-lowest": "#000000",
+              "on-secondary-container": "#f7f7ff",
+              "on-secondary": "#001d4e",
+              "on-secondary-fixed": "#003076",
+              "secondary-dim": "#0f6df3",
+              "surface-container-high": "#201f1f",
+              "primary-container": "#2ff801",
+              "on-background": "#ffffff",
+              "on-tertiary-container": "#005458",
+              "outline-variant": "#484847",
+              "on-primary-container": "#0b5800",
+              "inverse-on-surface": "#565555",
+              "secondary": "#6e9bff",
+              "surface-bright": "#2c2c2c",
+              "inverse-surface": "#fcf9f8",
+              "primary-dim": "#2be800",
+              "surface-container-low": "#131313",
+              "secondary-container": "#0058ca",
+              "secondary-fixed": "#c0d1ff",
+              "surface-variant": "#262626",
+              "surface-tint": "#8eff71",
+              "secondary-fixed-dim": "#acc3ff",
+              "tertiary-fixed-dim": "#00deea",
+              "primary-fixed": "#2ff801",
+              "outline": "#767575",
+              "tertiary-container": "#17eefa",
+              "tertiary-fixed": "#17eefa",
+              "tertiary": "#88f6ff",
+              "error-dim": "#d53d18"
+            },
+            fontFamily: {
+              "headline": ["Lexend"],
+              "body": ["Manrope"],
+              "label": ["Lexend"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .kinetic-gradient {
+            background: linear-gradient(135deg, #8eff71 0%, #2ff801 100%);
+        }
+        .noir-glass {
+            background: rgba(38, 38, 38, 0.2);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0e0e0e;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #262626;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-surface text-on-surface font-body selection:bg-primary selection:text-on-primary-fixed">
+<!-- TopAppBar -->
+<header class="bg-[#0e0e0e]/80 backdrop-blur-md fixed top-0 w-full z-50 border-b border-[#484847]/15 shadow-[0_24px_32px_-4px_rgba(255,255,255,0.06)]">
+<div class="flex justify-between items-center px-6 h-16 w-full max-w-7xl mx-auto">
+<div class="flex items-center gap-4">
+<button class="text-[#8eff71] active:scale-95 duration-200">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<h1 class="font-['Lexend'] font-black italic uppercase tracking-tighter text-[#8eff71] text-2xl">KINETIC NOIR</h1>
+</div>
+<div class="flex items-center gap-6">
+<nav class="hidden md:flex gap-8">
+<a class="font-label text-sm uppercase tracking-widest text-[#adaaaa] hover:text-[#8eff71] transition-colors" href="#">Ana Sayfa</a>
+<a class="font-label text-sm uppercase tracking-widest text-[#adaaaa] hover:text-[#8eff71] transition-colors" href="#">Maçlar</a>
+<a class="font-label text-sm uppercase tracking-widest text-[#8eff71]" href="#">Kulüpler</a>
+<a class="font-label text-sm uppercase tracking-widest text-[#adaaaa] hover:text-[#8eff71] transition-colors" href="#">Profil</a>
+</nav>
+<button class="text-[#8eff71] active:scale-95 duration-200 relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-0 right-0 w-2 h-2 bg-error rounded-full"></span>
+</button>
+</div>
+</div>
+</header>
+<main class="pt-24 pb-32 px-4 md:px-8 max-w-7xl mx-auto">
+<!-- Section Header -->
+<div class="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
+<div>
+<span class="font-label text-primary uppercase tracking-[0.3em] text-xs mb-2 block">ELİT LİG</span>
+<h2 class="font-headline font-black text-5xl md:text-7xl italic uppercase tracking-tighter leading-none">
+                    KÜRESEL <br/> <span class="text-primary">KULÜPLER</span>
+</h2>
+</div>
+<div class="bg-surface-container-low p-4 rounded-lg border-l-4 border-primary">
+<p class="font-label text-[10px] text-on-surface-variant uppercase tracking-widest mb-1">AKTİF OYUNCULAR</p>
+<p class="font-headline text-2xl font-bold">12,482</p>
+</div>
+</div>
+<!-- Showcase: Top Club Card -->
+<section class="mb-12">
+<div class="relative overflow-hidden rounded-xl bg-surface-container-highest group">
+<div class="absolute inset-0 opacity-40">
+<img alt="Futbol Sahası Gece Görünümü" class="w-full h-full object-cover" data-alt="Cinematic night stadium floodlights atmosphere" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC3MVNrk_A5soV9sjZ6eFdSSMdjMV9NUGMkeg0JpoALuL7V0qThv1vVZV0EfYbH2y_7Ak_vJtTfyxfATi_sBpwwaYVPmswbgBqcONCXJ_puXKtL7YI08J6rNG-fbA8MiqT2oGZNBQCmcMa7Hy364Rn0UFOOw43Lqw76FVhO3yxhwjNv0VEqrxxGvC3R3BPoD4En3wmnGnmj4N4z5CvcYx8dqYnZedYSczvtTK728xHTTwVBdrzStfIw7i7i1C50n55y3vZCd8Az9dLL"/>
+<div class="absolute inset-0 bg-gradient-to-r from-surface via-surface/80 to-transparent"></div>
+</div>
+<div class="relative p-8 md:p-12 flex flex-col md:flex-row gap-8 items-center">
+<div class="w-32 h-32 md:w-48 md:h-48 rounded-full border-4 border-primary p-2 bg-surface flex items-center justify-center">
+<span class="material-symbols-outlined text-primary text-6xl md:text-8xl" style="font-variation-settings: 'FILL' 1;">shield</span>
+</div>
+<div class="flex-1 text-center md:text-left">
+<div class="flex flex-wrap justify-center md:justify-start gap-2 mb-4">
+<span class="bg-primary text-on-primary-fixed text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">ŞAMPİYON</span>
+<span class="bg-surface-container-high text-on-surface text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest">SEZON 04</span>
+</div>
+<h3 class="font-headline text-4xl md:text-6xl font-black italic uppercase tracking-tighter mb-4">VANGUARD FC</h3>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-2xl">
+<div>
+<p class="text-on-surface-variant text-[10px] uppercase font-bold tracking-widest">KULÜP PUANI</p>
+<p class="text-2xl font-headline font-black text-secondary">24.8K</p>
+</div>
+<div>
+<p class="text-on-surface-variant text-[10px] uppercase font-bold tracking-widest">ÜYELER</p>
+<p class="text-2xl font-headline font-black">48/50</p>
+</div>
+<div>
+<p class="text-on-surface-variant text-[10px] uppercase font-bold tracking-widest">GALİBİYET</p>
+<p class="text-2xl font-headline font-black">1.2k</p>
+</div>
+<div>
+<p class="text-on-surface-variant text-[10px] uppercase font-bold tracking-widest">SEVİYE</p>
+<p class="text-2xl font-headline font-black text-primary">99</p>
+</div>
+</div>
+</div>
+<div class="w-full md:w-auto">
+<button class="w-full kinetic-gradient text-on-primary-fixed font-black uppercase tracking-widest px-8 py-4 rounded-lg flex items-center justify-center gap-2 group-hover:scale-105 transition-transform">
+                            KULÜBE KATIL
+                            <span class="material-symbols-outlined">bolt</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+<!-- List: Kulüpler -->
+<div class="lg:col-span-2 space-y-4">
+<div class="mb-6 relative group">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-on-surface-variant group-focus-within:text-primary transition-colors text-xl">search</span>
+</div>
+<input class="block w-full bg-surface-container-low border border-outline-variant/30 rounded-lg py-3 pl-11 pr-4 text-on-surface placeholder-on-surface-variant focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all font-body text-sm" placeholder="Kulüp ara..." type="text"/>
+</div><div class="flex items-center justify-between mb-6">
+<h3 class="font-headline text-xl font-bold uppercase tracking-widest flex items-center gap-2">
+<span class="w-2 h-8 bg-primary block"></span>
+                        ÖNE ÇIKAN KULÜPLER
+                    </h3>
+<div class="flex gap-2">
+<button class="w-10 h-10 rounded bg-surface-container-highest flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined">filter_list</span>
+</button>
+</div>
+</div>
+<!-- Club Cards (Bento-style list) -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<!-- Card 1 -->
+<div class="bg-surface-container-low p-6 rounded-lg border-l-4 border-secondary-dim hover:bg-surface-container transition-colors group">
+<div class="flex justify-between items-start mb-4">
+<div class="w-12 h-12 bg-surface-container-highest rounded flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-3xl">rocket_launch</span>
+</div>
+<span class="text-on-surface-variant text-[10px] font-bold">#2 SIRALAMA</span>
+</div>
+<h4 class="font-headline text-2xl font-black italic uppercase tracking-tighter mb-1">CYBER TITANS</h4>
+<p class="text-on-surface-variant text-sm font-body mb-4">Hız ve veri odaklı elit futbol topluluğu.</p>
+<div class="flex justify-between items-end">
+<div class="flex -space-x-2">
+<div class="w-8 h-8 rounded-full border-2 border-surface bg-surface-container-highest overflow-hidden">
+<img alt="Üye" data-alt="User profile avatar male" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDnESrKSqGTLeHbZ_rrFCP4V3KDzPeMSTb-ploK4UDO0gK8uZ9Mcyg4nfKFAgUe28LsAFtbRQcPFO_3TPps7Zrl-5WuS8UE1LdSGZXSLGdTMSPg-GOTwsKhGyqrgQMoh_kCYchdPW1XnrnQa0mjrjXuc7QsuRr_sQPytsHhv9nkceZkGJr6tvYnMJRBlIOliz0R2bjOW0DfyMfiXIF7iCyb7x7BNgTKSLzsqQ5U0rj0R3C_KuCmQwZue-w-n9g5oC7XpAXhtnIKV7Bj"/>
+</div>
+<div class="w-8 h-8 rounded-full border-2 border-surface bg-surface-container-highest overflow-hidden">
+<img alt="Üye" data-alt="User profile avatar female" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAdzn14vmaqTEauavhTHs2RM9yJ89bntbhVBWt1vSgy5--_ow7bSCos_RRFVp0NM9XnQANrW7dhRrYhdONkHdCj5yDdrix70hV_ufXaTTi5VDX9C_bLynYJAAtnWAI_qLXZbIseyw3mn5VbFXbAEm5IlbbhAagIRJCySZ3QmcCyzkoa22GGgiSikhu7SETYOhxXl6Tmnk9lUYojRFzypzad6l6LYNY__xDL_3zU1TMdESQ7m9jBsz9LxoWTe_DOXsCraa1prlke-OWf"/>
+</div>
+<div class="w-8 h-8 rounded-full border-2 border-surface bg-surface-container-highest flex items-center justify-center text-[10px] font-bold">
+                                    +32
+                                </div>
+</div>
+<button class="text-primary font-label text-xs uppercase tracking-widest font-bold group-hover:translate-x-1 transition-transform">DETAYLAR →</button>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-surface-container-low p-6 rounded-lg border-l-4 border-error hover:bg-surface-container transition-colors group">
+<div class="flex justify-between items-start mb-4">
+<div class="w-12 h-12 bg-surface-container-highest rounded flex items-center justify-center text-error">
+<span class="material-symbols-outlined text-3xl">local_fire_department</span>
+</div>
+<span class="text-on-surface-variant text-[10px] font-bold">YENİ</span>
+</div>
+<h4 class="font-headline text-2xl font-black italic uppercase tracking-tighter mb-1">INFERNO SQUAD</h4>
+<p class="text-on-surface-variant text-sm font-body mb-4">Agresif oyun tarzı ve durdurulamaz forvetler.</p>
+<div class="flex justify-between items-end">
+<div class="flex -space-x-2">
+<div class="w-8 h-8 rounded-full border-2 border-surface bg-surface-container-highest overflow-hidden">
+<img alt="Üye" data-alt="User profile avatar male 2" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAmDE1rkIphUat3zCPdw0I8TsEuYYpuhtsiSpUxYv5vkyJnTStBxlBE_V5njlNdSM40VIDMGgcOfKvOvyx33JwgLGgM3-QK19F1qjqq9WkfaCr72aeuzJg9GjKLmln0jmZN3VxhGEliv6lAnZR516sRCxFm0K53r0gfvUx7Vy4zbuvgM8kRttYYWpV_ZJ7RGU-qA_mECcPruCsoEc3F529FIzgBrcV8AtRMvNGc9o7YgeLKynuGLr5Pq2FzU9wy1txm61K1-Qrwd6E9"/>
+</div>
+<div class="w-8 h-8 rounded-full border-2 border-surface bg-surface-container-highest flex items-center justify-center text-[10px] font-bold">
+                                    +12
+                                </div>
+</div>
+<button class="text-primary font-label text-xs uppercase tracking-widest font-bold group-hover:translate-x-1 transition-transform">DETAYLAR →</button>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="bg-surface-container-low p-6 rounded-lg border-l-4 border-tertiary hover:bg-surface-container transition-colors group">
+<div class="flex justify-between items-start mb-4">
+<div class="w-12 h-12 bg-surface-container-highest rounded flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined text-3xl">ac_unit</span>
+</div>
+<span class="text-on-surface-variant text-[10px] font-bold">#15 SIRALAMA</span>
+</div>
+<h4 class="font-headline text-2xl font-black italic uppercase tracking-tighter mb-1">ICE BREAKERS</h4>
+<p class="text-on-surface-variant text-sm font-body mb-4">Savunma duvarını aşmak imkansızdır.</p>
+<div class="flex justify-between items-end">
+<div class="flex -space-x-2">
+<div class="w-8 h-8 rounded-full border-2 border-surface bg-surface-container-highest overflow-hidden">
+<img alt="Üye" data-alt="User profile avatar female 2" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAxXAw1gtF_PhXexQBxDYKS97sdaj8AcSBuctUBi3DZmIFkTTq3NYkZ8KL6l1OuTA54FvkLaJD1uWxd3y2DToRjCAePVSFZ4S36CRF0_5yPmLFoiUjgd0Uk8WBXx2E-nxTbiyVmeJp-LfCN1c7gRRDx6BszNwmWCEdG54dKDDyiHbI4PGHp5MRk2J2UdAHZqpECtcPaS7whuGlWWLHfiuyGhZt9XGt-i9vxoJEhezC9h_1wuyaepvOjJ6QQGp91RtuwHXSpXGWGh9Ed"/>
+</div>
+<div class="w-8 h-8 rounded-full border-2 border-surface bg-surface-container-highest flex items-center justify-center text-[10px] font-bold">
+                                    +24
+                                </div>
+</div>
+<button class="text-primary font-label text-xs uppercase tracking-widest font-bold group-hover:translate-x-1 transition-transform">DETAYLAR →</button>
+</div>
+</div>
+<!-- Card 4 -->
+<div class="bg-surface-container-low p-6 rounded-lg border-l-4 border-primary hover:bg-surface-container transition-colors group">
+<div class="flex justify-between items-start mb-4">
+<div class="w-12 h-12 bg-surface-container-highest rounded flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-3xl">sports_martial_arts</span>
+</div>
+<span class="text-on-surface-variant text-[10px] font-bold">DÜNYA ÇAPI</span>
+</div>
+<h4 class="font-headline text-2xl font-black italic uppercase tracking-tighter mb-1">ZENITH UNITED</h4>
+<p class="text-on-surface-variant text-sm font-body mb-4">Zirveye giden yolda asla pes etmeyenler.</p>
+<div class="flex justify-between items-end">
+<div class="flex -space-x-2">
+<div class="w-8 h-8 rounded-full border-2 border-surface bg-surface-container-highest overflow-hidden">
+<img alt="Üye" data-alt="User profile avatar male 3" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDIDVPWS5_jBnvxbWfhcONwLF4ifitTj7u-9cEt7pGTFdW63NDPryGUmBMeTa_9HPUgZm4mPpImMTJeY9nco3-4yMkQ0l3ZKmN2THpdTEEdeaCXsFs1ZelIFyWRTNallAZYoaSI9mK283bRaicxu9tEaMuIocEh-jcZnlSGINfoaKR4euBbCp-_AMGCqS7PrjGIkCglYELVL1_BjUHi24t65IIzr9xKF2t1XyugdHk4HMS2hT0FSLvdstGCP2wMTn2TYweAiEMWhGKZ"/>
+</div>
+<div class="w-8 h-8 rounded-full border-2 border-surface bg-surface-container-highest flex items-center justify-center text-[10px] font-bold">
+                                    +45
+                                </div>
+</div>
+<button class="text-primary font-label text-xs uppercase tracking-widest font-bold group-hover:translate-x-1 transition-transform">DETAYLAR →</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Sidebar: Liderlik Tablosu -->
+<div class="space-y-6">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-primary">leaderboard</span>
+<h3 class="font-headline text-xl font-bold uppercase tracking-widest">LİDERLİK TABLOSU</h3>
+</div>
+<div class="bg-surface-container-low rounded-xl overflow-hidden shadow-2xl">
+<!-- Leaderboard Item 1 -->
+<div class="flex items-center gap-4 p-4 border-b border-outline-variant/15 bg-primary/5">
+<span class="font-headline text-2xl font-black italic text-primary w-6">01</span>
+<div class="w-10 h-10 rounded bg-surface-container-highest flex items-center justify-center border border-primary">
+<span class="material-symbols-outlined text-primary">shield</span>
+</div>
+<div class="flex-1">
+<p class="font-bold text-sm">VANGUARD FC</p>
+<p class="text-[10px] text-on-surface-variant uppercase font-bold">24,850 PK</p>
+</div>
+<span class="material-symbols-outlined text-primary text-sm">trending_up</span>
+</div>
+<!-- Leaderboard Item 2 -->
+<div class="flex items-center gap-4 p-4 border-b border-outline-variant/15">
+<span class="font-headline text-2xl font-black italic text-on-surface-variant w-6">02</span>
+<div class="w-10 h-10 rounded bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary">rocket_launch</span>
+</div>
+<div class="flex-1">
+<p class="font-bold text-sm text-on-surface-variant">CYBER TITANS</p>
+<p class="text-[10px] text-on-surface-variant uppercase font-bold">22,120 PK</p>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant text-sm">horizontal_rule</span>
+</div>
+<!-- Leaderboard Item 3 -->
+<div class="flex items-center gap-4 p-4 border-b border-outline-variant/15">
+<span class="font-headline text-2xl font-black italic text-on-surface-variant w-6">03</span>
+<div class="w-10 h-10 rounded bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-primary-fixed-dim">stars</span>
+</div>
+<div class="flex-1">
+<p class="font-bold text-sm text-on-surface-variant">NOVA KINGS</p>
+<p class="text-[10px] text-on-surface-variant uppercase font-bold">19,400 PK</p>
+</div>
+<span class="material-symbols-outlined text-error text-sm">trending_down</span>
+</div>
+<!-- Leaderboard Item 4 -->
+<div class="flex items-center gap-4 p-4 border-b border-outline-variant/15">
+<span class="font-headline text-2xl font-black italic text-on-surface-variant w-6">04</span>
+<div class="w-10 h-10 rounded bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-tertiary">security</span>
+</div>
+<div class="flex-1">
+<p class="font-bold text-sm text-on-surface-variant">IRON WALL</p>
+<p class="text-[10px] text-on-surface-variant uppercase font-bold">18,200 PK</p>
+</div>
+<span class="material-symbols-outlined text-primary text-sm">trending_up</span>
+</div>
+<button class="w-full p-4 font-label text-xs uppercase tracking-widest text-primary hover:bg-primary/5 transition-colors">
+                        TÜM SIRALAMAYI GÖR
+                    </button>
+</div>
+<!-- Call to Action Card -->
+<div class="bg-primary p-6 rounded-xl relative overflow-hidden">
+<div class="relative z-10">
+<h4 class="font-headline text-xl font-black text-on-primary-fixed italic uppercase tracking-tighter leading-tight mb-2">KENDİ KULÜBÜNÜ KUR</h4>
+<p class="text-on-primary text-xs font-bold mb-4">Takımını topla, rakiplerini alt et ve global sıralamada yerini al.</p>
+<button class="bg-on-primary-fixed text-primary px-4 py-2 rounded font-black text-[10px] uppercase tracking-widest">ŞİMDİ OLUŞTUR</button>
+</div>
+<span class="material-symbols-outlined absolute -bottom-4 -right-4 text-9xl text-on-primary/10 select-none">groups</span>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 w-full z-50 bg-[#0e0e0e] border-t border-[#484847]/15 shadow-[0_-8px_24px_rgba(0,0,0,0.5)] md:hidden pb-safe">
+<div class="flex justify-around items-center h-20 w-full">
+<a class="flex flex-col items-center justify-center text-[#adaaaa] hover:bg-[#262626] transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">home</span>
+<span class="font-['Lexend'] text-[10px] font-medium uppercase tracking-widest mt-1">Ana Sayfa</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#adaaaa] hover:bg-[#262626] transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">search</span>
+<span class="font-['Lexend'] text-[10px] font-medium uppercase tracking-widest mt-1">Arama</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#adaaaa] hover:bg-[#262626] transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">sports_soccer</span>
+<span class="font-['Lexend'] text-[10px] font-medium uppercase tracking-widest mt-1">Maçlar</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#8eff71] bg-[#131313] rounded-xl px-3 py-1 transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">groups</span>
+<span class="font-['Lexend'] text-[10px] font-medium uppercase tracking-widest mt-1">Kulüpler</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#adaaaa] hover:bg-[#262626] transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">person</span>
+<span class="font-['Lexend'] text-[10px] font-medium uppercase tracking-widest mt-1">Profil</span>
+</a>
+</div>
+</nav>
+<!-- FAB (Suppressed on this list screen as per instructions, but kept as hidden placeholder for layout testing) -->
+<div class="hidden">
+<button class="fixed bottom-24 right-6 w-14 h-14 kinetic-gradient rounded-full shadow-lg flex items-center justify-center text-on-primary-fixed z-40">
+<span class="material-symbols-outlined">add</span>
+</button>
+</div>
+</body></html>

@@ -1,0 +1,105 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ─── YARDIMCI FONKSİYONLAR ───
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.admin == true ||
+        request.auth.token.email in [
+          'admin@hivhalisaha.com',
+          'yonetim@hivhalisaha.com'
+        ] ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // ─── KULLANICILAR (USERS) ───
+    match /users/{userId} {
+      // Tüm oturum açmış kullanıcılar profil bilgilerini görebilir
+      allow read: if isAuthenticated();
+      // Kullanıcı yalnızca kendi profilini oluşturabilir veya güncelleyebilir
+      allow create, update: if isOwner(userId) || isAdmin();
+      // Yalnızca admin veya kullanıcı kendi hesabını silebilir
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // ─── MAÇLAR (MATCHES) ───
+    match /matches/{matchId} {
+      allow read: if isAuthenticated();
+      // Oturum açmış kullanıcılar maç ilanı oluşturabilir
+      allow create: if isAuthenticated();
+      // Maç güncelleme: Organizatör, Admin veya slot/katılımcı değişiklikleri
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        resource.data.organizerId == request.auth.uid ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['slots', 'joinedPlayersCount', 'updatedAt'])
+      );
+      // Maç silme: Yalnızca organizatör veya Admin
+      allow delete: if isAdmin() || (
+        isAuthenticated() && resource.data.organizerId == request.auth.uid
+      );
+    }
+
+    // ─── KULÜPLER (CLUBS) ───
+    match /clubs/{clubId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() || isAdmin();
+      // Kulüp güncelleme: Admin, kulüp lideri veya üye katılım güncellemesi
+      allow update: if isAdmin() || (
+        isAuthenticated() && (
+          resource.data.leaderId == request.auth.uid ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['membersCount', 'members', 'updatedAt'])
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ─── HALISAHA / TESİSLER (PITCHES) ───
+    match /pitches/{pitchId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ─── SOHBETLER & MESAJLAŞMA (CONVERSATIONS) ───
+    match /conversations/{conversationId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid in resource.data.participants || isAdmin()
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        request.auth.uid in resource.data.participants || isAdmin()
+      );
+      
+      // Alt koleksiyon: Mesajlar
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && request.resource.data.senderId == request.auth.uid;
+        allow update, delete: if isAdmin() || (
+          isAuthenticated() && resource.data.senderId == request.auth.uid
+        );
+      }
+    }
+
+    // ─── SİSTEM AYARLARI (SETTINGS) ───
+    match /settings/{settingId} {
+      // Bakım modu ve platform ayarlarını tüm istemciler okuyabilir
+      allow read: if true;
+      // Ayarları yalnızca Admin değiştirebilir
+      allow write: if isAdmin();
+    }
+
+    // ─── ADMİNLER LİSTESİ (ADMINS) ───
+    match /admins/{adminId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

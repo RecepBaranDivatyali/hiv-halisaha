@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="tr"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Kinetic Noir - Maç Değerlendirmesi</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@100..900&amp;family=Manrope:wght@200..800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "on-tertiary-fixed": "#003f43",
+            "primary-fixed-dim": "#2be800",
+            "surface-container-highest": "#262626",
+            "on-tertiary-fixed-variant": "#005e63",
+            "on-primary": "#0d6100",
+            "on-surface": "#ffffff",
+            "on-primary-fixed": "#064200",
+            "surface": "#0e0e0e",
+            "error": "#ff7351",
+            "tertiary-dim": "#00deea",
+            "on-tertiary": "#005d62",
+            "surface-container": "#1a1919",
+            "inverse-primary": "#106f00",
+            "surface-dim": "#0e0e0e",
+            "on-secondary-fixed-variant": "#004baf",
+            "on-error": "#450900",
+            "on-surface-variant": "#adaaaa",
+            "on-primary-fixed-variant": "#0d6200",
+            "background": "#0e0e0e",
+            "on-error-container": "#ffd2c8",
+            "primary": "#8eff71",
+            "error-container": "#b92902",
+            "surface-container-lowest": "#000000",
+            "on-secondary-container": "#f7f7ff",
+            "on-secondary": "#001d4e",
+            "on-secondary-fixed": "#003076",
+            "secondary-dim": "#0f6df3",
+            "surface-container-high": "#201f1f",
+            "primary-container": "#2ff801",
+            "on-background": "#ffffff",
+            "on-tertiary-container": "#005458",
+            "outline-variant": "#484847",
+            "on-primary-container": "#0b5800",
+            "inverse-on-surface": "#565555",
+            "secondary": "#6e9bff",
+            "surface-bright": "#2c2c2c",
+            "inverse-surface": "#fcf9f8",
+            "primary-dim": "#2be800",
+            "surface-container-low": "#131313",
+            "secondary-container": "#0058ca",
+            "secondary-fixed": "#c0d1ff",
+            "surface-variant": "#262626",
+            "surface-tint": "#8eff71",
+            "secondary-fixed-dim": "#acc3ff",
+            "tertiary-fixed-dim": "#00deea",
+            "primary-fixed": "#2ff801",
+            "outline": "#767575",
+            "tertiary-container": "#17eefa",
+            "tertiary-fixed": "#17eefa",
+            "tertiary": "#88f6ff",
+            "error-dim": "#d53d18"
+          },
+          fontFamily: {
+            "headline": ["Lexend"],
+            "body": ["Manrope"],
+            "label": ["Lexend"]
+          },
+          borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+    input[type='range']::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 24px;
+      height: 24px;
+      background: #8eff71;
+      cursor: pointer;
+      border-radius: 4px;
+      border: 4px solid #064200;
+      box-shadow: 0 0 15px rgba(142, 255, 113, 0.4);
+    }
+    input[type='range']::-moz-range-thumb {
+      width: 24px;
+      height: 24px;
+      background: #8eff71;
+      cursor: pointer;
+      border-radius: 4px;
+      border: 4px solid #064200;
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface font-body selection:bg-primary selection:text-on-primary-fixed">
+<!-- TopAppBar Execution -->
+<header class="fixed top-0 w-full z-50 bg-[#0e0e0e]/80 backdrop-blur-md border-b border-[#484847]/15 shadow-[0_24px_32px_-4px_rgba(255,255,255,0.06)]">
+<div class="flex justify-between items-center px-6 h-16 w-full">
+<div class="flex items-center gap-4">
+<button class="active:scale-95 duration-200 text-[#adaaaa] hover:text-[#8eff71] transition-colors">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<h1 class="font-['Lexend'] font-black italic uppercase tracking-tighter text-[#8eff71] text-2xl">KINETIC NOIR</h1>
+</div>
+<button class="active:scale-95 duration-200 text-[#adaaaa] hover:text-[#8eff71] transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+</div>
+</header>
+<main class="pt-24 pb-32 px-6 max-w-2xl mx-auto min-h-screen">
+<!-- Player Context Section -->
+<section class="mb-10 animate-in slide-in-from-right duration-500">
+<div class="flex items-center gap-6 p-1">
+<div class="relative">
+<div class="w-20 h-20 rounded-lg overflow-hidden border-2 border-primary/20 bg-surface-container-highest">
+<img class="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-500" data-alt="Close up of a soccer player wearing a dark jersey" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB3zN4BMEVqYUF3QeCqfMmUKmw5cBXxBSRW3VsxvUV-KXfxcfUNy6Y82Uw5RqW42gjFGsQrYA81GzfjxHDInaql-eBPtBAeWIzYvIo5IstQNOYNqQ8g3WQjb_WA4gUlWI3jtxS0-dZvcC5Az1uvxxCDgdHFIH9RwA7ZsebYxmMiF16BfI2i_Ms9TkF9YUXKDArXyw9YMuFV1_yUlUT27aKrZhO--9EpUrIuSs9PmeIxM6YUFzjuQBP3bjtPS29-G09qbUuQ9_U0i825"/>
+</div>
+<div class="absolute -bottom-2 -right-2 bg-primary text-on-primary-fixed px-2 py-0.5 font-headline font-black italic text-sm rounded">
+            #10
+          </div>
+</div>
+<div>
+<h2 class="font-headline font-extrabold text-2xl tracking-tight leading-none mb-1">KEREM AKTÜRKOĞLU</h2>
+<p class="text-on-surface-variant font-medium text-sm flex items-center gap-2 uppercase tracking-widest">
+<span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+            Maç Sonu Değerlendirmesi
+          </p>
+</div>
+</div>
+</section>
+<!-- Rating Slider Section -->
+<div class="bg-surface-container-low rounded-xl p-8 mb-6 border-l-4 border-primary">
+<div class="flex justify-between items-end mb-8">
+<h3 class="font-headline font-bold text-lg uppercase tracking-wide text-on-surface">PERFORMANS PUANI</h3>
+<span class="font-headline font-black italic text-5xl text-primary leading-none" id="rating-value">8.0</span>
+</div>
+<div class="relative w-full h-12 flex items-center">
+<input class="w-full h-2 bg-surface-container-highest rounded-lg appearance-none cursor-pointer" max="10" min="1" oninput="document.getElementById('rating-value').innerText = parseFloat(this.value).toFixed(1)" step="0.5" type="range" value="8"/>
+</div>
+<div class="flex justify-between mt-4 text-[10px] font-headline font-bold text-on-surface-variant uppercase tracking-widest">
+<span>Kötü</span>
+<span>Ortalama</span>
+<span>Efsanevi</span>
+</div>
+</div>
+<!-- Feedback Tags Section -->
+<div class="bg-surface-container-low rounded-xl p-8 mb-12">
+<h3 class="font-headline font-bold text-lg uppercase tracking-wide text-on-surface mb-6">ÖZEL GERİ BİLDİRİM</h3>
+<div class="flex flex-wrap gap-3">
+<!-- Positive Tags -->
+<button class="px-5 py-3 rounded-full bg-surface-container-highest border border-outline-variant/30 text-sm font-headline font-semibold text-on-surface hover:border-primary/50 hover:bg-primary/5 transition-all duration-300 flex items-center gap-2">
+          Paslaşmayı Seven
+        </button>
+<button class="px-5 py-3 rounded-full bg-primary text-on-primary-fixed text-sm font-headline font-black flex items-center gap-2 shadow-[0_0_20px_rgba(142,255,113,0.2)]">
+          Centilmen / Fair Play
+          <span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</button>
+<button class="px-5 py-3 rounded-full bg-surface-container-highest border border-outline-variant/30 text-sm font-headline font-semibold text-on-surface hover:border-primary/50 hover:bg-primary/5 transition-all duration-300">
+          Teknik
+        </button>
+<button class="px-5 py-3 rounded-full bg-surface-container-highest border border-outline-variant/30 text-sm font-headline font-semibold text-on-surface hover:border-primary/50 hover:bg-primary/5 transition-all duration-300">
+          Mücadeleci
+        </button>
+<!-- Negative/Neutral Tags -->
+<button class="px-5 py-3 rounded-full bg-surface-container-highest border border-outline-variant/30 text-sm font-headline font-semibold text-on-surface hover:border-error/50 hover:bg-error/5 transition-all duration-300">
+          Bencil
+        </button>
+<button class="px-5 py-3 rounded-full bg-surface-container-highest border border-outline-variant/30 text-sm font-headline font-semibold text-on-surface hover:border-error/50 hover:bg-error/5 transition-all duration-300">
+          Sert Oynayan
+        </button>
+<button class="px-5 py-3 rounded-full bg-surface-container-highest border border-outline-variant/30 text-sm font-headline font-semibold text-on-surface hover:border-error/50 hover:bg-error/5 transition-all duration-300">
+          Koşmuyor
+        </button>
+</div>
+</div>
+<!-- Submit Action -->
+<button class="w-full py-5 bg-gradient-to-br from-primary to-primary-container text-on-primary-fixed font-headline font-black text-lg italic tracking-tighter uppercase rounded-lg shadow-[0_12px_40px_-12px_rgba(142,255,113,0.5)] active:scale-95 transition-all duration-200 mb-12 group">
+      DEĞERLENDİRMEYİ GÖNDER
+      <span class="inline-block ml-2 group-hover:translate-x-1 transition-transform">
+<span class="material-symbols-outlined align-middle">double_arrow</span>
+</span>
+</button>
+</main>
+<!-- BottomNavBar Execution -->
+<nav class="fixed bottom-0 w-full z-50 bg-[#0e0e0e] border-t border-[#484847]/15 shadow-[0_-8px_24px_rgba(0,0,0,0.5)]">
+<div class="flex justify-around items-center h-20 w-full pb-safe">
+<a class="flex flex-col items-center justify-center text-[#adaaaa] hover:bg-[#262626] transition-all px-3 py-1" href="#">
+<span class="material-symbols-outlined">home</span>
+<span class="font-['Lexend'] text-[10px] font-medium uppercase tracking-widest mt-1">Ana Sayfa</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#adaaaa] hover:bg-[#262626] transition-all px-3 py-1" href="#">
+<span class="material-symbols-outlined">search</span>
+<span class="font-['Lexend'] text-[10px] font-medium uppercase tracking-widest mt-1">Arama</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#8eff71] bg-[#131313] rounded-xl px-3 py-1 active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">sports_soccer</span>
+<span class="font-['Lexend'] text-[10px] font-medium uppercase tracking-widest mt-1">Maçlar</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#adaaaa] hover:bg-[#262626] transition-all px-3 py-1" href="#">
+<span class="material-symbols-outlined">groups</span>
+<span class="font-['Lexend'] text-[10px] font-medium uppercase tracking-widest mt-1">Kulüpler</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#adaaaa] hover:bg-[#262626] transition-all px-3 py-1" href="#">
+<span class="material-symbols-outlined">person</span>
+<span class="font-['Lexend'] text-[10px] font-medium uppercase tracking-widest mt-1">Profil</span>
+</a>
+</div>
+</nav>
+</body></html>

@@ -1,0 +1,484 @@
+import { db } from './firebaseConfig';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  addDoc,
+  updateDoc,
+  getDoc, 
+  getDocs, 
+  query, 
+  where, 
+  orderBy, 
+  limit, 
+  onSnapshot, 
+  arrayUnion,
+  increment,
+  runTransaction,
+  writeBatch,
+  serverTimestamp
+} from 'firebase/firestore';
+
+export interface MatchModel {
+  id?: string;
+  arena: string;
+  dateTime: string;
+  mode: string;
+  city: string;
+  district?: string;
+  fee: number;
+  totalFee: number;
+  totalRequiredPlayers: number;
+  joinedPlayersCount: number;
+  organizer: string;
+  organizerId?: string;
+  isSubscription?: boolean;
+  status: 'active' | 'completed' | 'cancelled';
+  score?: string;
+  slots?: {
+    [key: string]: {
+      uid: string;
+      name: string;
+      avatar?: string;
+      position?: string;
+      paid?: boolean;
+    } | null;
+  };
+  createdAt?: any;
+}
+
+export interface ClubModel {
+  id?: string;
+  name: string;
+  desc: string;
+  rank?: string;
+  points?: number;
+  membersCount?: number;
+  maxMembers?: number;
+  level?: number;
+  captainId?: string;
+  captainName?: string;
+  logo?: string;
+  color?: string;
+  members?: string[];
+  createdAt?: any;
+}
+
+export interface MessageModel {
+  id?: string;
+  conversationId?: string;
+  senderId: string;
+  senderName: string;
+  senderAvatar?: string;
+  text: string;
+  createdAt: any;
+}
+
+export const dbService = {
+  // ==========================================
+  // 1. KULLANICI PROFİL İŞLEMLERİ (USERS)
+  // ==========================================
+  
+  createUserProfile: async (userId: string, data: any) => {
+    try {
+      const userRef = doc(db, 'users', userId);
+      await setDoc(userRef, {
+        ...data,
+        createdAt: serverTimestamp(),
+        stats: {
+          goals: 0,
+          assists: 0,
+          matchesPlayed: 0,
+          wins: 0,
+          losses: 0,
+          mvpCount: 0,
+          reliabilityScore: 100,
+          cleanSheets: 0,
+        }
+      }, { merge: true });
+      return true;
+    } catch (error) {
+      console.error("Kullanıcı profil oluşturma hatası:", error);
+      throw error;
+    }
+  },
+
+  getUserProfile: async (userId: string): Promise<any> => {
+    try {
+      const userRef = doc(db, 'users', userId);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        return { uid: userSnap.id, ...userSnap.data() };
+      }
+      return null;
+    } catch (error) {
+      console.error("Kullanıcı bilgisi çekme hatası:", error);
+      throw error;
+    }
+  },
+
+  updateUserProfile: async (userId: string, data: Partial<any>) => {
+    try {
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        ...data,
+        updatedAt: serverTimestamp()
+      });
+      return true;
+    } catch (error) {
+      console.error("Profil güncelleme hatası:", error);
+      throw error;
+    }
+  },
+
+  // ==========================================
+  // 2. MAÇ İŞLEMLERİ (MATCHES)
+  // ==========================================
+
+  createMatch: async (matchData: Omit<MatchModel, 'id'>) => {
+    try {
+      const matchesRef = collection(db, 'matches');
+      const docRef = await addDoc(matchesRef, {
+        ...matchData,
+        status: matchData.status || 'active',
+        createdAt: serverTimestamp(),
+      });
+      return { id: docRef.id, ...matchData };
+    } catch (error) {
+      console.error("Maç oluşturma hatası:", error);
+      throw error;
+    }
+  },
+
+  getMatches: async (filters?: { city?: string; mode?: string }) => {
+    try {
+      const matchesRef = collection(db, 'matches');
+      let q = query(matchesRef, where('status', '==', 'active'));
+
+      if (filters?.city) {
+        q = query(matchesRef, where('status', '==', 'active'), where('city', '==', filters.city));
+      }
+
+      const snapshot = await getDocs(q);
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MatchModel));
+      return list.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();
+        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+    } catch (error) {
+      console.error("Maçları çekme hatası:", error);
+      return [];
+    }
+  },
+
+  getPastMatches: async (userId?: string) => {
+    try {
+      const matchesRef = collection(db, 'matches');
+      const q = query(matchesRef, where('status', '==', 'completed'), limit(20));
+      const snapshot = await getDocs(q);
+      let list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MatchModel));
+      
+      if (userId) {
+        list = list.filter(m => m.organizerId === userId || (m.slots && Object.values(m.slots).some(slot => slot?.uid === userId)));
+      }
+      
+      return list;
+    } catch (error) {
+      console.error("Geçmiş maçları çekme hatası:", error);
+      return [];
+    }
+  },
+
+  getMatchById: async (matchId: string) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      const snap = await getDoc(matchRef);
+      if (snap.exists()) {
+        return { id: snap.id, ...snap.data() } as MatchModel;
+      }
+      return null;
+    } catch (error) {
+      console.error("Maç detayı çekme hatası:", error);
+      return null;
+    }
+  },
+
+  subscribeMatch: (matchId: string, callback: (match: MatchModel | null) => void) => {
+    const matchRef = doc(db, 'matches', matchId);
+    return onSnapshot(matchRef, (docSnap) => {
+      if (docSnap.exists()) {
+        callback({ id: docSnap.id, ...docSnap.data() } as MatchModel);
+      } else {
+        callback(null);
+      }
+    }, (err) => {
+      console.error("Canlı maç dinleme hatası:", err);
+    });
+  },
+
+  joinMatchSlot: async (matchId: string, slotKey: string, player: { uid: string; name: string; avatar?: string; position?: string }) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      await runTransaction(db, async (transaction) => {
+        const matchDoc = await transaction.get(matchRef);
+        if (!matchDoc.exists()) {
+          throw new Error("Maç bulunamadı!");
+        }
+        const data = matchDoc.data();
+        if (data.slots && data.slots[slotKey]) {
+          throw new Error("Mevki zaten dolu!");
+        }
+        transaction.update(matchRef, {
+          [`slots.${slotKey}`]: {
+            ...player,
+            paid: false,
+            joinedAt: serverTimestamp()
+          },
+          joinedPlayersCount: increment(1)
+        });
+      });
+      return true;
+    } catch (error) {
+      console.error("Mevkiye katılma hatası:", error);
+      throw error;
+    }
+  },
+
+  leaveMatchSlot: async (matchId: string, slotKey: string, userId?: string) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      await runTransaction(db, async (transaction) => {
+        const matchDoc = await transaction.get(matchRef);
+        if (!matchDoc.exists()) {
+          throw new Error("Maç bulunamadı!");
+        }
+        const data = matchDoc.data();
+        if (!data.slots || !data.slots[slotKey]) {
+          throw new Error("Mevki zaten boş!");
+        }
+        if (userId && data.slots[slotKey].uid !== userId) {
+          throw new Error("Bu mevki size ait değil!");
+        }
+        transaction.update(matchRef, {
+          [`slots.${slotKey}`]: null,
+          joinedPlayersCount: increment(-1)
+        });
+      });
+      return true;
+    } catch (error) {
+      console.error("Mevkiden ayrılma hatası:", error);
+      throw error;
+    }
+  },
+
+  saveMatchRating: async (matchId: string, ratingData: { userId: string; rating: number; mvpNominee?: string; comment?: string }) => {
+    try {
+      const ratingsRef = collection(db, 'ratings');
+      await addDoc(ratingsRef, {
+        matchId,
+        ...ratingData,
+        createdAt: serverTimestamp()
+      });
+      return true;
+    } catch (error) {
+      console.error("Puan kaydetme hatası:", error);
+      throw error;
+    }
+  },
+
+  // ==========================================
+  // 3. ARAMA VE FİLTRELEME (SEARCH)
+  // ==========================================
+
+  searchPlayers: async (criteria: { city?: string; district?: string; position?: string; level?: string }) => {
+    try {
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, limit(50));
+      const snapshot = await getDocs(q);
+      let players = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      if (criteria.city) {
+        const cityLower = criteria.city.trim().toLocaleLowerCase('tr');
+        players = players.filter((p: any) => 
+          p.city && p.city.toLocaleLowerCase('tr').includes(cityLower)
+        );
+      }
+      if (criteria.position) {
+        players = players.filter((p: any) => p.position && p.position.toUpperCase().includes(criteria.position!.toUpperCase()));
+      }
+      if (criteria.level) {
+        players = players.filter((p: any) => p.level === criteria.level);
+      }
+
+      return players;
+    } catch (error) {
+      console.error("Oyuncu arama hatası:", error);
+      return [];
+    }
+  },
+
+  searchMatches: async (criteria: { city?: string; district?: string; mode?: string; difficulty?: string }) => {
+    try {
+      const matchesRef = collection(db, 'matches');
+      let q = query(matchesRef, where('status', '==', 'active'), limit(50));
+
+      const snapshot = await getDocs(q);
+      let list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MatchModel));
+
+      if (criteria.city) {
+        const cityLower = criteria.city.trim().toLocaleLowerCase('tr');
+        list = list.filter(m => m.city && m.city.toLocaleLowerCase('tr').includes(cityLower));
+      }
+      if (criteria.mode) {
+        list = list.filter(m => m.mode === criteria.mode);
+      }
+
+      return list;
+    } catch (error) {
+      console.error("Maç arama hatası:", error);
+      return [];
+    }
+  },
+
+  // ==========================================
+  // 4. MESAJLAŞMA VE SOHBET (CHAT)
+  // ==========================================
+
+  getConversations: async (userId: string) => {
+    try {
+      const convRef = collection(db, 'conversations');
+      const q = query(convRef, where('participants', 'array-contains', userId));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (error) {
+      console.error("Sohbetleri çekme hatası:", error);
+      return [];
+    }
+  },
+
+  sendMessage: async (conversationId: string, message: Omit<MessageModel, 'id' | 'createdAt'>) => {
+    try {
+      const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+      const docRef = doc(messagesRef);
+      
+      const convRef = doc(db, 'conversations', conversationId);
+      
+      const batch = writeBatch(db);
+      
+      batch.set(docRef, {
+        ...message,
+        createdAt: serverTimestamp()
+      });
+
+      batch.set(convRef, {
+        lastMessage: message.text,
+        lastMessageTime: serverTimestamp(),
+        lastSenderId: message.senderId,
+      }, { merge: true });
+
+      await batch.commit();
+
+      return docRef.id;
+    } catch (error) {
+      console.error("Mesaj gönderme hatası:", error);
+      throw error;
+    }
+  },
+
+  subscribeMessages: (conversationId: string, callback: (messages: MessageModel[]) => void) => {
+    const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+    const q = query(messagesRef, orderBy('createdAt', 'desc'), limit(50));
+    
+    return onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MessageModel));
+      callback(msgs.reverse());
+    }, (err) => {
+      console.error("Mesaj dinleme hatası:", err);
+    });
+  },
+
+  // ==========================================
+  // 5. KULÜP İŞLEMLERİ (CLUBS)
+  // ==========================================
+
+  getClubs: async () => {
+    try {
+      const clubsRef = collection(db, 'clubs');
+      const snapshot = await getDocs(clubsRef);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ClubModel));
+    } catch (error) {
+      console.error("Kulüpleri çekme hatası:", error);
+      return [];
+    }
+  },
+
+  getClubById: async (clubId: string) => {
+    try {
+      const clubRef = doc(db, 'clubs', clubId);
+      const snap = await getDoc(clubRef);
+      if (snap.exists()) {
+        return { id: snap.id, ...snap.data() } as ClubModel;
+      }
+      return null;
+    } catch (error) {
+      console.error("Kulüp detayı çekme hatası:", error);
+      return null;
+    }
+  },
+
+  createClub: async (clubData: Omit<ClubModel, 'id'>) => {
+    try {
+      const clubsRef = collection(db, 'clubs');
+      const docRef = await addDoc(clubsRef, {
+        ...clubData,
+        points: clubData.points || 100,
+        membersCount: 1,
+        maxMembers: clubData.maxMembers || 50,
+        level: 1,
+        createdAt: serverTimestamp()
+      });
+      return { id: docRef.id, ...clubData };
+    } catch (error) {
+      console.error("Kulüp oluşturma hatası:", error);
+      throw error;
+    }
+  },
+
+  joinClub: async (clubId: string, userId: string, clubName?: string) => {
+    try {
+      const clubRef = doc(db, 'clubs', clubId);
+      const userRef = doc(db, 'users', userId);
+
+      await runTransaction(db, async (transaction) => {
+        const clubDoc = await transaction.get(clubRef);
+        if (!clubDoc.exists()) {
+          throw new Error("Kulüp bulunamadı!");
+        }
+        
+        const data = clubDoc.data();
+        const membersCount = data.membersCount || 0;
+        const maxMembers = data.maxMembers || 50;
+
+        if (membersCount >= maxMembers) {
+          throw new Error("Kulüp kapasitesi dolu!");
+        }
+
+        transaction.update(clubRef, {
+          members: arrayUnion(userId),
+          membersCount: increment(1)
+        });
+
+        transaction.update(userRef, {
+          clubId: clubId,
+          ...(clubName ? { clubName } : {})
+        });
+      });
+
+      return true;
+    } catch (error) {
+      console.error("Kulübe katılma hatası:", error);
+      throw error;
+    }
+  }
+};

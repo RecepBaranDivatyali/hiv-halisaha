@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hali Saha Telefon Prototipi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@700;900&family=Manrope:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #090909;
+      --surface: #131313;
+      --text: #ffffff;
+      --muted: #adaaaa;
+      --primary: #8eff71;
+      --line: rgba(72, 72, 71, 0.35);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at 50% 0%, #1a1a1a 0%, #090909 55%);
+      color: var(--text);
+      font-family: Manrope, sans-serif;
+      padding: 16px;
+    }
+    .app {
+      width: 100%;
+      max-width: 420px;
+      display: grid;
+      gap: 12px;
+    }
+    .header {
+      background: rgba(19, 19, 19, 0.85);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .title {
+      font-family: Lexend, sans-serif;
+      font-size: 15px;
+      font-weight: 900;
+      color: var(--primary);
+      font-style: italic;
+      letter-spacing: 0.02em;
+    }
+    .active-screen {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .phone {
+      background: #000;
+      border-radius: 34px;
+      border: 2px solid #2b2b2b;
+      padding: 10px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+    }
+    .display {
+      border-radius: 26px;
+      overflow: hidden;
+      background: #0e0e0e;
+      border: 1px solid #1f1f1f;
+      height: 760px;
+      position: relative;
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #0e0e0e;
+    }
+    .fallback {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 22px;
+      color: var(--muted);
+      background: #0e0e0e;
+    }
+    .quick-nav {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      background: rgba(19, 19, 19, 0.85);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 8px;
+    }
+    .quick-btn {
+      border: 0;
+      border-radius: 9px;
+      background: #181818;
+      color: var(--muted);
+      padding: 8px 4px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .quick-btn.active {
+      background: #131313;
+      color: var(--primary);
+      box-shadow: inset 0 0 0 1px rgba(142, 255, 113, 0.35);
+    }
+    .helper {
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="header">
+      <div class="title">KINETIC NOIR PROTOTIP</div>
+      <div class="active-screen" id="activeScreen">Maclar</div>
+    </div>
+
+    <div class="phone">
+      <div class="display" id="display"></div>
+    </div>
+
+    <div class="quick-nav" id="quickNav">
+      <button class="quick-btn" data-route="home">Ana Sayfa</button>
+      <button class="quick-btn" data-route="search">Arama</button>
+      <button class="quick-btn" data-route="matches">Maclar</button>
+      <button class="quick-btn" data-route="clubs">Kulupler</button>
+      <button class="quick-btn" data-route="profile">Profil</button>
+    </div>
+    <div class="helper">Ekran icindeki anlamli butonlar da sayfalar arasi gecis yapiyor (ornegin Arama, Maclar, Kulupler, Profil).</div>
+  </div>
+
+  <script>
+    const ROUTES = {
+      home: { type: "image", src: "ana_sayfa/screen.png", label: "Ana Sayfa" },
+      login: { type: "image", src: "giriş yap/screen.png", label: "Giris Yap" },
+      register: { type: "image", src: "kayıt ol/screen.png", label: "Kayit Ol" },
+      matches: { type: "html", src: "maçlar/code.html", label: "Maclar" },
+      matchRoom: { type: "html", src: "maç odası/code.html", label: "Mac Odasi" },
+      rateMatch: { type: "html", src: "maç sonrası puanlama/code.html", label: "Mac Sonrasi Puanlama" },
+      search: { type: "html", src: "arama_ve_filtreleme_oyuncu/code.html", label: "Arama" },
+      searchMatch: { type: "html", src: "arama_ve_filtreleme_maç/code.html", label: "Mac Arama" },
+      searchRival: { type: "html", src: "arama_ve_filtreleme_rakip/code.html", label: "Rakip Arama" },
+      matchedPlayers: { type: "html", src: "Eşleşen oyuncular/code.html", label: "Eslesen Oyuncular" },
+      matchedTeams: { type: "html", src: "Eşleşen rakipler/code.html", label: "Eslesen Rakipler" },
+      matchedMatches: { type: "html", src: "Eşleşen maçlar/code.html", label: "Eslesen Maclar" },
+      chats: { type: "html", src: "sohbetler/code.html", label: "Sohbetler" },
+      chatDetail: { type: "html", src: "sohbet_ekran/code.html", label: "Sohbet Ekrani" },
+      clubs: { type: "html", src: "kulüpler/code.html", label: "Kulupler" },
+      myClub: { type: "html", src: "kulübüm/code.html", label: "Kulubum" },
+      profile: { type: "html", src: "kullanıcı profil/code.html", label: "Profil" },
+      menu: { type: "html", src: "navigasyon_men_s/code.html", label: "Navigasyon Menusu" }
+    };
+
+    const labelMap = [
+      { patterns: ["arama", "search"], route: "search" },
+      { patterns: ["maclar", "sports_soccer"], route: "matches" },
+      { patterns: ["kulupler", "groups"], route: "clubs" },
+      { patterns: ["profil", "person", "profile"], route: "profile" },
+      { patterns: ["sohbet", "chat"], route: "chats" },
+      { patterns: ["detay"], route: "matchRoom" },
+      { patterns: ["degerlendirmeyi gonder", "degerlendirme"], route: "rateMatch" },
+      { patterns: ["eslesen oyuncular"], route: "matchedPlayers" },
+      { patterns: ["eslesen rakipler"], route: "matchedTeams" },
+      { patterns: ["eslesen maclar"], route: "matchedMatches" }
+    ];
+
+    const display = document.getElementById("display");
+    const activeScreen = document.getElementById("activeScreen");
+    const quickButtons = [...document.querySelectorAll(".quick-btn")];
+
+    let currentRoute = "matches";
+
+    function normalize(text) {
+      return (text || "")
+        .toLocaleLowerCase("tr-TR")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    }
+
+    function setQuickActive(route) {
+      quickButtons.forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.route === route);
+      });
+    }
+
+    function renderFallback(src, label) {
+      display.innerHTML = `
+        <div class="fallback">
+          <div>
+            <p><b>${label}</b> ekrani sadece goruntu olarak var.</p>
+            <p>Istersen bunu da sonraki adimda canli HTML ekrana cevirebilirim.</p>
+            <img src="${encodeURI(src)}" alt="${label}" style="width:100%;max-height:540px;object-fit:contain;border-radius:12px;border:1px solid #2a2a2a;background:#111;" />
+          </div>
+        </div>
+      `;
+    }
+
+    function go(routeKey) {
+      if (!ROUTES[routeKey]) return;
+      currentRoute = routeKey;
+      const route = ROUTES[routeKey];
+      activeScreen.textContent = route.label;
+      setQuickActive(routeKey);
+      display.innerHTML = "";
+
+      if (route.type === "image") {
+        renderFallback(route.src, route.label);
+        return;
+      }
+
+      const frame = document.createElement("iframe");
+      frame.src = encodeURI(route.src);
+      frame.title = route.label;
+      frame.addEventListener("load", () => bindInFrameNavigation(frame));
+      display.appendChild(frame);
+    }
+
+    function detectRouteFromText(text) {
+      const t = normalize(text);
+      const hit = labelMap.find(item => item.patterns.some(p => t.includes(p)));
+      return hit ? hit.route : null;
+    }
+
+    function bindInFrameNavigation(frame) {
+      let doc;
+      try {
+        doc = frame.contentDocument || frame.contentWindow.document;
+      } catch (err) {
+        return;
+      }
+      if (!doc) return;
+
+      const style = doc.createElement("style");
+      style.textContent = "button, a, [role='button'] { cursor:pointer !important; }";
+      doc.head.appendChild(style);
+
+      doc.addEventListener("click", (event) => {
+        const target = event.target.closest("button, a, [role='button'], span, div");
+        if (!target) return;
+
+        const text = [target.textContent, target.getAttribute("data-icon"), target.getAttribute("aria-label")]
+          .filter(Boolean)
+          .join(" ");
+        const route = detectRouteFromText(text);
+
+        if (route) {
+          event.preventDefault();
+          event.stopPropagation();
+          go(route);
+        }
+      }, true);
+    }
+
+    quickButtons.forEach(btn => {
+      btn.addEventListener("click", () => go(btn.dataset.route));
+    });
+
+    go("matches");
+  </script>
+</body>
+</html>
