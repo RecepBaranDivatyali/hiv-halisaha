@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Modal, Image, Animated, Alert } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Modal, Image, Animated, Alert, Platform, Linking } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useRouter } from 'expo-router';
@@ -22,6 +22,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
     { label: 'PROFİL', icon: 'person', route: '/(tabs)/profile', active: true },
     { label: 'NASIL KULLANILIR?', icon: 'help', action: 'guide' },
     { label: 'AYARLAR', icon: 'settings', route: '/settings' },
+    { label: 'YÖNETİCİ PANELİ', icon: 'admin-panel-settings', action: 'admin' },
     { label: 'BİLDİRİMLER', icon: 'notifications', route: null, soon: true },
   ];
 
@@ -29,6 +30,15 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
     if (item.action === 'guide') {
       onClose();
       if (onOpenGuide) onOpenGuide();
+      return;
+    }
+    if (item.action === 'admin') {
+      onClose();
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.location.href = '/admin';
+      } else {
+        Linking.openURL('https://hiv-halisaha.vercel.app/admin');
+      }
       return;
     }
     if (item.soon) {

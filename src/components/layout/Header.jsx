@@ -16,7 +16,7 @@ export function Header({ title, subtitle, onRefresh, isRefreshing, onQuickAction
             onClick={onBackToPlayer}
             className="flex h-10 items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3.5 text-xs font-bold text-white hover:bg-[#8eff71]/10 hover:text-[#8eff71] hover:border-[#8eff71]/30 transition"
           >
-            <span>← Oyuncu Portalı</span>
+            <span>📱 Mobil Uygulama</span>
           </button>
         )}
 

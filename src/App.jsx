@@ -13,12 +13,8 @@ import { SettingsView } from './components/settings/SettingsView';
 import { CreateMatchModal } from './components/matches/CreateMatchModal';
 import { MatchDetailModal } from './components/matches/MatchDetailModal';
 import { adminDbService } from './services/adminDbService';
-import { PlayerApp } from './components/player/PlayerApp';
 
 export default function App() {
-  // ─── View Mode: 'player' (Default Web App & Simulator) or 'admin' ───
-  const [viewMode, setViewMode] = useState('player');
-
   // ─── Auth State for Admin Panel ───
   const [adminUser, setAdminUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -40,12 +36,11 @@ export default function App() {
     }
   };
 
-  // ─── 1. OYUNCU WEB PORTALI & MOBİL SİMÜLATÖR (VARSAYILAN) ───
-  if (viewMode === 'player') {
-    return <PlayerApp onOpenAdminPanel={() => setViewMode('admin')} />;
-  }
+  const handleBackToMobileApp = () => {
+    window.location.href = '/';
+  };
 
-  // ─── 2. YÖNETİCİ PANELİ (GİRİŞ KORUMALI) ───
+  // ─── YÖNETİCİ PANELİ (GİRİŞ KORUMALI) ───
   if (authLoading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-[#070A10]">
@@ -61,7 +56,7 @@ export default function App() {
     return (
       <AdminLoginPage
         onLoginSuccess={(user) => setAdminUser(user)}
-        onBackToPlayer={() => setViewMode('player')}
+        onBackToPlayer={handleBackToMobileApp}
       />
     );
   }
@@ -70,7 +65,7 @@ export default function App() {
     <DashboardContent
       adminUser={adminUser}
       onLogout={handleLogout}
-      onBackToPlayer={() => setViewMode('player')}
+      onBackToPlayer={handleBackToMobileApp}
     />
   );
 }

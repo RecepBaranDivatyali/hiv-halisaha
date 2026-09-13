@@ -1,11 +1,14 @@
 {
-  "name": "kinetic-noir-login",
+  "name": "hiv-halisaha",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/build.mjs",
+    "build:admin": "vite build --outDir dist-admin --base /admin/",
+    "build:mobile": "cd mobile-app && npx expo export --platform web",
+    "postinstall": "npm --prefix mobile-app install",
     "preview": "vite preview"
   },
   "dependencies": {
