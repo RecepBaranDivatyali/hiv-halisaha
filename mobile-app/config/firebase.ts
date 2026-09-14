@@ -5,12 +5,13 @@ import { getFirestore } from 'firebase/firestore';
 // Standard Firebase Configuration Template
 // Replace these values with your actual Firebase Console project credentials when ready
 const firebaseConfig = {
-  apiKey: "AIzaSyYOUR_API_KEY_HERE",
-  authDomain: "hiv-halisaha.firebaseapp.com",
-  projectId: "hiv-halisaha",
-  storageBucket: "hiv-halisaha.appspot.com",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:abcdef1234567890"
+  apiKey: "AIzaSyDm-yg7xiB0yp7ZwlZBP62g9WlTsc8l8eA",
+  authDomain: "hivhalisaha.firebaseapp.com",
+  projectId: "hivhalisaha",
+  storageBucket: "hivhalisaha.firebasestorage.app",
+  messagingSenderId: "812540838980",
+  appId: "1:812540838980:web:c91941ba45c7331d39e811",
+  measurementId: "G-P5HY0DHGTL"
 };
 
 // Initialize Firebase only once
