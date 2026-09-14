@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, useWindowDimensions, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, useWindowDimensions, TouchableOpacity, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
@@ -14,7 +14,9 @@ export default function OnboardingScreen() {
   const { theme } = useTheme();
   const { completeOnboarding } = useAuth();
   const { width } = useWindowDimensions();
-  const styles = useStyles(theme, width);
+  const [layoutWidth, setLayoutWidth] = useState(0);
+  const effectiveWidth = layoutWidth > 0 ? layoutWidth : (Platform.OS === 'web' && width > 520 ? 393 : width);
+  const styles = useStyles(theme, effectiveWidth);
   const [currentIndex, setCurrentIndex] = useState(0);
   const scrollRef = React.useRef<ScrollView>(null);
 
@@ -44,8 +46,12 @@ export default function OnboardingScreen() {
 
   const handleScroll = (event: any) => {
     const x = event.nativeEvent.contentOffset.x;
-    const index = Math.round(x / width);
-    setCurrentIndex(index);
+    if (effectiveWidth > 0) {
+      const index = Math.round(x / effectiveWidth);
+      if (index >= 0 && index < slides.length && index !== currentIndex) {
+        setCurrentIndex(index);
+      }
+    }
   };
 
   const handleFinish = async () => {
@@ -54,17 +60,27 @@ export default function OnboardingScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView 
+      style={styles.container}
+      onLayout={(e) => {
+        const w = e.nativeEvent.layout.width;
+        if (w > 0 && w !== layoutWidth) {
+          setLayoutWidth(w);
+        }
+      }}
+    >
       <ScrollView
         ref={scrollRef}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
+        onScroll={handleScroll}
         onMomentumScrollEnd={handleScroll}
+        scrollEventThrottle={16}
         style={{ flex: 1 }}
       >
         {slides.map((slide, index) => (
-          <View key={slide.id} style={styles.slide}>
+          <View key={slide.id} style={[styles.slide, { width: effectiveWidth }]}>
             <Animated.View entering={FadeInDown.delay(index * 200).springify()} style={[styles.iconBox, { backgroundColor: `${slide.color}15`, borderColor: `${slide.color}30` }]}>
               <MaterialIcons name={slide.icon as any} size={80} color={slide.color} />
             </Animated.View>
@@ -98,15 +114,19 @@ export default function OnboardingScreen() {
           <Bouncable 
             style={styles.nextBtn} 
             onPress={() => {
-              if (currentIndex === slides.length - 1) {
+              if (currentIndex >= slides.length - 1) {
                 handleFinish();
               } else {
-                scrollRef.current?.scrollTo({ x: (currentIndex + 1) * width, animated: true });
+                const nextIdx = currentIndex + 1;
+                setCurrentIndex(nextIdx);
+                scrollRef.current?.scrollTo({ x: nextIdx * effectiveWidth, animated: true });
               }
             }}
+            accessibilityLabel={currentIndex === slides.length - 1 ? 'Başla' : 'İlerle'}
+            accessibilityRole="button"
           >
             <Text style={styles.nextBtnText}>
-              {currentIndex === slides.length - 1 ? 'HEMEN BAŞLA' : 'İLERLE →'}
+              {currentIndex === slides.length - 1 ? 'BAŞLA' : 'İLERLE →'}
             </Text>
           </Bouncable>
         </View>
