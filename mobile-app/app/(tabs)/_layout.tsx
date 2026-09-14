@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Platform } from 'react-native';
+import { Platform, Text } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import { HapticTab } from '@/components/haptic-tab';
@@ -26,21 +26,27 @@ export default function TabLayout() {
           shadowOpacity: 0,
           shadowOffset: { width: 0, height: 0 },
           shadowRadius: 0,
-          height: 88,
-          paddingBottom: 28,
+          height: 76,
           paddingTop: 8,
-        },
-        tabBarLabelStyle: {
-          fontFamily: Fonts.bodySemiBold,
-          fontSize: 10,
-          lineHeight: 12,
-          marginTop: 3,
+          paddingBottom: 14,
         },
         tabBarItemStyle: {
-          justifyContent: 'flex-start',
+          justifyContent: 'center',
           alignItems: 'center',
-          paddingTop: 4,
         },
+        tabBarLabel: ({ color, children }) => (
+          <Text
+            style={{
+              fontFamily: Fonts.bodySemiBold,
+              fontSize: 11,
+              color,
+              textAlign: 'center',
+              marginTop: 2,
+            }}
+          >
+            {children}
+          </Text>
+        ),
       }}>
       <Tabs.Screen
         name="index"
