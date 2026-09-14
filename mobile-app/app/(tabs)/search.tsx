@@ -124,8 +124,20 @@ export default function SearchScreen() {
       <View style={styles.header}>
         <MaterialIcons name="search" size={24} color={theme.primary} />
         <Text style={styles.headerTitle}>ARAMA</Text>
-        <TouchableOpacity onPress={() => Alert.alert('Filtreler', 'Gelişmiş filtreler yakında!')} accessibilityLabel="Filtreler" accessibilityRole="button">
-          <MaterialIcons name="tune" size={24} color={theme.textMuted} />
+        <TouchableOpacity 
+          onPress={() => {
+            setSelectedCity('İstanbul');
+            setSelectedDistrict('Kadıköy');
+            setPos('KL');
+            setLevel('0-3.9');
+            setDifficulty('Eğlence');
+            Alert.alert('Filtreler Sıfırlandı', 'Arama kriterleri varsayılan değerlere döndürüldü.');
+          }} 
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityLabel="Filtreleri Sıfırla" 
+          accessibilityRole="button"
+        >
+          <MaterialIcons name="restart-alt" size={24} color={theme.textMuted} />
         </TouchableOpacity>
       </View>
 

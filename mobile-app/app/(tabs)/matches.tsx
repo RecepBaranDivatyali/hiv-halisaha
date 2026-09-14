@@ -53,11 +53,23 @@ export default function MatchesScreen() {
 
       {/* TopAppBar */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.iconBtnHover} onPress={() => setMenuVisible(true)} accessibilityLabel="Menü" accessibilityRole="button">
+        <TouchableOpacity 
+          style={styles.iconBtnHover} 
+          onPress={() => setMenuVisible(true)} 
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityLabel="Menü" 
+          accessibilityRole="button"
+        >
           <MaterialIcons name="menu" size={24} color={theme.primary} />
         </TouchableOpacity>
         <Text style={styles.brandTitle}>H.İ.V.</Text>
-        <TouchableOpacity style={styles.iconBtnHover} onPress={() => setNotifModalVisible(true)} accessibilityLabel="Bildirimler" accessibilityRole="button">
+        <TouchableOpacity 
+          style={styles.iconBtnHover} 
+          onPress={() => setNotifModalVisible(true)} 
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityLabel="Bildirimler" 
+          accessibilityRole="button"
+        >
           <MaterialIcons name="notifications" size={24} color={theme.primary} />
         </TouchableOpacity>
       </View>

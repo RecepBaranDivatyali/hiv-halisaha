@@ -99,12 +99,23 @@ export default function ClubsScreen() {
       {/* TopAppBar */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity onPress={() => setMenuVisible(true)} accessibilityLabel="Menü" accessibilityRole="button">
+          <TouchableOpacity 
+            onPress={() => setMenuVisible(true)} 
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityLabel="Menü" 
+            accessibilityRole="button"
+          >
             <MaterialIcons name="menu" size={24} color={theme.primary} />
           </TouchableOpacity>
           <Text style={styles.brandTitle}>H.İ.V.</Text>
         </View>
-        <TouchableOpacity style={styles.notificationBtn} onPress={() => setNotifVisible(true)} accessibilityLabel="Bildirimler" accessibilityRole="button">
+        <TouchableOpacity 
+          style={styles.notificationBtn} 
+          onPress={() => setNotifVisible(true)} 
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityLabel="Bildirimler" 
+          accessibilityRole="button"
+        >
           <MaterialIcons name="notifications" size={24} color={theme.primary} />
           <View style={styles.notifBadge} />
         </TouchableOpacity>
@@ -128,55 +139,30 @@ export default function ClubsScreen() {
           </View>
         </View>
 
-        {/* Showcase: Top Club Card */}
-        {isLoading ? (
-          <Skeleton height={200} borderRadius={12} style={{ marginBottom: 32, width: '100%' }} />
-        ) : (
-          <TouchableOpacity style={styles.topClubCard} activeOpacity={0.9} onPress={() => router.push('/my-club')}>
-            <ImageBackground
-              source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuC3MVNrk_A5soV9sjZ6eFdSSMdjMV9NUGMkeg0JpoALuL7V0qThv1vVZV0EfYbH2y_7Ak_vJtTfyxfATi_sBpwwaYVPmswbgBqcONCXJ_puXKtL7YI08J6rNG-fbA8MiqT2oGZNBQCmcMa7Hy364Rn0UFOOw43Lqw76FVhO3yxhwjNv0VEqrxxGvC3R3BPoD4En3wmnGnmj4N4z5CvcYx8dqYnZedYSczvtTK728xHTTwVBdrzStfIw7i7i1C50n55y3vZCd8Az9dLL' }}
-              style={styles.topClubBg}
-            >
-              <View style={styles.topClubOverlay} />
-              <View style={styles.topClubContent}>
-                <View style={styles.topClubIconWrap}>
-                   <MaterialIcons name="shield" size={60} color={theme.primary} />
-                </View>
-                <View style={styles.topClubInfo}>
-                  <View style={styles.topClubTags}>
-                    <View style={styles.tagPrimary}><Text style={styles.tagPrimaryText}>ŞAMPİYON</Text></View>
-                    <View style={styles.tagSecondary}><Text style={styles.tagSecondaryText}>SEZON 04</Text></View>
-                  </View>
-                  <Text style={styles.topClubName}>VANGUARD FC</Text>
-                  
-                  <View style={styles.topClubStatsGrid}>
-                     <View style={styles.topClubStat}>
-                       <Text style={styles.topClubStatLabel}>KULÜP PUANI</Text>
-                       <Text style={[styles.topClubStatVal, { color: theme.secondary }]}>24.8K</Text>
-                     </View>
-                     <View style={styles.topClubStat}>
-                       <Text style={styles.topClubStatLabel}>ÜYELER</Text>
-                       <Text style={styles.topClubStatVal}>48/50</Text>
-                     </View>
-                     <View style={styles.topClubStat}>
-                       <Text style={styles.topClubStatLabel}>GALİBİYET</Text>
-                       <Text style={styles.topClubStatVal}>1.2k</Text>
-                     </View>
-                     <View style={styles.topClubStat}>
-                       <Text style={styles.topClubStatLabel}>SEVİYE</Text>
-                       <Text style={[styles.topClubStatVal, { color: theme.primary }]}>99</Text>
-                     </View>
-                  </View>
-   
-                  <TouchableOpacity style={styles.joinBtn} onPress={() => router.push('/my-club')}>
-                    <Text style={styles.joinBtnText}>KULÜBÜ GÖRÜNTÜLE</Text>
-                    <MaterialIcons name="bolt" size={16} color={theme.onPrimary} />
-                  </TouchableOpacity>
-                </View>
+        {/* Kullanıcının Kendi Kulübü Varsa Göster (Temsili / Sahte Kulüp Gösterilmez) */}
+        {user?.clubId ? (
+          <TouchableOpacity 
+            style={styles.myClubBanner} 
+            activeOpacity={0.9} 
+            onPress={() => router.push('/my-club')}
+          >
+            <View style={styles.myClubLeft}>
+              <View style={styles.myClubIconBox}>
+                <MaterialIcons name="shield" size={30} color={theme.primary} />
               </View>
-            </ImageBackground>
+              <View style={{ flex: 1 }}>
+                <View style={styles.myClubBadge}>
+                  <Text style={styles.myClubBadgeText}>KULÜBÜNÜZ</Text>
+                </View>
+                <Text style={styles.myClubName}>{user.clubName || 'Kulübüm'}</Text>
+              </View>
+            </View>
+            <View style={styles.myClubActionBtn}>
+              <Text style={styles.myClubActionText}>YÖNET</Text>
+              <MaterialIcons name="chevron-right" size={18} color={theme.primary} />
+            </View>
           </TouchableOpacity>
-        )}
+        ) : null}
 
         <View style={styles.gridLayout}>
           {/* Main List */}
@@ -323,101 +309,63 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontSize: 16,
     color: theme.text
   },
-  topClubCard: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 28,
-    height: 220
-  },
-  topClubBg: {
-    width: '100%',
-    height: '100%'
-  },
-  topClubOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.7)'
-  },
-  topClubContent: {
-    padding: 16,
-    flex: 1,
+  myClubBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16
-  },
-  topClubIconWrap: {
-    width: 80,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  topClubInfo: {
-    flex: 1,
-    gap: 6
-  },
-  topClubTags: {
-    flexDirection: 'row',
-    gap: 6
-  },
-  tagPrimary: {
-    backgroundColor: theme.primary,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4
-  },
-  tagPrimaryText: {
-    fontFamily: Fonts.label,
-    fontSize: 9,
-    color: theme.background,
-    fontWeight: 'bold'
-  },
-  tagSecondary: {
-    backgroundColor: theme.surfaceContainerHighest,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4
-  },
-  tagSecondaryText: {
-    fontFamily: Fonts.label,
-    fontSize: 9,
-    color: theme.text,
-    fontWeight: 'bold'
-  },
-  topClubName: {
-    fontFamily: Fonts.headlineBold,
-    fontSize: 20,
-    color: theme.text
-  },
-  topClubStatsGrid: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
-    marginVertical: 4
+    backgroundColor: theme.surface,
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: `${theme.primary}40`,
   },
-  topClubStat: {
-    alignItems: 'flex-start'
-  },
-  topClubStatLabel: {
-    fontFamily: Fonts.label,
-    fontSize: 8,
-    color: theme.textMuted
-  },
-  topClubStatVal: {
-    fontFamily: Fonts.headlineBold,
-    fontSize: 12,
-    color: theme.text
-  },
-  joinBtn: {
+  myClubLeft: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    flex: 1,
+  },
+  myClubIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: `${theme.primary}1A`,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.primary,
+  },
+  myClubBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: `${theme.primary}26`,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginBottom: 2,
+  },
+  myClubBadgeText: {
+    fontFamily: Fonts.label,
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: theme.primary,
+  },
+  myClubName: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 16,
+    color: theme.text,
+  },
+  myClubActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: `${theme.primary}1A`,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    gap: 6,
-    marginTop: 4
   },
-  joinBtnText: {
+  myClubActionText: {
     fontFamily: Fonts.headlineBold,
-    fontSize: 12,
-    color: theme.background
+    fontSize: 11,
+    color: theme.primary,
   },
   gridLayout: {
     gap: 20

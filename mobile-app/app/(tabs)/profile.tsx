@@ -159,6 +159,11 @@ export default function ProfileScreen() {
           <View style={styles.statsGrid}>
             <View style={styles.statCard}>
               <MaterialIcons name="sports-soccer" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
+              <Text style={styles.statCardLabel} numberOfLines={1}>MAÇLAR</Text>
+              <Text style={[styles.statCardValue, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit>{user?.stats?.matchesPlayed ?? 0}</Text>
+            </View>
+            <View style={styles.statCard}>
+              <MaterialIcons name="bolt" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
               <Text style={styles.statCardLabel} numberOfLines={1}>GOL</Text>
               <Text style={[styles.statCardValue, { color: theme.primary }]} numberOfLines={1} adjustsFontSizeToFit>{user?.stats?.goals ?? 0}</Text>
             </View>
@@ -180,30 +185,30 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Başarılar & Rozetler */}
+        {/* Başarılar & Rozetler (Izgara Düzeni — Yatay Kaydırma Yerine Tüm Rozetler Net) */}
         <View style={styles.sectionMargin}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionHeaderBarSecondary} />
             <Text style={styles.sectionTitle}>BAŞARILAR & ROZETLER</Text>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+          <View style={styles.badgesGrid}>
             {BADGES.map((b) => (
               <TouchableOpacity
                 key={b.id}
-                style={[styles.achievementBadge, !b.earned && { opacity: 0.6 }]}
+                style={[styles.achievementBadgeCard, !b.earned && { opacity: 0.55 }]}
                 activeOpacity={0.8}
                 onPress={() => setSelectedBadge(b)}
               >
-                <View style={[styles.achievementIconWrap, { backgroundColor: b.earned ? b.color : theme.surfaceContainerHighest }]}>
-                  <MaterialIcons name={b.icon as any} size={16} color={b.earned ? theme.background : theme.textMuted} />
+                <View style={[styles.achievementIconWrap, { backgroundColor: b.earned ? `${b.color}26` : theme.surfaceContainerHighest }]}>
+                  <MaterialIcons name={b.icon as any} size={18} color={b.earned ? b.color : theme.textMuted} />
                 </View>
-                <View>
-                  <Text style={styles.achievementTitle}>{b.title}</Text>
-                  <Text style={styles.achievementDesc}>{b.subtitle}</Text>
+                <View style={styles.achievementTextWrap}>
+                  <Text style={styles.achievementTitle} numberOfLines={1}>{b.title}</Text>
+                  <Text style={styles.achievementDesc} numberOfLines={1}>{b.subtitle}</Text>
                 </View>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </View>
         </View>
 
         {/* Son Maçlar */}
@@ -560,36 +565,46 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontSize: 34,
     lineHeight: 38,
     fontStyle: 'italic'},
-  achievementsWrap: {
+  badgesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 16},
-  achievementBadge: {
+    gap: 10,
+  },
+  achievementBadgeCard: {
+    width: '48.5%',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    backgroundColor: theme.surfaceContainerHigh,
-    paddingHorizontal: 16,
+    gap: 10,
+    backgroundColor: theme.surface,
+    paddingHorizontal: 12,
     paddingVertical: 12,
-    borderRadius: 32,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: theme.borderSubtle},
+    borderColor: theme.borderSubtle,
+  },
   achievementIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
-    justifyContent: 'center'},
+    justifyContent: 'center',
+  },
+  achievementTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
   achievementTitle: {
     fontFamily: Fonts.headlineBold,
-    fontSize: 12,
+    fontSize: 11,
     color: theme.text,
     textTransform: 'uppercase',
-    lineHeight: 14},
+    letterSpacing: -0.2,
+  },
   achievementDesc: {
     fontFamily: Fonts.body,
     fontSize: 10,
-    color: theme.textMuted},
+    color: theme.textMuted,
+  },
   seeAllText: {
     fontFamily: Fonts.label,
     fontSize: 12,

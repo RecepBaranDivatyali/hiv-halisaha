@@ -20,42 +20,44 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
   const pathname = usePathname();
   const { user, logout } = useAuth();
 
-  const [isOpen, setIsOpen] = useState(visible);
-  const slideAnim = React.useRef(new Animated.Value(-300)).current;
+  const slideAnim = React.useRef(new Animated.Value(-280)).current;
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
 
   React.useEffect(() => {
     if (visible) {
-      setIsOpen(true);
+      slideAnim.setValue(-280);
+      fadeAnim.setValue(0);
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: 0,
-          duration: 260,
+          duration: 250,
           useNativeDriver: Platform.OS !== 'web',
         }),
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 260,
+          duration: 250,
           useNativeDriver: Platform.OS !== 'web',
         }),
       ]).start();
-    } else {
-      Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: -300,
-          duration: 200,
-          useNativeDriver: Platform.OS !== 'web',
-        }),
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: Platform.OS !== 'web',
-        }),
-      ]).start(() => {
-        setIsOpen(false);
-      });
     }
   }, [visible]);
+
+  const handleClose = () => {
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: -280,
+        duration: 200,
+        useNativeDriver: Platform.OS !== 'web',
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: Platform.OS !== 'web',
+      }),
+    ]).start(() => {
+      onClose();
+    });
+  };
 
   const menuItems = [
     { label: 'PROFİL', icon: 'person', route: '/(tabs)/profile', active: pathname?.includes('profile') },
@@ -90,14 +92,12 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
     }
   };
 
-  if (!isOpen) return null;
-
   return (
     <Modal
-      visible={isOpen}
+      visible={visible}
       transparent
       animationType="none"
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
       <View style={styles.overlay}>
         {/* Fullscreen Backdrop (Dark Veil) */}
@@ -105,7 +105,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
           <TouchableOpacity 
             style={styles.backdrop} 
             activeOpacity={1} 
-            onPress={onClose} 
+            onPress={handleClose} 
             accessibilityLabel="Menüyü Kapat"
           />
         </Animated.View>
@@ -120,7 +120,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
             <View>
               {/* Close Button */}
               <View style={styles.header}>
-                <TouchableOpacity style={styles.closeBtn} onPress={onClose} accessibilityLabel="Kapat">
+                <TouchableOpacity style={styles.closeBtn} onPress={handleClose} accessibilityLabel="Kapat">
                   <MaterialIcons name="close" size={18} color={theme.text} />
                 </TouchableOpacity>
               </View>
@@ -203,15 +203,21 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
 
 const useStyles = (theme: any) => StyleSheet.create({
   overlay: { 
-    flex: 1, 
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
     position: 'relative',
+    overflow: 'hidden',
   },
   backdropWrapper: { 
     ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
     zIndex: 1,
   },
   backdrop: { 
-    flex: 1, 
+    width: '100%',
+    height: '100%',
     backgroundColor: 'rgba(0,0,0,0.7)',
   },
   drawer: { 
@@ -219,8 +225,8 @@ const useStyles = (theme: any) => StyleSheet.create({
     top: 0,
     left: 0,
     bottom: 0,
-    width: 270, 
-    maxWidth: '75%', 
+    width: 280, 
+    maxWidth: '80%', 
     height: '100%', 
     backgroundColor: theme.background,
     borderRightWidth: 1,
