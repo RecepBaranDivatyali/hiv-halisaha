@@ -26,14 +26,15 @@ export default function TabLayout() {
           shadowOpacity: 0,
           shadowOffset: { width: 0, height: 0 },
           shadowRadius: 0,
-          height: Platform.OS === 'ios' ? 84 : Platform.OS === 'web' ? 70 : 66,
-          paddingBottom: Platform.OS === 'ios' ? 24 : Platform.OS === 'web' ? 12 : 10,
+          height: Platform.OS === 'ios' ? 84 : 80,
+          paddingBottom: Platform.OS === 'ios' ? 24 : 20,
           paddingTop: 8,
         },
         tabBarLabelStyle: {
           fontFamily: Fonts.bodySemiBold,
           fontSize: 11,
-          paddingBottom: 2,
+          lineHeight: 14,
+          marginTop: 2,
         },
         tabBarItemStyle: {
           justifyContent: 'center',

@@ -109,12 +109,12 @@ export default function RootLayout() {
         body.desktop-framed-active [aria-modal="true"] {
           position: fixed !important;
           top: var(--phone-frame-top, 60px) !important;
-          left: var(--phone-frame-left, calc(50% - 196px)) !important;
-          width: var(--phone-frame-width, 393px) !important;
-          height: var(--phone-frame-height, 852px) !important;
-          right: auto !important;
-          bottom: auto !important;
-          border-radius: var(--phone-frame-radius, 42px) !important;
+          left: var(--phone-frame-left, calc(50% - 195px)) !important;
+          width: 390px !important;
+          height: 844px !important;
+          transform: scale(var(--phone-frame-scale, 1)) !important;
+          transform-origin: top left !important;
+          border-radius: var(--phone-frame-radius, 34px) !important;
           overflow: hidden !important;
           z-index: 10000 !important;
           box-shadow: none !important;
@@ -124,12 +124,10 @@ export default function RootLayout() {
         body.desktop-framed-active div:has(> [aria-modal="true"]) {
           position: fixed !important;
           top: var(--phone-frame-top, 60px) !important;
-          left: var(--phone-frame-left, calc(50% - 196px)) !important;
-          width: var(--phone-frame-width, 393px) !important;
-          height: var(--phone-frame-height, 852px) !important;
-          right: auto !important;
-          bottom: auto !important;
-          border-radius: var(--phone-frame-radius, 42px) !important;
+          left: var(--phone-frame-left, calc(50% - 195px)) !important;
+          width: var(--phone-frame-width, 390px) !important;
+          height: var(--phone-frame-height, 844px) !important;
+          border-radius: var(--phone-frame-radius, 34px) !important;
           overflow: hidden !important;
           pointer-events: auto !important;
         }
@@ -154,8 +152,21 @@ function AppContent() {
   const { theme, isDark } = useTheme();
   const { width, height } = useWindowDimensions();
   const [isFramed, setIsFramed] = useState(true);
+  const [isFit, setIsFit] = useState(true);
 
   const isDesktopWeb = Platform.OS === 'web' && width > 520;
+
+  // Authentic flagship smartphone screen dimensions (iPhone 14 / 15 / 16: 390 x 844 px, 19.5:9 ratio)
+  const PHONE_WIDTH = 390;
+  const PHONE_HEIGHT = 844;
+  const CHASSIS_WIDTH = 408;
+  const CHASSIS_HEIGHT = 862;
+
+  // Responsive scale factor to fit comfortably on smaller laptop displays without distorting the 19.5:9 ratio
+  const availableH = Math.max(480, height - 76);
+  const availableW = Math.max(300, width - 32);
+  const fitScale = Math.min(1, Math.min(availableH / CHASSIS_HEIGHT, availableW / CHASSIS_WIDTH));
+  const actualScale = isFit ? fitScale : 1;
 
   // Update bounds for desktop framed modals
   useEffect(() => {
@@ -169,7 +180,8 @@ function AppContent() {
         document.documentElement.style.setProperty('--phone-frame-left', `${Math.round(rect.left)}px`);
         document.documentElement.style.setProperty('--phone-frame-width', `${Math.round(rect.width)}px`);
         document.documentElement.style.setProperty('--phone-frame-height', `${Math.round(rect.height)}px`);
-        document.documentElement.style.setProperty('--phone-frame-radius', '42px');
+        document.documentElement.style.setProperty('--phone-frame-scale', `${actualScale}`);
+        document.documentElement.style.setProperty('--phone-frame-radius', `${Math.round(34 * actualScale)}px`);
         document.body.classList.add('desktop-framed-active');
       } else {
         document.body.classList.remove('desktop-framed-active');
@@ -184,11 +196,7 @@ function AppContent() {
       clearInterval(interval);
       document.body.classList.remove('desktop-framed-active');
     };
-  }, [isFramed, isDesktopWeb, width, height]);
-
-  // Authentic smartphone dimensions (standard 390px iPhone width, responsive height)
-  const phoneWidth = Math.min(390, width - 24);
-  const phoneHeight = Math.min(844, Math.max(620, height - 70));
+  }, [isFramed, isDesktopWeb, width, height, actualScale]);
 
   const stackContent = (
     <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
@@ -219,10 +227,11 @@ function AppContent() {
         flex: 1, 
         backgroundColor: '#090B10', 
         alignItems: 'center', 
-        justifyContent: 'center', 
+        justifyContent: isFit ? 'center' : 'flex-start', 
         height: '100vh' as any,
         position: 'relative',
-        overflow: 'hidden',
+        overflowY: isFit ? 'hidden' : 'auto',
+        overflowX: 'hidden',
       }}>
         {/* Top desktop floating control bar */}
         <View style={{
@@ -247,6 +256,24 @@ function AppContent() {
           <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '700' }}>
             H.İ.V. Halısaha <Text style={{ color: '#8eff71' }}>Mobil Görünüm</Text>
           </Text>
+
+          {isFramed && (
+            <TouchableOpacity
+              onPress={() => setIsFit(!isFit)}
+              style={{
+                backgroundColor: isFit ? 'rgba(255, 255, 255, 0.08)' : 'rgba(142, 255, 113, 0.15)',
+                borderWidth: 1,
+                borderColor: isFit ? 'transparent' : '#8eff71',
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                borderRadius: 12,
+              }}
+            >
+              <Text style={{ color: isFit ? '#ccc' : '#8eff71', fontSize: 11, fontWeight: '700' }}>
+                {isFit ? '🔍 %100 Boyut' : '📐 Ekrana Sığdır'}
+              </Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             onPress={() => setIsFramed(!isFramed)}
@@ -282,80 +309,71 @@ function AppContent() {
         {/* Mobile Phone Chassis & Simulator */}
         {isFramed ? (
           <View style={{
+            width: Math.round(CHASSIS_WIDTH * actualScale),
+            height: Math.round(CHASSIS_HEIGHT * actualScale),
+            marginTop: isFit ? 42 : 54,
+            marginBottom: isFit ? 0 : 40,
             position: 'relative',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginTop: 38,
           }}>
-            {/* Left hardware button silhouettes (Action button + Volume Up/Down) */}
-            <View style={{ position: 'absolute', left: -4, top: 110, width: 4, height: 28, backgroundColor: '#2d3345', borderTopLeftRadius: 3, borderBottomLeftRadius: 3 }} />
-            <View style={{ position: 'absolute', left: -4, top: 154, width: 4, height: 48, backgroundColor: '#2d3345', borderTopLeftRadius: 3, borderBottomLeftRadius: 3 }} />
-            <View style={{ position: 'absolute', left: -4, top: 212, width: 4, height: 48, backgroundColor: '#2d3345', borderTopLeftRadius: 3, borderBottomLeftRadius: 3 }} />
-
-            {/* Right hardware button silhouette (Power button) */}
-            <View style={{ position: 'absolute', right: -4, top: 160, width: 4, height: 72, backgroundColor: '#2d3345', borderTopRightRadius: 3, borderBottomRightRadius: 3 }} />
-
-            {/* Outer Titanium Phone Bezel */}
             <View style={{
-              width: phoneWidth + 18,
-              height: phoneHeight + 18,
-              backgroundColor: '#181b24',
-              borderRadius: 48,
-              padding: 9,
-              borderWidth: 2,
-              borderColor: 'rgba(255, 255, 255, 0.14)',
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 20 },
-              shadowOpacity: 0.75,
-              shadowRadius: 40,
-              position: 'relative',
+              width: CHASSIS_WIDTH,
+              height: CHASSIS_HEIGHT,
+              transform: [{ scale: actualScale }],
+              transformOrigin: 'top left' as any,
+              position: 'absolute',
+              top: 0,
+              left: 0,
             }}>
-              {/* Sleek Ear Speaker Grill on bezel (outside screen) */}
+              {/* Left hardware button silhouettes (Action button + Volume Up/Down) */}
+              <View style={{ position: 'absolute', left: -4, top: 110, width: 4, height: 28, backgroundColor: '#2d3345', borderTopLeftRadius: 3, borderBottomLeftRadius: 3 }} />
+              <View style={{ position: 'absolute', left: -4, top: 154, width: 4, height: 48, backgroundColor: '#2d3345', borderTopLeftRadius: 3, borderBottomLeftRadius: 3 }} />
+              <View style={{ position: 'absolute', left: -4, top: 212, width: 4, height: 48, backgroundColor: '#2d3345', borderTopLeftRadius: 3, borderBottomLeftRadius: 3 }} />
+
+              {/* Right hardware button silhouette (Power button) */}
+              <View style={{ position: 'absolute', right: -4, top: 160, width: 4, height: 72, backgroundColor: '#2d3345', borderTopRightRadius: 3, borderBottomRightRadius: 3 }} />
+
+              {/* Outer Titanium Phone Bezel */}
               <View style={{
-                position: 'absolute',
-                top: 4,
-                left: '50%',
-                marginLeft: -25,
-                width: 50,
-                height: 3,
-                borderRadius: 2,
-                backgroundColor: 'rgba(255, 255, 255, 0.18)',
-                zIndex: 10,
-              }} />
+                width: CHASSIS_WIDTH,
+                height: CHASSIS_HEIGHT,
+                backgroundColor: '#181b24',
+                borderRadius: 44,
+                padding: 9,
+                borderWidth: 2,
+                borderColor: 'rgba(255, 255, 255, 0.14)',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 20 },
+                shadowOpacity: 0.75,
+                shadowRadius: 40,
+                position: 'relative',
+              }}>
+                {/* Sleek Ear Speaker Grill on bezel (outside screen) */}
+                <View style={{
+                  position: 'absolute',
+                  top: 3,
+                  left: '50%',
+                  marginLeft: -25,
+                  width: 50,
+                  height: 3,
+                  borderRadius: 2,
+                  backgroundColor: 'rgba(255, 255, 255, 0.22)',
+                  zIndex: 10,
+                }} />
 
-              {/* Inner Phone Screen Display */}
-              <View 
-                nativeID="mobile-screen-container"
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  borderRadius: 40,
-                  overflow: 'hidden',
-                  backgroundColor: theme.background,
-                  position: 'relative',
-                }}
-              >
-                {/* Main App Navigation Stack */}
-                {stackContent}
-
-                {/* iOS Home Indicator Bar */}
+                {/* Inner Phone Screen Display */}
                 <View 
-                  pointerEvents="none"
+                  nativeID="mobile-screen-container"
                   style={{
-                    position: 'absolute',
-                    bottom: 6,
-                    left: 0,
-                    right: 0,
-                    alignItems: 'center',
-                    zIndex: 9998,
+                    width: PHONE_WIDTH,
+                    height: PHONE_HEIGHT,
+                    borderRadius: 34,
+                    overflow: 'hidden',
+                    backgroundColor: theme.background,
+                    position: 'relative',
                   }}
                 >
-                  <View style={{
-                    width: 125,
-                    height: 4,
-                    borderRadius: 2,
-                    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-                  }} />
+                  {/* Main App Navigation Stack */}
+                  {stackContent}
                 </View>
               </View>
             </View>
