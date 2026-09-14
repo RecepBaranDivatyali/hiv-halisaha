@@ -46,6 +46,7 @@ export default function RegisterScreen() {
   const [showCityList, setShowCityList] = useState(false);
   const [acceptedKvkk, setAcceptedKvkk] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const positions = ['Kaleci', 'Defans', 'Orta Saha', 'Forvet'];
   const levels = ['Eğlence', 'Orta', 'Rekabetçi', 'Profesyonel'];
@@ -105,6 +106,7 @@ export default function RegisterScreen() {
       }
       if (isLoading) return;
       setIsLoading(true);
+      setSubmitError(null);
       try {
         const cleanEmail = formData.email.trim();
         // 1. Firebase Auth ile kullanıcı oluştur
@@ -135,7 +137,14 @@ export default function RegisterScreen() {
           router.replace('/(tabs)');
         }
       } catch (error: any) {
-        Alert.alert('Kayıt Hatası', getTurkishAuthErrorMessage(error));
+        console.error('Kayıt Hatası Detayı:', error);
+        const errorMsg = getTurkishAuthErrorMessage(error);
+        setSubmitError(errorMsg);
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.alert('Kayıt Hatası: ' + errorMsg);
+        } else {
+          Alert.alert('Kayıt Hatası', errorMsg);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -333,6 +342,14 @@ export default function RegisterScreen() {
                     </View>
                   </TouchableOpacity>
                 ))}
+              </View>
+            )}
+
+            {submitError && (
+              <View style={{ backgroundColor: 'rgba(255, 75, 75, 0.15)', borderWidth: 1, borderColor: theme.error, borderRadius: 12, padding: 12, marginVertical: 12 }}>
+                <Text style={{ color: theme.error, fontFamily: Fonts.body, fontSize: 13, textAlign: 'center' }}>
+                  {submitError}
+                </Text>
               </View>
             )}
 

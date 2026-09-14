@@ -50,8 +50,11 @@ export default function LoginScreen() {
     return true;
   };
 
+  const [loginError, setLoginError] = useState<string | null>(null);
+
   const handleLogin = async () => {
     if (isLoading) return;
+    setLoginError(null);
     const cleanEmail = email.trim();
     const emailValid = validateEmail(cleanEmail);
     const passwordValid = validatePassword(password);
@@ -79,7 +82,14 @@ export default function LoginScreen() {
           router.replace('/(tabs)');
         }
       } catch (err: any) {
-        Alert.alert('Giriş Başarısız', getTurkishAuthErrorMessage(err));
+        console.error('Giriş Hatası Detayı:', err);
+        const errorMsg = getTurkishAuthErrorMessage(err);
+        setLoginError(errorMsg);
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.alert('Giriş Hatası: ' + errorMsg);
+        } else {
+          Alert.alert('Giriş Başarısız', errorMsg);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -140,6 +150,14 @@ export default function LoginScreen() {
                   <Text style={styles.forgotPassText}>Şifremi Unuttum</Text>
                 </TouchableOpacity>
               </View>
+
+              {loginError && (
+                <View style={{ backgroundColor: 'rgba(255, 75, 75, 0.15)', borderWidth: 1, borderColor: theme.error, borderRadius: 12, padding: 12, marginBottom: 8 }}>
+                  <Text style={{ color: theme.error, fontFamily: Fonts.body, fontSize: 13, textAlign: 'center' }}>
+                    {loginError}
+                  </Text>
+                </View>
+              )}
 
               <TouchableOpacity style={[styles.loginBtn, isLoading && { opacity: 0.6 }]} onPress={handleLogin} activeOpacity={0.9} disabled={isLoading}>
                 <Text style={styles.loginBtnText}>{isLoading ? 'GİRİŞ YAPILIYOR...' : 'GİRİŞ YAP'}</Text>
