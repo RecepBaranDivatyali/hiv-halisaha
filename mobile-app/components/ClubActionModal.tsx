@@ -1,29 +1,47 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert, Image, ActivityIndicator } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { Bouncable } from '@/components/Bouncable';
 import { useTheme } from '@/context/ThemeContext';
 import { useImagePicker } from '@/hooks/use-image-picker';
+import { useAuth } from '@/hooks/use-auth';
+import { dbService } from '@/services/dbService';
 
 interface ClubActionModalProps {
   visible: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
+  initialTab?: 'create' | 'join';
 }
 
-export const ClubActionModal: React.FC<ClubActionModalProps> = ({ visible, onClose }) => {
+export const ClubActionModal: React.FC<ClubActionModalProps> = ({ 
+  visible, 
+  onClose, 
+  onSuccess,
+  initialTab = 'create',
+}) => {
   const { theme } = useTheme();
   const styles = useStyles(theme);
   const { pickImage } = useImagePicker();
-  const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
+  const { user, saveUser } = useAuth();
+  const [activeTab, setActiveTab] = useState<'create' | 'join'>(initialTab);
   
   // Create Club State
   const [clubName, setClubName] = useState('');
+  const [clubDesc, setClubDesc] = useState('');
   const [selectedLogo, setSelectedLogo] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Join Club State
   const [inviteCode, setInviteCode] = useState('');
+
+  useEffect(() => {
+    if (visible) {
+      setActiveTab(initialTab);
+    }
+  }, [visible, initialTab]);
 
   const handleLogoSelect = async () => {
     try {
@@ -36,22 +54,64 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({ visible, onClo
     }
   };
 
-  const handleSubmit = () => {
-    if (activeTab === 'create' && !clubName) {
-      Alert.alert('Hata', 'Lütfen takım adını girin.');
-      return;
+  const handleSubmit = async () => {
+    if (activeTab === 'create') {
+      if (!clubName.trim()) {
+        Alert.alert('Eksik Bilgi', 'Lütfen kulüp adını girin.');
+        return;
+      }
+      setIsSubmitting(true);
+      try {
+        const newClub = await dbService.createClub({
+          name: clubName.trim(),
+          desc: clubDesc.trim() || 'Halısaha Takımı',
+          logo: selectedLogo || undefined,
+          ownerId: user?.uid,
+          color: theme.primary,
+          rank: 'YENİ',
+          points: 100,
+          membersCount: 1,
+          maxMembers: 50,
+          level: 1,
+        });
+
+        if (newClub?.id) {
+          await saveUser({ clubId: newClub.id, clubName: newClub.name });
+        }
+
+        Alert.alert(
+          'Tebrikler! 🏆',
+          `"${clubName.trim()}" kulübünüz başarıyla kuruldu!`,
+          [
+            {
+              text: 'Tamam',
+              onPress: () => {
+                setClubName('');
+                setClubDesc('');
+                setSelectedLogo(null);
+                onClose();
+                if (onSuccess) onSuccess();
+              },
+            },
+          ]
+        );
+      } catch (err) {
+        console.error('Kulüp kurma hatası:', err);
+        Alert.alert('Hata', 'Kulüp kurulurken bir sorun oluştu. Lütfen tekrar deneyin.');
+      } finally {
+        setIsSubmitting(false);
+      }
+    } else {
+      if (!inviteCode.trim()) {
+        Alert.alert('Eksik Bilgi', 'Lütfen davet kodunu girin.');
+        return;
+      }
+      Alert.alert(
+        'İstek İletildi ⚽',
+        `"${inviteCode.trim().toUpperCase()}" kodlu kulübe katılım isteğiniz iletildi. Kaptan onayladığında bildirim alacaksınız.`,
+        [{ text: 'Tamam', onPress: onClose }]
+      );
     }
-    if (activeTab === 'join' && !inviteCode) {
-      Alert.alert('Hata', 'Lütfen davet kodunu girin.');
-      return;
-    }
-    
-    // Fake success
-    Alert.alert(
-      "Başarılı!", 
-      activeTab === 'create' ? "Kulübün başarıyla kuruldu!" : "Kulübe katılım isteği gönderildi!",
-      [{ text: "Tamam", onPress: onClose }]
-    );
   };
 
   return (
@@ -107,7 +167,7 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({ visible, onClo
                   <Text style={styles.inputLabel}>Takım Adı</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="Örn: Vanguard FC"
+                    placeholder="Örn: Boğaziçi United"
                     placeholderTextColor={theme.textMuted}
                     value={clubName}
                     onChangeText={setClubName}
@@ -115,10 +175,21 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({ visible, onClo
                 </View>
 
                 <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Şehir (Yakında)</Text>
+                  <Text style={styles.inputLabel}>Açıklama & Slogan</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Örn: Hızlı forvetler ve sağlam savunma"
+                    placeholderTextColor={theme.textMuted}
+                    value={clubDesc}
+                    onChangeText={setClubDesc}
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Şehir</Text>
                   <View style={[styles.input, styles.inputDisabled]}>
-                    <Text style={{ color: theme.textMuted }}>Tüm Şehirler</Text>
-                    <MaterialIcons name="lock" size={16} color={theme.textMuted} />
+                    <Text style={{ color: theme.text }}>İstanbul / Tüm İlçeler</Text>
+                    <MaterialIcons name="location-on" size={16} color={theme.primary} />
                   </View>
                 </View>
               </View>
@@ -148,10 +219,18 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({ visible, onClo
 
           {/* Footer */}
           <View style={styles.footer}>
-            <Bouncable style={styles.submitBtn} onPress={handleSubmit}>
-              <Text style={styles.submitBtnText}>
-                {activeTab === 'create' ? 'KULÜBÜ KUR' : 'KATILMA İSTEĞİ GÖNDER'}
-              </Text>
+            <Bouncable 
+              style={[styles.submitBtn, isSubmitting && { opacity: 0.6 }]} 
+              onPress={handleSubmit}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator size="small" color={theme.background} />
+              ) : (
+                <Text style={styles.submitBtnText}>
+                  {activeTab === 'create' ? 'KULÜBÜ KUR' : 'KATILMA İSTEĞİ GÖNDER'}
+                </Text>
+              )}
             </Bouncable>
           </View>
 

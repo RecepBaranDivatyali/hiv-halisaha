@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { SideMenu } from '@/components/SideMenu';
 import { ChallengeModal } from '@/components/ChallengeModal';
 import { NotificationCenterModal } from '@/components/NotificationCenterModal';
+import { ClubActionModal } from '@/components/ClubActionModal';
 import { useTheme } from '@/context/ThemeContext';
 import { Skeleton } from '@/components/Skeleton';
 import { useAuth } from '@/hooks/use-auth';
@@ -20,6 +21,8 @@ export default function ClubsScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [challengeModalVisible, setChallengeModalVisible] = useState(false);
   const [notifVisible, setNotifVisible] = useState(false);
+  const [clubActionVisible, setClubActionVisible] = useState(false);
+  const [clubActionTab, setClubActionTab] = useState<'create' | 'join'>('create');
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -95,6 +98,12 @@ export default function ClubsScreen() {
       <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} />
       <ChallengeModal visible={challengeModalVisible} onClose={() => setChallengeModalVisible(false)} />
       <NotificationCenterModal visible={notifVisible} onClose={() => setNotifVisible(false)} />
+      <ClubActionModal 
+        visible={clubActionVisible} 
+        onClose={() => setClubActionVisible(false)} 
+        initialTab={clubActionTab}
+        onSuccess={loadClubs}
+      />
       
       {/* TopAppBar */}
       <View style={styles.header}>
@@ -139,7 +148,7 @@ export default function ClubsScreen() {
           </View>
         </View>
 
-        {/* Kullanıcının Kendi Kulübü Varsa Göster (Temsili / Sahte Kulüp Gösterilmez) */}
+        {/* Kullanıcının Kendi Kulübü Varsa Göster */}
         {user?.clubId ? (
           <TouchableOpacity 
             style={styles.myClubBanner} 
@@ -162,7 +171,49 @@ export default function ClubsScreen() {
               <MaterialIcons name="chevron-right" size={18} color={theme.primary} />
             </View>
           </TouchableOpacity>
-        ) : null}
+        ) : (
+          /* Kulübü Olmayanlar İçin: Kendi Kulübünü Kur Kartı */
+          <View style={styles.createClubPromoCard}>
+            <View style={styles.promoContent}>
+              <View style={styles.promoIconWrap}>
+                <MaterialIcons name="shield" size={34} color={theme.primary} />
+              </View>
+              <View style={styles.promoTextWrap}>
+                <View style={styles.promoTag}>
+                  <Text style={styles.promoTagText}>HALISAHA TAKIMI</Text>
+                </View>
+                <Text style={styles.promoTitle}>KENDİ KULÜBÜNÜ KUR</Text>
+                <Text style={styles.promoDesc}>
+                  Takımını topla, armanı belirle, lig maçlarına katıl ve diğer kulüplere meydan oku!
+                </Text>
+              </View>
+            </View>
+            <View style={styles.promoActionsRow}>
+              <TouchableOpacity 
+                style={styles.createClubPrimaryBtn}
+                onPress={() => {
+                  setClubActionTab('create');
+                  setClubActionVisible(true);
+                }}
+                activeOpacity={0.85}
+              >
+                <MaterialIcons name="add-circle" size={18} color={theme.background} />
+                <Text style={styles.createClubPrimaryBtnText}>KULÜP KUR</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.joinClubSecondaryBtn}
+                onPress={() => {
+                  setClubActionTab('join');
+                  setClubActionVisible(true);
+                }}
+                activeOpacity={0.85}
+              >
+                <MaterialIcons name="group-add" size={18} color={theme.primary} />
+                <Text style={styles.joinClubSecondaryBtnText}>DAVET KODU İLE GİR</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         <View style={styles.gridLayout}>
           {/* Main List */}
@@ -184,9 +235,25 @@ export default function ClubsScreen() {
                 <View style={styles.headerBarPrimary} />
                 <Text style={styles.listHeaderTitle}>TÜM KULÜPLER</Text>
               </View>
-              <TouchableOpacity onPress={() => setChallengeModalVisible(true)}>
-                <Text style={styles.filterBtnText}>MEYDAN OKU</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <TouchableOpacity 
+                  onPress={() => {
+                    setClubActionTab('create');
+                    setClubActionVisible(true);
+                  }}
+                  style={styles.headerCreateBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <MaterialIcons name="add" size={16} color={theme.primary} />
+                  <Text style={styles.headerCreateBtnText}>KULÜP KUR</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={() => setChallengeModalVisible(true)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.filterBtnText}>MEYDAN OKU</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Clubs Cards */}
@@ -194,8 +261,25 @@ export default function ClubsScreen() {
               {isLoading ? (
                 [1, 2].map((i) => <Skeleton key={i} height={140} borderRadius={16} />)
               ) : filteredClubs.length === 0 ? (
-                <View style={{ padding: 40, alignItems: 'center' }}>
-                  <Text style={{ color: theme.textMuted, fontFamily: Fonts.body }}>Aradığınız kriterde kulüp bulunamadı.</Text>
+                <View style={styles.emptyContainer}>
+                  <View style={styles.emptyIconCircle}>
+                    <MaterialIcons name="shield" size={40} color={theme.primary} />
+                  </View>
+                  <Text style={styles.emptyTitle}>Henüz Kulüp Bulunamadı</Text>
+                  <Text style={styles.emptySub}>
+                    İlk kulübü sen kurarak halısaha liginde zirveye giden yolu başlat!
+                  </Text>
+                  <TouchableOpacity 
+                    style={styles.emptyCreateBtn}
+                    onPress={() => {
+                      setClubActionTab('create');
+                      setClubActionVisible(true);
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <MaterialIcons name="add-circle" size={18} color={theme.background} />
+                    <Text style={styles.emptyCreateBtnText}>İLK KULÜBÜ KUR</Text>
+                  </TouchableOpacity>
                 </View>
               ) : filteredClubs.map((club) => (
                 <View key={club.id || club.name} style={styles.clubCard}>
@@ -367,6 +451,167 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontSize: 11,
     color: theme.primary,
   },
+
+  // Kendi Kulübünü Kur Promo Kartı
+  createClubPromoCard: {
+    backgroundColor: theme.surface,
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: `${theme.primary}40`,
+    gap: 16,
+  },
+  promoContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  promoIconWrap: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: `${theme.primary}1A`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: `${theme.primary}33`,
+  },
+  promoTextWrap: {
+    flex: 1,
+    gap: 3,
+  },
+  promoTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: `${theme.primary}26`,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginBottom: 2,
+  },
+  promoTagText: {
+    fontFamily: Fonts.label,
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: theme.primary,
+    letterSpacing: 0.8,
+  },
+  promoTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 17,
+    color: theme.text,
+    letterSpacing: -0.3,
+  },
+  promoDesc: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: theme.textMuted,
+    lineHeight: 15,
+  },
+  promoActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  createClubPrimaryBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: theme.primary,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  createClubPrimaryBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 12,
+    color: theme.background,
+  },
+  joinClubSecondaryBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: theme.surfaceContainerHighest,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+  },
+  joinClubSecondaryBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.text,
+  },
+
+  // Liste Üstü Hızlı Buton
+  headerCreateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: `${theme.primary}1A`,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: `${theme.primary}33`,
+  },
+  headerCreateBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: theme.primary,
+    letterSpacing: 0.5,
+  },
+
+  // Boş Durum
+  emptyContainer: {
+    padding: 32,
+    alignItems: 'center',
+    backgroundColor: theme.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    gap: 10,
+  },
+  emptyIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: `${theme.primary}1A`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 16,
+    color: theme.text,
+  },
+  emptySub: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: theme.textMuted,
+    textAlign: 'center',
+    lineHeight: 16,
+    maxWidth: 240,
+  },
+  emptyCreateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: theme.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 11,
+    borderRadius: 10,
+    marginTop: 6,
+  },
+  emptyCreateBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 12,
+    color: theme.background,
+  },
+
   gridLayout: {
     gap: 20
   },
