@@ -154,21 +154,8 @@ function AppContent() {
   const { theme, isDark } = useTheme();
   const { width, height } = useWindowDimensions();
   const [isFramed, setIsFramed] = useState(true);
-  const [currentTime, setCurrentTime] = useState('09:41');
 
   const isDesktopWeb = Platform.OS === 'web' && width > 520;
-
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      const h = String(now.getHours()).padStart(2, '0');
-      const m = String(now.getMinutes()).padStart(2, '0');
-      setCurrentTime(`${h}:${m}`);
-    };
-    updateTime();
-    const timer = setInterval(updateTime, 10000);
-    return () => clearInterval(timer);
-  }, []);
 
   // Update bounds for desktop framed modals
   useEffect(() => {
@@ -199,9 +186,9 @@ function AppContent() {
     };
   }, [isFramed, isDesktopWeb, width, height]);
 
-  // Authentic flagship smartphone dimensions (iPhone 15 / Galaxy S24: 393 x 852 px, ratio 19.5:9)
-  const phoneHeight = Math.min(852, Math.max(600, height - 90));
-  const phoneWidth = Math.min(393, Math.round(phoneHeight * (393 / 852)));
+  // Authentic smartphone dimensions (standard 390px iPhone width, responsive height)
+  const phoneWidth = Math.min(390, width - 24);
+  const phoneHeight = Math.min(844, Math.max(620, height - 70));
 
   const stackContent = (
     <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
@@ -313,7 +300,7 @@ function AppContent() {
               width: phoneWidth + 18,
               height: phoneHeight + 18,
               backgroundColor: '#181b24',
-              borderRadius: 50,
+              borderRadius: 48,
               padding: 9,
               borderWidth: 2,
               borderColor: 'rgba(255, 255, 255, 0.14)',
@@ -321,106 +308,33 @@ function AppContent() {
               shadowOffset: { width: 0, height: 20 },
               shadowOpacity: 0.75,
               shadowRadius: 40,
+              position: 'relative',
             }}>
+              {/* Sleek Ear Speaker Grill on bezel (outside screen) */}
+              <View style={{
+                position: 'absolute',
+                top: 4,
+                left: '50%',
+                marginLeft: -25,
+                width: 50,
+                height: 3,
+                borderRadius: 2,
+                backgroundColor: 'rgba(255, 255, 255, 0.18)',
+                zIndex: 10,
+              }} />
+
               {/* Inner Phone Screen Display */}
               <View 
                 nativeID="mobile-screen-container"
                 style={{
                   width: '100%',
                   height: '100%',
-                  borderRadius: 42,
+                  borderRadius: 40,
                   overflow: 'hidden',
                   backgroundColor: theme.background,
                   position: 'relative',
                 }}
               >
-                {/* Dynamic Island Cutout */}
-                <View 
-                  pointerEvents="none"
-                  style={{
-                    position: 'absolute',
-                    top: 10,
-                    left: 0,
-                    right: 0,
-                    alignItems: 'center',
-                    zIndex: 9998,
-                  }}
-                >
-                  <View style={{
-                    width: 112,
-                    height: 28,
-                    borderRadius: 16,
-                    backgroundColor: '#000000',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'flex-end',
-                    paddingRight: 10,
-                  }}>
-                    {/* Front Camera Lens */}
-                    <View style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 5,
-                      backgroundColor: '#0d111d',
-                      borderWidth: 1.5,
-                      borderColor: '#1e2436',
-                    }} />
-                    {/* Sensor Dot */}
-                    <View style={{
-                      width: 5,
-                      height: 5,
-                      borderRadius: 2.5,
-                      backgroundColor: '#05070e',
-                      marginLeft: 6,
-                    }} />
-                  </View>
-                </View>
-
-                {/* Status Bar Indicators (Time, Wifi, Battery) */}
-                <View 
-                  pointerEvents="none"
-                  style={{
-                    position: 'absolute',
-                    top: 14,
-                    left: 0,
-                    right: 0,
-                    paddingHorizontal: 22,
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    zIndex: 9997,
-                  }}
-                >
-                  {/* Time */}
-                  <Text style={{
-                    color: '#ffffff',
-                    fontSize: 12,
-                    fontWeight: '700',
-                    fontFamily: 'Lexend',
-                    letterSpacing: -0.2,
-                  }}>
-                    {currentTime}
-                  </Text>
-
-                  {/* Status Icons */}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <MaterialIcons name="signal-cellular-alt" size={13} color="#ffffff" />
-                    <MaterialIcons name="wifi" size={13} color="#ffffff" />
-                    {/* Battery Pill */}
-                    <View style={{
-                      width: 20,
-                      height: 10,
-                      borderRadius: 3,
-                      borderWidth: 1,
-                      borderColor: '#ffffff',
-                      padding: 1,
-                      justifyContent: 'center',
-                    }}>
-                      <View style={{ width: '85%', height: '100%', backgroundColor: '#8eff71', borderRadius: 1.5 }} />
-                    </View>
-                  </View>
-                </View>
-
                 {/* Main App Navigation Stack */}
                 {stackContent}
 
@@ -440,7 +354,7 @@ function AppContent() {
                     width: 125,
                     height: 4,
                     borderRadius: 2,
-                    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+                    backgroundColor: 'rgba(255, 255, 255, 0.3)',
                   }} />
                 </View>
               </View>

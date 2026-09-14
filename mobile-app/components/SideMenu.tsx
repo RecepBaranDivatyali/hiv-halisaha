@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Modal, Image, Animated, Alert, Platform, Linking, ScrollView } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
@@ -20,7 +20,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
   const { user, logout } = useAuth();
 
   const [isOpen, setIsOpen] = useState(visible);
-  const slideAnim = React.useRef(new Animated.Value(-340)).current;
+  const slideAnim = React.useRef(new Animated.Value(-300)).current;
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
 
   React.useEffect(() => {
@@ -41,7 +41,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
     } else {
       Animated.parallel([
         Animated.timing(slideAnim, {
-          toValue: -340,
+          toValue: -300,
           duration: 200,
           useNativeDriver: Platform.OS !== 'web',
         }),
@@ -120,7 +120,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
               {/* Close Button */}
               <View style={styles.header}>
                 <TouchableOpacity style={styles.closeBtn} onPress={onClose} accessibilityLabel="Kapat">
-                  <MaterialIcons name="close" size={22} color={theme.text} />
+                  <MaterialIcons name="close" size={18} color={theme.text} />
                 </TouchableOpacity>
               </View>
 
@@ -151,13 +151,13 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
                 {menuItems.map((item, idx) => (
                   <TouchableOpacity
                     key={idx}
-                    style={[styles.navItem, item.active && { backgroundColor: theme.surface, borderLeftWidth: 4, borderLeftColor: theme.primary }]}
+                    style={[styles.navItem, item.active && { backgroundColor: theme.surface, borderLeftWidth: 3, borderLeftColor: theme.primary }]}
                     onPress={() => handleNavigate(item)}
                     activeOpacity={0.7}
                   >
                     <MaterialIcons 
                       name={item.icon as any} 
-                      size={20} 
+                      size={18} 
                       color={item.active || item.action === 'guide' ? theme.primary : theme.textMuted} 
                     />
                     <Text style={[styles.navLabel, { color: item.active || item.action === 'guide' ? theme.primary : theme.textMuted }]}>
@@ -185,7 +185,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
                 }
               }} activeOpacity={0.8}>
                 <Text style={styles.logoutLabel}>ÇIKIŞ YAP</Text>
-                <MaterialIcons name="logout" size={20} color={theme.error} />
+                <MaterialIcons name="logout" size={18} color={theme.error} />
               </TouchableOpacity>
               
               <View style={styles.brandRow}>
@@ -211,15 +211,15 @@ const useStyles = (theme: any) => StyleSheet.create({
   },
   backdrop: { 
     flex: 1, 
-    backgroundColor: 'rgba(0,0,0,0.75)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
   },
   drawer: { 
     position: 'absolute',
     top: 0,
     left: 0,
     bottom: 0,
-    width: '82%', 
-    maxWidth: 320, 
+    width: 270, 
+    maxWidth: '75%', 
     height: '100%', 
     backgroundColor: theme.background,
     borderRightWidth: 1,
@@ -234,38 +234,38 @@ const useStyles = (theme: any) => StyleSheet.create({
   drawerScroll: {
     flexGrow: 1,
     justifyContent: 'space-between',
-    paddingVertical: 16,
+    paddingVertical: 12,
   },
-  header: { paddingHorizontal: 20, alignItems: 'flex-end', marginBottom: 12 },
-  closeBtn: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surfaceContainerHighest },
-  profileSection: { paddingHorizontal: 20, marginBottom: 20 },
-  avatarWrapper: { position: 'relative', width: 76, height: 76, marginBottom: 12 },
-  avatarBorder: { width: 76, height: 76, borderRadius: 38, borderWidth: 2, padding: 3, borderColor: theme.primary },
-  avatar: { width: '100%', height: '100%', borderRadius: 35 },
-  proBadge: { position: 'absolute', bottom: 0, right: 0, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: theme.primary },
-  proBadgeText: { color: '#000', fontSize: 9, fontFamily: Fonts.headlineBold, fontStyle: 'italic' },
-  profileText: { gap: 3 },
-  userName: { fontSize: 20, fontFamily: Fonts.headlineBold, letterSpacing: -0.5, color: theme.text },
-  levelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
-  levelBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4, backgroundColor: theme.surfaceContainerHighest },
-  levelBadgeText: { fontSize: 10, fontFamily: Fonts.headlineBold, color: theme.primary },
-  memberText: { fontSize: 9, fontFamily: Fonts.headlineBold, letterSpacing: 1, color: theme.textMuted },
+  header: { paddingHorizontal: 16, alignItems: 'flex-end', marginBottom: 6, marginTop: 4 },
+  closeBtn: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surfaceContainerHighest },
+  profileSection: { paddingHorizontal: 16, marginBottom: 14 },
+  avatarWrapper: { position: 'relative', width: 54, height: 54, marginBottom: 8 },
+  avatarBorder: { width: 54, height: 54, borderRadius: 27, borderWidth: 2, padding: 2, borderColor: theme.primary },
+  avatar: { width: '100%', height: '100%', borderRadius: 25 },
+  proBadge: { position: 'absolute', bottom: -2, right: -2, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3, backgroundColor: theme.primary },
+  proBadgeText: { color: '#000', fontSize: 8, fontFamily: Fonts.headlineBold, fontStyle: 'italic' },
+  profileText: { gap: 2 },
+  userName: { fontSize: 16, fontFamily: Fonts.headlineBold, letterSpacing: -0.3, color: theme.text },
+  levelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  levelBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: theme.surfaceContainerHighest },
+  levelBadgeText: { fontSize: 9, fontFamily: Fonts.headlineBold, color: theme.primary },
+  memberText: { fontSize: 8, fontFamily: Fonts.headlineBold, letterSpacing: 0.8, color: theme.textMuted },
   nav: { 
-    paddingVertical: 8, 
+    paddingVertical: 6, 
     borderTopWidth: 1, 
     borderBottomWidth: 1, 
     borderTopColor: theme.borderSubtle, 
     borderBottomColor: theme.borderSubtle,
     gap: 2,
   },
-  navItem: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 8, marginHorizontal: 6 },
-  navLabel: { fontSize: 13, fontFamily: Fonts.headlineBold, letterSpacing: 1.5 },
-  footer: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, gap: 16 },
-  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, backgroundColor: theme.surface, borderColor: `${theme.error}33` },
-  logoutLabel: { fontSize: 13, fontFamily: Fonts.headlineBold, letterSpacing: 1.5, color: theme.error },
+  navItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9, paddingHorizontal: 14, borderRadius: 8, marginHorizontal: 4 },
+  navLabel: { fontSize: 11, fontFamily: Fonts.headlineBold, letterSpacing: 1 },
+  footer: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, gap: 10 },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, backgroundColor: theme.surface, borderColor: `${theme.error}33` },
+  logoutLabel: { fontSize: 11, fontFamily: Fonts.headlineBold, letterSpacing: 1, color: theme.error },
   brandRow: { alignItems: 'center', gap: 2 },
-  brandNoir: { fontSize: 16, fontFamily: Fonts.headlineBold, fontStyle: 'italic', letterSpacing: -0.5, opacity: 0.4, color: theme.primary },
-  version: { fontSize: 9, fontFamily: Fonts.headlineBold, letterSpacing: 1, opacity: 0.5, color: theme.textMuted },
-  soonBadge: { marginLeft: 'auto', backgroundColor: `${theme.secondary}26`, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  brandNoir: { fontSize: 13, fontFamily: Fonts.headlineBold, fontStyle: 'italic', letterSpacing: -0.5, opacity: 0.4, color: theme.primary },
+  version: { fontSize: 8, fontFamily: Fonts.headlineBold, letterSpacing: 0.8, opacity: 0.5, color: theme.textMuted },
+  soonBadge: { marginLeft: 'auto', backgroundColor: `${theme.secondary}26`, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 },
   soonBadgeText: { fontSize: 8, fontFamily: Fonts.headlineBold, color: theme.secondary, letterSpacing: 0.5 },
 });
