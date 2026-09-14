@@ -105,6 +105,25 @@ export default function RootLayout() {
           border-radius: 8px !important;
           transition: background-color 5000s ease-in-out 0s;
         }
+        /* Native mobile style scrollbars (hidden scrollbars on desktop) */
+        ::-webkit-scrollbar {
+          width: 0px !important;
+          height: 0px !important;
+          display: none !important;
+        }
+        * {
+          scrollbar-width: none !important;
+          -ms-overflow-style: none !important;
+        }
+        /* Mobile touch text selection ergonomics */
+        body {
+          user-select: none;
+          -webkit-user-select: none;
+        }
+        input, textarea {
+          user-select: text !important;
+          -webkit-user-select: text !important;
+        }
         /* Constrain React Native Web Modals within the phone frame on desktop */
         body.desktop-framed-active [aria-modal="true"] {
           position: fixed !important;
@@ -121,7 +140,7 @@ export default function RootLayout() {
         }
 
         /* Constrain React Native Web Modal Portal wrapper */
-        body.desktop-framed-active div:has(> [aria-modal="true"]) {
+        body.desktop-framed-active div:has([aria-modal="true"]) {
           position: fixed !important;
           top: var(--phone-frame-top, 60px) !important;
           left: var(--phone-frame-left, calc(50% - 195px)) !important;
