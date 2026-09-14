@@ -124,33 +124,6 @@ export default function RootLayout() {
           user-select: text !important;
           -webkit-user-select: text !important;
         }
-        /* Constrain React Native Web Modal Portal wrapper ONLY (direct child of body) to the phone frame */
-        body.desktop-framed-active > div:has([aria-modal="true"]) {
-          position: fixed !important;
-          top: var(--phone-frame-top, 60px) !important;
-          left: var(--phone-frame-left, calc(50% - 195px)) !important;
-          width: 390px !important;
-          height: 844px !important;
-          transform: scale(var(--phone-frame-scale, 1)) !important;
-          transform-origin: top left !important;
-          border-radius: var(--phone-frame-radius, 34px) !important;
-          overflow: hidden !important;
-          pointer-events: auto !important;
-          z-index: 10000 !important;
-        }
-
-        /* Pin modal inside portal wrapper */
-        body.desktop-framed-active > div:has([aria-modal="true"]) [aria-modal="true"] {
-          position: absolute !important;
-          top: 0 !important;
-          left: 0 !important;
-          right: 0 !important;
-          bottom: 0 !important;
-          width: 100% !important;
-          height: 100% !important;
-          overflow: hidden !important;
-          box-shadow: none !important;
-        }
       `;
     }
   }, [loaded, error]);
@@ -188,35 +161,6 @@ function AppContent() {
   const fitScale = Math.min(1, Math.min(availableH / CHASSIS_HEIGHT, availableW / CHASSIS_WIDTH));
   const actualScale = isFit ? fitScale : 1;
 
-  // Update bounds for desktop framed modals
-  useEffect(() => {
-    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
-
-    const updateFrameBounds = () => {
-      const screenEl = document.getElementById('mobile-screen-container');
-      if (screenEl && isFramed && isDesktopWeb) {
-        const rect = screenEl.getBoundingClientRect();
-        document.documentElement.style.setProperty('--phone-frame-top', `${Math.round(rect.top)}px`);
-        document.documentElement.style.setProperty('--phone-frame-left', `${Math.round(rect.left)}px`);
-        document.documentElement.style.setProperty('--phone-frame-width', `${Math.round(rect.width)}px`);
-        document.documentElement.style.setProperty('--phone-frame-height', `${Math.round(rect.height)}px`);
-        document.documentElement.style.setProperty('--phone-frame-scale', `${actualScale}`);
-        document.documentElement.style.setProperty('--phone-frame-radius', `${Math.round(34 * actualScale)}px`);
-        document.body.classList.add('desktop-framed-active');
-      } else {
-        document.body.classList.remove('desktop-framed-active');
-      }
-    };
-
-    updateFrameBounds();
-    window.addEventListener('resize', updateFrameBounds);
-    const interval = setInterval(updateFrameBounds, 500);
-    return () => {
-      window.removeEventListener('resize', updateFrameBounds);
-      clearInterval(interval);
-      document.body.classList.remove('desktop-framed-active');
-    };
-  }, [isFramed, isDesktopWeb, width, height, actualScale]);
 
   const stackContent = (
     <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>

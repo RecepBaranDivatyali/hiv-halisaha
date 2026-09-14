@@ -26,19 +26,20 @@ export default function TabLayout() {
           shadowOpacity: 0,
           shadowOffset: { width: 0, height: 0 },
           shadowRadius: 0,
-          height: Platform.OS === 'ios' ? 84 : 80,
-          paddingBottom: Platform.OS === 'ios' ? 24 : 20,
+          height: 88,
+          paddingBottom: 28,
           paddingTop: 8,
         },
         tabBarLabelStyle: {
           fontFamily: Fonts.bodySemiBold,
-          fontSize: 11,
-          lineHeight: 14,
-          marginTop: 2,
+          fontSize: 10,
+          lineHeight: 12,
+          marginTop: 3,
         },
         tabBarItemStyle: {
-          justifyContent: 'center',
+          justifyContent: 'flex-start',
           alignItems: 'center',
+          paddingTop: 4,
         },
       }}>
       <Tabs.Screen

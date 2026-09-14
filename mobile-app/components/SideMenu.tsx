@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Modal, Image, Animated, Alert, Platform, Linking, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Image, Animated, Alert, Platform, Linking, ScrollView } from 'react-native';
+import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useRouter, usePathname } from 'expo-router';

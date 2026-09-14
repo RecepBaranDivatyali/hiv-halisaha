@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import {
-  StyleSheet, View, Text, TouchableOpacity, Modal,
+  StyleSheet, View, Text, TouchableOpacity,
   ScrollView, TextInput, Alert, Switch, FlatList,
   Platform,
 } from 'react-native';
+import { AppModal as Modal } from '@/components/AppModal';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';

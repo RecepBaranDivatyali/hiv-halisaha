@@ -117,6 +117,7 @@ export default function HomeScreen() {
               style={styles.iconBtn} 
               onPress={handleOpenGuide}
               activeOpacity={0.7}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               accessibilityLabel="Kullanım Rehberi"
               accessibilityRole="button"
             >
@@ -127,6 +128,7 @@ export default function HomeScreen() {
             style={styles.iconBtn} 
             onPress={() => router.push('/conversations')}
             activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessibilityLabel="Mesajlar"
             accessibilityRole="button"
           >
@@ -136,6 +138,7 @@ export default function HomeScreen() {
             style={styles.iconBtn} 
             onPress={() => setNotifModalVisible(true)}
             activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessibilityLabel="Bildirimler"
             accessibilityRole="button"
           >
