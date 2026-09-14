@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, TextInput, Text, StyleSheet, TextInputProps, TouchableOpacity, StyleProp, ViewStyle } from 'react-native';
+import { View, TextInput, Text, StyleSheet, TextInputProps, TouchableOpacity, StyleProp, ViewStyle, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '@/context/ThemeContext';
 import { Fonts } from '@/constants/theme';
@@ -20,6 +20,7 @@ export const CustomInput: React.FC<CustomInputProps> = ({
   isPassword,
   containerStyle,
   style,
+  secureTextEntry,
   ...rest
 }) => {
   const { theme } = useTheme();
@@ -27,6 +28,7 @@ export const CustomInput: React.FC<CustomInputProps> = ({
   const [isFocused, setIsFocused] = useState(false);
 
   const isError = !!error;
+  const computedSecureTextEntry = isPassword ? !showPassword : secureTextEntry;
 
   return (
     <View style={[styles.container, containerStyle]}>
@@ -51,20 +53,30 @@ export const CustomInput: React.FC<CustomInputProps> = ({
         )}
         
         <TextInput
-          style={[styles.input, { color: theme.text }, style]}
+          style={[
+            styles.input,
+            { color: theme.text },
+            Platform.OS === 'web' && ({ outlineStyle: 'none', outlineWidth: 0, outline: 'none' } as any),
+            style,
+          ]}
           placeholderTextColor={theme.textMuted}
-          secureTextEntry={isPassword && !showPassword}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           {...rest}
+          secureTextEntry={computedSecureTextEntry}
         />
 
         {isPassword && (
-          <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
+          <TouchableOpacity
+            onPress={() => setShowPassword(prev => !prev)}
+            style={styles.eyeBtn}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            activeOpacity={0.7}
+          >
             <MaterialIcons
               name={showPassword ? 'visibility' : 'visibility-off'}
               size={20}
-              color={theme.icon}
+              color={showPassword ? theme.primary : theme.icon}
             />
           </TouchableOpacity>
         )}

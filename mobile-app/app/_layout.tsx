@@ -66,6 +66,25 @@ export default function RootLayout() {
     if (loaded || error) {
       SplashScreen.hideAsync();
     }
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const styleId = 'rn-input-no-outline';
+      if (!document.getElementById(styleId)) {
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+          input, textarea, select {
+            outline: none !important;
+            box-shadow: none !important;
+            -webkit-tap-highlight-color: transparent !important;
+          }
+          input:focus, textarea:focus, select:focus {
+            outline: none !important;
+            box-shadow: none !important;
+          }
+        `;
+        document.head.appendChild(style);
+      }
+    }
   }, [loaded, error]);
 
   if (!loaded && !error) {
