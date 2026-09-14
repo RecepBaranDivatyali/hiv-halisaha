@@ -159,23 +159,23 @@ export default function ProfileScreen() {
           <View style={styles.statsGrid}>
             <View style={styles.statCard}>
               <MaterialIcons name="sports-soccer" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
-              <Text style={styles.statCardLabel}>GOL</Text>
-              <Text style={[styles.statCardValue, { color: theme.primary }]}>{user?.stats?.goals ?? 0}</Text>
+              <Text style={styles.statCardLabel} numberOfLines={1}>GOL</Text>
+              <Text style={[styles.statCardValue, { color: theme.primary }]} numberOfLines={1} adjustsFontSizeToFit>{user?.stats?.goals ?? 0}</Text>
             </View>
             <View style={styles.statCard}>
               <MaterialIcons name="sports-score" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
-              <Text style={styles.statCardLabel}>ASİST</Text>
-              <Text style={[styles.statCardValue, { color: theme.secondary }]}>{user?.stats?.assists ?? 0}</Text>
+              <Text style={styles.statCardLabel} numberOfLines={1}>ASİST</Text>
+              <Text style={[styles.statCardValue, { color: theme.secondary }]} numberOfLines={1} adjustsFontSizeToFit>{user?.stats?.assists ?? 0}</Text>
             </View>
             <View style={styles.statCard}>
               <MaterialIcons name="military-tech" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
-              <Text style={styles.statCardLabel}>MVP</Text>
-              <Text style={[styles.statCardValue, { color: theme.primary }]}>{user?.stats?.mvpCount ?? 0}</Text>
+              <Text style={styles.statCardLabel} numberOfLines={1}>MVP</Text>
+              <Text style={[styles.statCardValue, { color: theme.primary }]} numberOfLines={1} adjustsFontSizeToFit>{user?.stats?.mvpCount ?? 0}</Text>
             </View>
             <View style={styles.statCard}>
               <MaterialIcons name="shield" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
-              <Text style={styles.statCardLabel}>GÜVENİLİRLİK</Text>
-              <Text style={[styles.statCardValue, { color: theme.primary }]}>%{user?.stats?.reliabilityScore ?? 100}</Text>
+              <Text style={styles.statCardLabel} numberOfLines={1}>GÜVENİLİRLİK</Text>
+              <Text style={[styles.statCardValue, { color: theme.primary }]} numberOfLines={1} adjustsFontSizeToFit>%{user?.stats?.reliabilityScore ?? 100}</Text>
             </View>
           </View>
         </View>
@@ -532,29 +532,33 @@ const useStyles = (theme: any) => StyleSheet.create({
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 16},
+    gap: 12},
   statCard: {
-    width: '47%',
+    width: '48%',
     backgroundColor: theme.surface,
-    padding: 24,
-    borderRadius: 12,
-    height: 128,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    borderRadius: 16,
+    height: 122,
     position: 'relative',
     overflow: 'hidden',
-    justifyContent: 'space-between'},
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: theme.border},
   statCardBgIcon: {
     position: 'absolute',
-    right: -16,
-    bottom: -16},
+    right: -12,
+    bottom: -12},
   statCardLabel: {
     fontFamily: Fonts.label,
-    fontSize: 12,
+    fontSize: 11,
     color: theme.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 1.5},
+    letterSpacing: 1},
   statCardValue: {
     fontFamily: Fonts.headlineBold,
-    fontSize: 48,
+    fontSize: 34,
+    lineHeight: 38,
     fontStyle: 'italic'},
   achievementsWrap: {
     flexDirection: 'row',
