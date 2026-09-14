@@ -75,11 +75,11 @@ export const AppGuideModal: React.FC<AppGuideModalProps> = ({ visible, onClose }
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerTitleRow}>
-              <MaterialIcons name="help-outline" size={24} color={theme.primary} />
-              <Text style={styles.headerTitle}>H.İ.V. NASIL KULLANILIR?</Text>
+              <MaterialIcons name="help-outline" size={20} color={theme.primary} />
+              <Text style={styles.headerTitle} numberOfLines={1}>H.İ.V. NASIL KULLANILIR?</Text>
             </View>
-            <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-              <MaterialIcons name="close" size={20} color={theme.text} />
+            <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.7}>
+              <MaterialIcons name="close" size={18} color={theme.text} />
             </TouchableOpacity>
           </View>
 
@@ -90,7 +90,7 @@ export const AppGuideModal: React.FC<AppGuideModalProps> = ({ visible, onClose }
             </View>
 
             <View style={[styles.iconCircle, { backgroundColor: `${slide.color}20`, borderColor: slide.color }]}>
-              <MaterialIcons name={slide.icon as any} size={48} color={slide.color} />
+              <MaterialIcons name={slide.icon as any} size={38} color={slide.color} />
             </View>
 
             <Text style={styles.slideTitle}>{slide.title}</Text>
@@ -103,7 +103,7 @@ export const AppGuideModal: React.FC<AppGuideModalProps> = ({ visible, onClose }
                   key={idx}
                   style={[
                     styles.dot,
-                    idx === currentIdx && { backgroundColor: slide.color, width: 24 },
+                    idx === currentIdx && { backgroundColor: slide.color, width: 20 },
                   ]}
                 />
               ))}
@@ -113,22 +113,26 @@ export const AppGuideModal: React.FC<AppGuideModalProps> = ({ visible, onClose }
           {/* Footer Controls */}
           <View style={styles.footer}>
             {currentIdx > 0 ? (
-              <TouchableOpacity style={styles.prevBtn} onPress={handlePrev}>
-                <MaterialIcons name="chevron-left" size={20} color={theme.textMuted} />
+              <TouchableOpacity style={styles.prevBtn} onPress={handlePrev} activeOpacity={0.8}>
+                <MaterialIcons name="chevron-left" size={18} color={theme.textMuted} />
                 <Text style={styles.prevBtnText}>ÖNCEKİ</Text>
               </TouchableOpacity>
             ) : (
               <View style={{ flex: 1 }} />
             )}
 
-            <TouchableOpacity style={[styles.nextBtn, { backgroundColor: slide.color }]} onPress={handleNext}>
+            <TouchableOpacity 
+              style={[styles.nextBtn, { backgroundColor: slide.color }]} 
+              onPress={handleNext}
+              activeOpacity={0.85}
+            >
               <Text style={styles.nextBtnText}>
-                {currentIdx === GUIDE_SLIDES.length - 1 ? 'HARİKA, ANLADIM!' : 'SONRAKİ'}
+                {currentIdx === GUIDE_SLIDES.length - 1 ? 'BAŞLA' : 'İLERLE'}
               </Text>
               <MaterialIcons
                 name={currentIdx === GUIDE_SLIDES.length - 1 ? 'check' : 'chevron-right'}
-                size={20}
-                color={theme.onPrimary}
+                size={18}
+                color="#090B10"
               />
             </TouchableOpacity>
           </View>
@@ -139,23 +143,155 @@ export const AppGuideModal: React.FC<AppGuideModalProps> = ({ visible, onClose }
 };
 
 const useStyles = (theme: any) => StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.88)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalContent: { width: '100%', maxWidth: 380, backgroundColor: theme.background, borderRadius: 24, paddingBottom: 20, borderWidth: 1, borderColor: theme.border },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: theme.border },
-  headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  headerTitle: { fontFamily: Fonts.headlineBold, fontSize: 16, color: theme.primary, fontStyle: 'italic', letterSpacing: -0.5 },
-  closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: theme.surfaceContainerHighest, alignItems: 'center', justifyContent: 'center' },
-  body: { padding: 24, alignItems: 'center' },
-  stepBadge: { backgroundColor: theme.surfaceContainer, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10, marginBottom: 16 },
-  stepBadgeText: { fontFamily: Fonts.headlineBold, fontSize: 10, color: theme.textMuted, letterSpacing: 1 },
-  iconCircle: { width: 90, height: 90, borderRadius: 45, alignItems: 'center', justifyContent: 'center', borderWidth: 2, marginBottom: 20 },
-  slideTitle: { fontFamily: Fonts.headlineBold, fontSize: 18, color: theme.text, textAlign: 'center', marginBottom: 10 },
-  slideDesc: { fontFamily: Fonts.body, fontSize: 13, color: theme.textMuted, textAlign: 'center', lineHeight: 20, marginBottom: 20 },
-  dotsRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.surfaceContainerHighest },
-  footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 12, gap: 12 },
-  prevBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, height: 48, borderRadius: 12, backgroundColor: theme.surfaceContainer },
-  prevBtnText: { fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.textMuted },
-  nextBtn: { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 48, borderRadius: 12 },
-  nextBtnText: { fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.onPrimary, letterSpacing: 0.5 },
+  overlay: { 
+    flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.85)', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    paddingHorizontal: 16, 
+    paddingVertical: 20 
+  },
+  modalContent: { 
+    width: '100%', 
+    maxWidth: 358, 
+    backgroundColor: theme.surface, 
+    borderRadius: 20, 
+    borderWidth: 1, 
+    borderColor: theme.border,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+  },
+  header: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    paddingHorizontal: 16, 
+    paddingVertical: 14, 
+    borderBottomWidth: 1, 
+    borderBottomColor: theme.border 
+  },
+  headerTitleRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 8, 
+    flex: 1, 
+    marginRight: 8 
+  },
+  headerTitle: { 
+    fontFamily: Fonts.headlineBold, 
+    fontSize: 13, 
+    color: theme.primary, 
+    fontStyle: 'italic', 
+    letterSpacing: 0.5 
+  },
+  closeBtn: { 
+    width: 30, 
+    height: 30, 
+    borderRadius: 15, 
+    backgroundColor: theme.surfaceContainerHighest, 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  body: { 
+    paddingHorizontal: 18, 
+    paddingVertical: 18, 
+    alignItems: 'center' 
+  },
+  stepBadge: { 
+    backgroundColor: theme.surfaceContainerHighest, 
+    paddingHorizontal: 10, 
+    paddingVertical: 4, 
+    borderRadius: 8, 
+    marginBottom: 14 
+  },
+  stepBadgeText: { 
+    fontFamily: Fonts.headlineBold, 
+    fontSize: 10, 
+    color: theme.textMuted, 
+    letterSpacing: 1 
+  },
+  iconCircle: { 
+    width: 76, 
+    height: 76, 
+    borderRadius: 38, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    borderWidth: 2, 
+    marginBottom: 14 
+  },
+  slideTitle: { 
+    fontFamily: Fonts.headlineBold, 
+    fontSize: 15, 
+    color: theme.text, 
+    textAlign: 'center', 
+    marginBottom: 8,
+    lineHeight: 20,
+    letterSpacing: 0.3 
+  },
+  slideDesc: { 
+    fontFamily: Fonts.body, 
+    fontSize: 12, 
+    color: theme.textMuted, 
+    textAlign: 'center', 
+    lineHeight: 18, 
+    marginBottom: 16,
+    paddingHorizontal: 4 
+  },
+  dotsRow: { 
+    flexDirection: 'row', 
+    gap: 6, 
+    alignItems: 'center' 
+  },
+  dot: { 
+    width: 6, 
+    height: 6, 
+    borderRadius: 3, 
+    backgroundColor: theme.surfaceContainerHighest 
+  },
+  footer: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    paddingHorizontal: 16, 
+    paddingVertical: 14, 
+    borderTopWidth: 1,
+    borderTopColor: theme.borderSubtle,
+    gap: 10,
+    backgroundColor: theme.surface 
+  },
+  prevBtn: { 
+    flex: 1, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    gap: 4, 
+    height: 42, 
+    borderRadius: 12, 
+    backgroundColor: theme.surfaceContainerHighest 
+  },
+  prevBtnText: { 
+    fontFamily: Fonts.headlineBold, 
+    fontSize: 11, 
+    color: theme.textMuted,
+    letterSpacing: 0.5 
+  },
+  nextBtn: { 
+    flex: 2, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    gap: 6, 
+    height: 42, 
+    borderRadius: 12 
+  },
+  nextBtnText: { 
+    fontFamily: Fonts.headlineBold, 
+    fontSize: 12, 
+    color: '#090B10', 
+    letterSpacing: 0.5,
+    fontWeight: '800' 
+  },
 });
