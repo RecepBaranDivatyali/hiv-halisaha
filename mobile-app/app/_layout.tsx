@@ -68,22 +68,35 @@ export default function RootLayout() {
     }
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
       const styleId = 'rn-input-no-outline';
-      if (!document.getElementById(styleId)) {
-        const style = document.createElement('style');
+      let style = document.getElementById(styleId) as HTMLStyleElement | null;
+      if (!style) {
+        style = document.createElement('style');
         style.id = styleId;
-        style.textContent = `
-          input, textarea, select {
-            outline: none !important;
-            box-shadow: none !important;
-            -webkit-tap-highlight-color: transparent !important;
-          }
-          input:focus, textarea:focus, select:focus {
-            outline: none !important;
-            box-shadow: none !important;
-          }
-        `;
         document.head.appendChild(style);
       }
+      style.textContent = `
+        input, textarea, select {
+          outline: none !important;
+          box-shadow: none !important;
+          -webkit-tap-highlight-color: transparent !important;
+        }
+        input:focus, textarea:focus, select:focus {
+          outline: none !important;
+          box-shadow: none !important;
+        }
+        /* Chrome / Edge autofill background override */
+        input:-webkit-autofill,
+        input:-webkit-autofill:hover, 
+        input:-webkit-autofill:focus, 
+        input:-webkit-autofill:active {
+          -webkit-box-shadow: 0 0 0 1000px #131313 inset !important;
+          -webkit-text-fill-color: #ffffff !important;
+          caret-color: #ffffff !important;
+          color: #ffffff !important;
+          border-radius: 8px !important;
+          transition: background-color 5000s ease-in-out 0s;
+        }
+      `;
     }
   }, [loaded, error]);
 

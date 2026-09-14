@@ -5,6 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { useTheme } from '@/context/ThemeContext';
+import { Fonts } from '@/constants/theme';
 
 export default function TabLayout() {
   const { theme } = useTheme();
@@ -25,9 +26,18 @@ export default function TabLayout() {
           shadowOpacity: 0,
           shadowOffset: { width: 0, height: 0 },
           shadowRadius: 0,
-          height: Platform.OS === 'ios' ? 80 : 64,
-          paddingBottom: Platform.OS === 'ios' ? 20 : 8,
+          height: Platform.OS === 'ios' ? 84 : Platform.OS === 'web' ? 70 : 66,
+          paddingBottom: Platform.OS === 'ios' ? 24 : Platform.OS === 'web' ? 12 : 10,
           paddingTop: 8,
+        },
+        tabBarLabelStyle: {
+          fontFamily: Fonts.bodySemiBold,
+          fontSize: 11,
+          paddingBottom: 2,
+        },
+        tabBarItemStyle: {
+          justifyContent: 'center',
+          alignItems: 'center',
         },
       }}>
       <Tabs.Screen
