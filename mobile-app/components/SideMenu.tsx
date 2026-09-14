@@ -19,6 +19,43 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
   const pathname = usePathname();
   const { user, logout } = useAuth();
 
+  const [isOpen, setIsOpen] = useState(visible);
+  const slideAnim = React.useRef(new Animated.Value(-340)).current;
+  const fadeAnim = React.useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    if (visible) {
+      setIsOpen(true);
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 260,
+          useNativeDriver: Platform.OS !== 'web',
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 260,
+          useNativeDriver: Platform.OS !== 'web',
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: -340,
+          duration: 200,
+          useNativeDriver: Platform.OS !== 'web',
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: Platform.OS !== 'web',
+        }),
+      ]).start(() => {
+        setIsOpen(false);
+      });
+    }
+  }, [visible]);
+
   const menuItems = [
     { label: 'PROFİL', icon: 'person', route: '/(tabs)/profile', active: pathname?.includes('profile') },
     { label: 'NASIL KULLANILIR?', icon: 'help', action: 'guide' },
@@ -52,16 +89,28 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
     }
   };
 
+  if (!isOpen) return null;
+
   return (
     <Modal
-      visible={visible}
+      visible={isOpen}
       transparent
-      animationType="slide"
+      animationType="none"
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        {/* Drawer comes FIRST so it's on the LEFT of the phone screen */}
-        <Animated.View style={styles.drawer}>
+        {/* Fullscreen Backdrop (Dark Veil) */}
+        <Animated.View style={[styles.backdropWrapper, { opacity: fadeAnim }]}>
+          <TouchableOpacity 
+            style={styles.backdrop} 
+            activeOpacity={1} 
+            onPress={onClose} 
+            accessibilityLabel="Menüyü Kapat"
+          />
+        </Animated.View>
+
+        {/* Drawer Slides Smoothly from LEFT */}
+        <Animated.View style={[styles.drawer, { transform: [{ translateX: slideAnim }] }]}>
           <ScrollView
             contentContainerStyle={styles.drawerScroll}
             showsVerticalScrollIndicator={false}
@@ -146,24 +195,41 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
             </View>
           </ScrollView>
         </Animated.View>
-
-        {/* Backdrop comes SECOND so it fills the right side */}
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
       </View>
     </Modal>
   );
 };
 
 const useStyles = (theme: any) => StyleSheet.create({
-  overlay: { flex: 1, flexDirection: 'row' },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)' },
+  overlay: { 
+    flex: 1, 
+    position: 'relative',
+  },
+  backdropWrapper: { 
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
+  backdrop: { 
+    flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.75)',
+  },
   drawer: { 
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
     width: '82%', 
     maxWidth: 320, 
     height: '100%', 
     backgroundColor: theme.background,
     borderRightWidth: 1,
     borderRightColor: `${theme.border}33`,
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 6, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 20,
   },
   drawerScroll: {
     flexGrow: 1,

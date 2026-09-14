@@ -81,15 +81,33 @@ export default function HomeScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.iconBtn} onPress={() => setMenuVisible(true)}>
+        <TouchableOpacity 
+          style={styles.iconBtn} 
+          onPress={() => setMenuVisible(true)}
+          activeOpacity={0.7}
+          accessibilityLabel="Menü"
+          accessibilityRole="button"
+        >
           <MaterialIcons name="menu" size={24} color={theme.primary} />
         </TouchableOpacity>
         <Text style={styles.brandText}>H.İ.V.</Text>
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/conversations')}>
+          <TouchableOpacity 
+            style={styles.iconBtn} 
+            onPress={() => router.push('/conversations')}
+            activeOpacity={0.7}
+            accessibilityLabel="Mesajlar"
+            accessibilityRole="button"
+          >
             <MaterialIcons name="chat" size={24} color={theme.primary} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => setNotifModalVisible(true)}>
+          <TouchableOpacity 
+            style={styles.iconBtn} 
+            onPress={() => setNotifModalVisible(true)}
+            activeOpacity={0.7}
+            accessibilityLabel="Bildirimler"
+            accessibilityRole="button"
+          >
             <MaterialIcons name="notifications" size={24} color={theme.primary} />
           </TouchableOpacity>
         </View>

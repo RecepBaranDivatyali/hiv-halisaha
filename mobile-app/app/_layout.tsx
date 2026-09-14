@@ -76,11 +76,19 @@ export default function RootLayout() {
         document.head.appendChild(style);
       }
       style.textContent = `
-        input, textarea, select {
+        /* Remove browser focus rings/outlines on ALL elements (buttons, icons, touchables, inputs, links) */
+        *, *:focus, *:focus-visible, *:active {
           outline: none !important;
-          box-shadow: none !important;
           -webkit-tap-highlight-color: transparent !important;
         }
+        [role="button"], button, a, [tabindex], div, input, textarea, select {
+          outline: none !important;
+          -webkit-tap-highlight-color: transparent !important;
+        }
+        [role="button"]:focus, [role="button"]:focus-visible,
+        button:focus, button:focus-visible,
+        div:focus, div:focus-visible,
+        a:focus, a:focus-visible,
         input:focus, textarea:focus, select:focus {
           outline: none !important;
           box-shadow: none !important;
