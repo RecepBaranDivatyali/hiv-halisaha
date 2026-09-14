@@ -69,7 +69,7 @@ export const AppGuideModal: React.FC<AppGuideModalProps> = ({ visible, onClose }
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.modalContent}>
           {/* Header */}

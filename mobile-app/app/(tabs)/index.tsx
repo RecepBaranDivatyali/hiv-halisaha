@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Fonts } from '@/constants/theme';
 import { useRouter } from 'expo-router';
 import { SideMenu } from '@/components/SideMenu';
@@ -16,6 +17,8 @@ import { Bouncable } from '@/components/Bouncable';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useTheme } from '@/context/ThemeContext';
 
+const GUIDE_STORAGE_KEY = '@hiv_guide_viewed';
+
 export default function HomeScreen() {
   const router = useRouter();
   const { matches, reloadMatches } = useMatches();
@@ -28,7 +31,28 @@ export default function HomeScreen() {
   const [createMatchVisible, setCreateMatchVisible] = useState(false);
   const [notifModalVisible, setNotifModalVisible] = useState(false);
   const [guideVisible, setGuideVisible] = useState(false);
+  const [hasViewedGuide, setHasViewedGuide] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem(GUIDE_STORAGE_KEY).then(val => {
+      if (val === 'true') {
+        setHasViewedGuide(true);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const handleOpenGuide = async () => {
+    setGuideVisible(true);
+    if (!hasViewedGuide) {
+      setHasViewedGuide(true);
+      try {
+        await AsyncStorage.setItem(GUIDE_STORAGE_KEY, 'true');
+      } catch (e) {
+        console.error('Rehber görüldü kaydedilemedi:', e);
+      }
+    }
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -56,7 +80,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} onOpenGuide={() => setGuideVisible(true)} />
+      <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} onOpenGuide={handleOpenGuide} />
       <NotificationCenterModal visible={notifModalVisible} onClose={() => setNotifModalVisible(false)} />
       <AppGuideModal visible={guideVisible} onClose={() => setGuideVisible(false)} />
       <ToastNotification toast={toast} onDismiss={() => setToast(null)} />
@@ -92,6 +116,17 @@ export default function HomeScreen() {
         </TouchableOpacity>
         <Text style={styles.brandText}>H.İ.V.</Text>
         <View style={styles.headerRight}>
+          {hasViewedGuide && (
+            <TouchableOpacity 
+              style={styles.iconBtn} 
+              onPress={handleOpenGuide}
+              activeOpacity={0.7}
+              accessibilityLabel="Kullanım Rehberi"
+              accessibilityRole="button"
+            >
+              <MaterialIcons name="help-outline" size={24} color={theme.primary} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity 
             style={styles.iconBtn} 
             onPress={() => router.push('/conversations')}
@@ -121,14 +156,16 @@ export default function HomeScreen() {
         {/* Live Match Countdown Card */}
         {myMatches.length > 0 && <MatchCountdownCard targetHours={2} matchId={myMatches[0].id} />}
 
-        {/* Quick App Guide Banner */}
-        <TouchableOpacity style={styles.guideBanner} activeOpacity={0.85} onPress={() => setGuideVisible(true)}>
-          <View style={styles.guideBannerLeft}>
-            <MaterialIcons name="help-outline" size={20} color={theme.primary} />
-            <Text style={styles.guideBannerText}>H.İ.V. NASIL KULLANILIR? (REHBER)</Text>
-          </View>
-          <MaterialIcons name="chevron-right" size={20} color={theme.primary} />
-        </TouchableOpacity>
+        {/* Quick App Guide Banner (Only shown until viewed) */}
+        {!hasViewedGuide && (
+          <TouchableOpacity style={styles.guideBanner} activeOpacity={0.85} onPress={handleOpenGuide}>
+            <View style={styles.guideBannerLeft}>
+              <MaterialIcons name="help-outline" size={20} color={theme.primary} />
+              <Text style={styles.guideBannerText}>H.İ.V. NASIL KULLANILIR? (REHBER)</Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={20} color={theme.primary} />
+          </TouchableOpacity>
+        )}
 
         {/* HIZLI İŞLEMLER */}
         <View style={styles.sectionHeaderBox}>

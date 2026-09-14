@@ -124,22 +124,7 @@ export default function RootLayout() {
           user-select: text !important;
           -webkit-user-select: text !important;
         }
-        /* Constrain React Native Web Modals within the phone frame on desktop */
-        body.desktop-framed-active [aria-modal="true"] {
-          position: fixed !important;
-          top: var(--phone-frame-top, 60px) !important;
-          left: var(--phone-frame-left, calc(50% - 195px)) !important;
-          width: 390px !important;
-          height: 844px !important;
-          transform: scale(var(--phone-frame-scale, 1)) !important;
-          transform-origin: top left !important;
-          border-radius: var(--phone-frame-radius, 34px) !important;
-          overflow: hidden !important;
-          z-index: 10000 !important;
-          box-shadow: none !important;
-        }
-
-        /* Constrain React Native Web Modal Portal wrapper */
+        /* Constrain React Native Web Modal Portal wrapper to the phone frame */
         body.desktop-framed-active div:has([aria-modal="true"]) {
           position: fixed !important;
           top: var(--phone-frame-top, 60px) !important;
@@ -149,6 +134,19 @@ export default function RootLayout() {
           border-radius: var(--phone-frame-radius, 34px) !important;
           overflow: hidden !important;
           pointer-events: auto !important;
+          z-index: 10000 !important;
+        }
+
+        /* Modal content inside portal wrapper fills the frame container */
+        body.desktop-framed-active [aria-modal="true"] {
+          position: absolute !important;
+          top: 0 !important;
+          left: 0 !important;
+          width: 100% !important;
+          height: 100% !important;
+          border-radius: var(--phone-frame-radius, 34px) !important;
+          overflow: hidden !important;
+          box-shadow: none !important;
         }
       `;
     }
