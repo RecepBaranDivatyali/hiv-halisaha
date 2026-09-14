@@ -36,7 +36,11 @@ export default function MatchesScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} />
+      <SideMenu 
+        visible={menuVisible} 
+        onClose={() => setMenuVisible(false)} 
+        onOpenNotifications={() => setNotifModalVisible(true)} 
+      />
       <NotificationCenterModal visible={notifModalVisible} onClose={() => setNotifModalVisible(false)} />
       <CreateMatchModal 
         visible={createModalVisible} 

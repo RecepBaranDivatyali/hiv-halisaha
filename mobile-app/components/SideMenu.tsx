@@ -11,9 +11,10 @@ interface SideMenuProps {
   visible: boolean;
   onClose: () => void;
   onOpenGuide?: () => void;
+  onOpenNotifications?: () => void;
 }
 
-export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuide }) => {
+export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuide, onOpenNotifications }) => {
   const { theme } = useTheme();
   const styles = useStyles(theme);
   const router = useRouter();
@@ -61,13 +62,22 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
 
   const menuItems = [
     { label: 'PROFİL', icon: 'person', route: '/(tabs)/profile', active: pathname?.includes('profile') },
-    { label: 'NASIL KULLANILIR?', icon: 'help', action: 'guide' },
+    { label: 'BİLDİRİMLER', icon: 'notifications', action: 'notifications' },
     { label: 'AYARLAR', icon: 'settings', route: '/settings', active: pathname?.includes('settings') },
     { label: 'YÖNETİCİ PANELİ', icon: 'admin-panel-settings', action: 'admin' },
-    { label: 'BİLDİRİMLER', icon: 'notifications', route: null, soon: true },
+    { label: 'NASIL KULLANILIR?', icon: 'help', action: 'guide' },
   ];
 
   const handleNavigate = (item: typeof menuItems[0]) => {
+    if (item.action === 'notifications') {
+      onClose();
+      if (onOpenNotifications) {
+        onOpenNotifications();
+      } else {
+        Alert.alert('Bildirimler', 'Yeni bir bildiriminiz bulunmuyor.');
+      }
+      return;
+    }
     if (item.action === 'guide') {
       onClose();
       if (onOpenGuide) onOpenGuide();
@@ -80,10 +90,6 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
       } else {
         Linking.openURL('https://hiv-halisaha.vercel.app/admin');
       }
-      return;
-    }
-    if (item.soon) {
-      Alert.alert('Yakında!', 'Bu özellik yakında eklenecek.', [{ text: 'Tamam' }]);
       return;
     }
     if (item.route) {

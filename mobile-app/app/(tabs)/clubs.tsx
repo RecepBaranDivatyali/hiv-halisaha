@@ -95,7 +95,11 @@ export default function ClubsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} />
+      <SideMenu 
+        visible={menuVisible} 
+        onClose={() => setMenuVisible(false)} 
+        onOpenNotifications={() => setNotifVisible(true)} 
+      />
       <ChallengeModal visible={challengeModalVisible} onClose={() => setChallengeModalVisible(false)} />
       <NotificationCenterModal visible={notifVisible} onClose={() => setNotifVisible(false)} />
       <ClubActionModal 

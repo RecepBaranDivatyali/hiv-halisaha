@@ -76,7 +76,12 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} onOpenGuide={handleOpenGuide} />
+      <SideMenu 
+        visible={menuVisible} 
+        onClose={() => setMenuVisible(false)} 
+        onOpenGuide={handleOpenGuide} 
+        onOpenNotifications={() => setNotifModalVisible(true)}
+      />
       <NotificationCenterModal visible={notifModalVisible} onClose={() => setNotifModalVisible(false)} />
       <AppGuideModal visible={guideVisible} onClose={() => setGuideVisible(false)} />
       <ToastNotification toast={toast} onDismiss={() => setToast(null)} />

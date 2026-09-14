@@ -51,7 +51,11 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} />
+      <SideMenu 
+        visible={menuVisible} 
+        onClose={() => setMenuVisible(false)} 
+        onOpenNotifications={() => setNotifModalVisible(true)} 
+      />
       <BadgeDetailModal badge={selectedBadge} visible={!!selectedBadge} onClose={() => setSelectedBadge(null)} />
       <NotificationCenterModal visible={notifModalVisible} onClose={() => setNotifModalVisible(false)} />
       {/* TopAppBar */}
