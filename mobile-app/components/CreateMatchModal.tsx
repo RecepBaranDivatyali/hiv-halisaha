@@ -5,7 +5,6 @@ import {
   Platform,
 } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
@@ -107,7 +106,21 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   tomorrow.setDate(today.getDate() + 1);
 
   const [selectedDate, setSelectedDate] = useState<Date>(today);
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+
+  // Yaklaşan 21 gün listesi
+  const upcomingDates = useMemo(() => {
+    const list: Date[] = [];
+    for (let i = 0; i < 21; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      list.push(d);
+    }
+    return list;
+  }, []);
+
+  // ── Kaleci Ücretsiz (Muaf) ──────────────────────────────
+  const [isGkFree, setIsGkFree] = useState(false);
 
   // ── Saat ──────────────────────────────────────────────
   const [timePickerOpen, setTimePickerOpen] = useState(false);
@@ -146,7 +159,9 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   };
   const totalPlayersCount = getPlayerCount(selectedMode);
   const totalFeeNum = parseInt(totalFeeInput, 10) || 0;
-  const perPlayerFee = totalPlayersCount > 0 ? Math.round(totalFeeNum / totalPlayersCount) : 0;
+  // 2 kaleci (her iki takımdan 1 kaleci) ücretten muaf
+  const payingPlayersCount = isGkFree ? Math.max(1, totalPlayersCount - 2) : totalPlayersCount;
+  const perPlayerFee = payingPlayersCount > 0 ? Math.round(totalFeeNum / payingPlayersCount) : 0;
 
   // ── Handlers ──────────────────────────────────────────────
   const handlePitchSelect = (pitch: PitchDatabaseItem) => {
@@ -154,11 +169,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     setSelectedSubField(pitch.subFields[0]?.name || 'Tek Saha');
     setPitchPickerOpen(false);
     setPitchSearch('');
-  };
-
-  const handleDateChange = (_: DateTimePickerEvent, date?: Date) => {
-    setShowDatePicker(false);
-    if (date) setSelectedDate(date);
   };
 
   const isToday = (d: Date) => {
@@ -192,6 +202,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       totalFee: totalFeeNum,
       fee: perPlayerFee,
       isSubscription,
+      isGkFree,
       positions: { KL: 1, DF: 2, OS: 2, FV: 1 },
     };
 
@@ -200,7 +211,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
 
       Alert.alert(
         '⚽ Maç İlanı Kaydedildi!',
-        `${fullArenaName}\n${fullDateTime}\nToplam: ${totalFeeNum.toLocaleString('tr-TR')} ₺  •  Kişi Başı: ${perPlayerFee} ₺${isSubscription ? '\n🔄 Haftalık Abonelik Maçı' : ''}`,
+        `${fullArenaName}\n${fullDateTime}\nToplam: ${totalFeeNum.toLocaleString('tr-TR')} ₺  •  Kişi Başı: ${perPlayerFee} ₺${isGkFree ? ' (2 Kaleci Muaf)' : ''}${isSubscription ? '\n🔄 Haftalık Abonelik Maçı' : ''}`,
         [{ text: 'Maç Odasına Git', onPress: () => { if (onSuccess) onSuccess((created || newMatch) as any); onClose(); } }]
       );
     } catch {
@@ -313,7 +324,8 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.datePickerBtn, !isToday(selectedDate) && !isTomorrow(selectedDate) && styles.datePickerBtnActive]}
-                  onPress={() => setShowDatePicker(true)}
+                  onPress={() => setDatePickerOpen(true)}
+                  activeOpacity={0.8}
                 >
                   <MaterialIcons name="calendar-today" size={15} color={!isToday(selectedDate) && !isTomorrow(selectedDate) ? theme.background : theme.primary} />
                   <Text style={[styles.datePickerBtnText, !isToday(selectedDate) && !isTomorrow(selectedDate) && { color: theme.background }]}>
@@ -327,17 +339,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                 <MaterialIcons name="event" size={16} color={theme.primary} />
                 <Text style={styles.dateDisplayText}>{dateDisplayText}</Text>
               </View>
-
-              {showDatePicker && (
-                <DateTimePicker
-                  value={selectedDate}
-                  mode="date"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  minimumDate={new Date()}
-                  onChange={handleDateChange}
-                  locale="tr-TR"
-                />
-              )}
             </View>
 
             {/* ── 3. SAAT SEÇİMİ ── */}
@@ -379,14 +380,15 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                     key={m}
                     style={[styles.modeChip, selectedMode === m && styles.modeChipActive]}
                     onPress={() => setSelectedMode(m)}
+                    activeOpacity={0.8}
                   >
                     <Text style={[styles.modeChipText, selectedMode === m && styles.modeChipTextActive]}>{m}</Text>
-                    {m === '7v7' && <Text style={[styles.modeChipSub, selectedMode === m && { color: theme.onPrimary }]}>Popüler</Text>}
                   </TouchableOpacity>
                 ))}
                 <TouchableOpacity
                   style={[styles.modeChip, styles.modeChipOther, showAllModes && styles.modeChipActive]}
                   onPress={() => setShowAllModes(!showAllModes)}
+                  activeOpacity={0.8}
                 >
                   <Text style={[styles.modeChipText, showAllModes && styles.modeChipTextActive]}>
                     {showAllModes ? 'Kapat ▲' : 'Diğer ▼'}
@@ -399,10 +401,11 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                   {OTHER_MODES.map(m => (
                     <TouchableOpacity
                       key={m}
-                      style={[styles.subModeChip, selectedMode === m && styles.subModeChipActive]}
+                      style={[styles.modeChip, selectedMode === m && styles.modeChipActive]}
                       onPress={() => setSelectedMode(m)}
+                      activeOpacity={0.8}
                     >
-                      <Text style={[styles.subModeText, selectedMode === m && styles.subModeTextActive]}>{m}</Text>
+                      <Text style={[styles.modeChipText, selectedMode === m && styles.modeChipTextActive]}>{m}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -423,11 +426,44 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                   placeholderTextColor="#adaaaa"
                 />
               </View>
+
+              {/* Kaleciler Ödemiyor Butonu */}
+              <TouchableOpacity
+                style={[styles.gkFreeToggle, isGkFree && styles.gkFreeToggleActive]}
+                onPress={() => setIsGkFree(!isGkFree)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.gkFreeLeft}>
+                  <MaterialIcons
+                    name="sports-handball"
+                    size={20}
+                    color={isGkFree ? theme.primary : theme.textMuted}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.gkFreeTitle, isGkFree && { color: theme.primary }]}>
+                      🧤 Kaleciler Ödemez (Ücretsiz Kaleci)
+                    </Text>
+                    <Text style={styles.gkFreeSub}>
+                      {isGkFree
+                        ? '2 kaleci muaf • Tutar saha oyuncularına bölünür'
+                        : 'Tüm oyuncular ücreti eşit paylaşır'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={[styles.gkFreeSwitch, isGkFree && styles.gkFreeSwitchActive]}>
+                  <View style={[styles.gkFreeThumb, isGkFree && styles.gkFreeThumbActive]} />
+                </View>
+              </TouchableOpacity>
+
+              {/* Kişi başı ücret rozeti */}
               <View style={styles.perPlayerBadge}>
                 <MaterialIcons name="calculate" size={18} color={theme.primary} />
                 <Text style={styles.perPlayerText}>
-                  {totalFeeNum.toLocaleString('tr-TR')} ₺ ÷ {totalPlayersCount} oyuncu ={' '}
-                  <Text style={{ color: theme.primary, fontFamily: Fonts.headlineBold }}>{perPlayerFee} ₺ / kişi</Text>
+                  {totalFeeNum.toLocaleString('tr-TR')} ₺ ÷ {payingPlayersCount} oyuncu{' '}
+                  {isGkFree && <Text style={{ color: theme.primary, fontFamily: Fonts.headlineBold }}>(2 Kaleci Muaf) </Text>}= {' '}
+                  <Text style={{ color: theme.primary, fontFamily: Fonts.headlineBold }}>
+                    {perPlayerFee} ₺ / kişi
+                  </Text>
                 </Text>
               </View>
             </View>
@@ -593,6 +629,102 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
         </View>
       </Modal>
 
+      {/* ── TARİH PICKER MODAL ── */}
+      <Modal visible={datePickerOpen} transparent animationType="slide" onRequestClose={() => setDatePickerOpen(false)}>
+        <View style={styles.pickerOverlay}>
+          <View style={styles.pickerSheet}>
+            <View style={styles.pickerHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <MaterialIcons name="calendar-today" size={20} color={theme.primary} />
+                <Text style={styles.pickerTitle}>TARİH SEÇİN</Text>
+              </View>
+              <TouchableOpacity style={styles.closeBtn} onPress={() => setDatePickerOpen(false)}>
+                <MaterialIcons name="close" size={20} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Web Native Date Input Helper */}
+            {Platform.OS === 'web' && (
+              <View style={styles.webDateInputBox}>
+                <MaterialIcons name="event" size={18} color={theme.primary} />
+                <Text style={styles.webDateInputLabel}>Takvimden Seç:</Text>
+                <input
+                  type="date"
+                  style={{
+                    backgroundColor: theme.surfaceContainerHighest,
+                    color: '#ffffff',
+                    border: `1px solid ${theme.border}`,
+                    borderRadius: '8px',
+                    padding: '6px 10px',
+                    fontSize: '13px',
+                    fontFamily: 'inherit',
+                    cursor: 'pointer',
+                    outline: 'none',
+                  }}
+                  min={new Date().toISOString().split('T')[0]}
+                  value={selectedDate.toISOString().split('T')[0]}
+                  onChange={(e: any) => {
+                    if (e.target.value) {
+                      const [y, m, d] = e.target.value.split('-').map(Number);
+                      setSelectedDate(new Date(y, m - 1, d));
+                      setDatePickerOpen(false);
+                    }
+                  }}
+                />
+              </View>
+            )}
+
+            {/* Yaklaşan 21 Gün Listesi */}
+            <FlatList
+              data={upcomingDates}
+              keyExtractor={item => item.toISOString()}
+              contentContainerStyle={styles.dateList}
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item }) => {
+                const isSelected = item.toDateString() === selectedDate.toDateString();
+                const isItemToday = isToday(item);
+                const isItemTomorrow = isTomorrow(item);
+                const tag = isItemToday ? 'Bugün' : isItemTomorrow ? 'Yarın' : null;
+
+                return (
+                  <TouchableOpacity
+                    style={[styles.dateListItem, isSelected && styles.dateListItemActive]}
+                    onPress={() => {
+                      setSelectedDate(item);
+                      setDatePickerOpen(false);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.dateListLeft}>
+                      <View style={[styles.dateListIconBox, isSelected && { backgroundColor: `${theme.primary}33` }]}>
+                        <MaterialIcons
+                          name="event"
+                          size={18}
+                          color={isSelected ? theme.primary : theme.textMuted}
+                        />
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={[styles.dateListName, isSelected && { color: theme.primary }]}>
+                          {formatDateTR(item)}
+                        </Text>
+                        {tag && (
+                          <View style={[styles.dateTagBadge, { backgroundColor: isSelected ? theme.primary : `${theme.primary}26` }]}>
+                            <Text style={[styles.dateTagText, { color: isSelected ? theme.background : theme.primary }]}>
+                              {tag}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                    {isSelected && <MaterialIcons name="check" size={20} color={theme.primary} />}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
+
     </Modal>
   );
 };
@@ -665,22 +797,29 @@ const useStyles = (theme: any) => StyleSheet.create({
 
   // Format
   modeRow: { flexDirection: 'row', gap: 8 },
-  modeChip: { flex: 1, alignItems: 'center', backgroundColor: theme.surfaceContainer, borderRadius: 10, paddingVertical: 11, borderWidth: 1, borderColor: theme.border, gap: 2 },
+  modeChip: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surfaceContainer, borderRadius: 10, paddingVertical: 11, borderWidth: 1, borderColor: theme.border },
   modeChipOther: { borderColor: `${theme.primary}33` },
   modeChipActive: { backgroundColor: theme.primary, borderColor: theme.primary },
-  modeChipText: { fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.text },
+  modeChipText: { fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.text, textAlign: 'center' },
   modeChipTextActive: { color: theme.onPrimary },
-  modeChipSub: { fontFamily: Fonts.body, fontSize: 9, color: theme.primary },
-  otherModesRow: { flexDirection: 'row', gap: 8 },
-  subModeChip: { flex: 1, alignItems: 'center', backgroundColor: theme.surfaceContainerHighest, borderRadius: 8, paddingVertical: 9, borderWidth: 1, borderColor: 'transparent' },
-  subModeChipActive: { backgroundColor: `${theme.primary}26`, borderColor: theme.primary },
-  subModeText: { fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.text },
-  subModeTextActive: { color: theme.primary },
+  otherModesRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
 
   // Ücret
   feeInputWrap: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: theme.surfaceContainer, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: theme.border },
   currencySymbol: { fontFamily: Fonts.headlineBold, fontSize: 22, color: theme.primary },
   feeInput: { flex: 1, fontFamily: Fonts.headlineBold, fontSize: 22, color: theme.text },
+
+  // Kaleci Muafiyet Toggle
+  gkFreeToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.surfaceContainer, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: theme.border, gap: 10 },
+  gkFreeToggleActive: { borderColor: `${theme.primary}80`, backgroundColor: `${theme.primary}0D` },
+  gkFreeLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  gkFreeTitle: { fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.text },
+  gkFreeSub: { fontFamily: Fonts.body, fontSize: 10, color: theme.textMuted, marginTop: 2 },
+  gkFreeSwitch: { width: 44, height: 24, borderRadius: 12, backgroundColor: theme.surfaceContainerHighest, justifyContent: 'center', paddingHorizontal: 2 },
+  gkFreeSwitchActive: { backgroundColor: theme.primary },
+  gkFreeThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: theme.textMuted },
+  gkFreeThumbActive: { backgroundColor: theme.background, alignSelf: 'flex-end' },
+
   perPlayerBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: `${theme.primary}1A`, padding: 12, borderRadius: 10 },
   perPlayerText: { fontFamily: Fonts.body, fontSize: 12, color: theme.text },
 
@@ -732,4 +871,16 @@ const useStyles = (theme: any) => StyleSheet.create({
   timeListItemActive: { backgroundColor: theme.primary, borderColor: theme.primary },
   timeListText: { fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.text },
   timeListTextActive: { color: theme.background },
+
+  // Tarih Picker
+  dateList: { paddingHorizontal: 20, paddingVertical: 12, gap: 8 },
+  dateListItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: theme.borderSubtle },
+  dateListItemActive: { backgroundColor: theme.surfaceContainer, borderColor: `${theme.primary}80` },
+  dateListLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  dateListIconBox: { width: 38, height: 38, borderRadius: 19, backgroundColor: theme.surfaceContainerHighest, alignItems: 'center', justifyContent: 'center' },
+  dateListName: { fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.text },
+  dateTagBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  dateTagText: { fontFamily: Fonts.headlineBold, fontSize: 10 },
+  webDateInputBox: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 20, marginTop: 12, marginBottom: 6, backgroundColor: theme.surfaceContainer, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border },
+  webDateInputLabel: { fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.text, flex: 1 },
 });
