@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Modal, ScrollView } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
@@ -52,12 +52,21 @@ export const AppGuideModal: React.FC<AppGuideModalProps> = ({ visible, onClose }
   const styles = useStyles(theme);
   const [currentIdx, setCurrentIdx] = useState(0);
 
+  useEffect(() => {
+    if (visible) {
+      setCurrentIdx(0);
+    }
+  }, [visible]);
+
+  if (!visible) return null;
+
   const slide = GUIDE_SLIDES[currentIdx];
 
   const handleNext = () => {
     if (currentIdx < GUIDE_SLIDES.length - 1) {
       setCurrentIdx(currentIdx + 1);
     } else {
+      setCurrentIdx(0);
       onClose();
     }
   };
@@ -68,8 +77,13 @@ export const AppGuideModal: React.FC<AppGuideModalProps> = ({ visible, onClose }
     }
   };
 
+  const handleClose = () => {
+    setCurrentIdx(0);
+    onClose();
+  };
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
       <View style={styles.overlay}>
         <View style={styles.modalContent}>
           {/* Header */}
@@ -78,7 +92,7 @@ export const AppGuideModal: React.FC<AppGuideModalProps> = ({ visible, onClose }
               <MaterialIcons name="help-outline" size={20} color={theme.primary} />
               <Text style={styles.headerTitle} numberOfLines={1}>H.İ.V. NASIL KULLANILIR?</Text>
             </View>
-            <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.closeBtn} onPress={handleClose} activeOpacity={0.7}>
               <MaterialIcons name="close" size={18} color={theme.text} />
             </TouchableOpacity>
           </View>

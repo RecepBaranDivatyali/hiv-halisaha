@@ -42,15 +42,11 @@ export default function HomeScreen() {
     }).catch(() => {});
   }, []);
 
-  const handleOpenGuide = async () => {
+  const handleOpenGuide = () => {
     setGuideVisible(true);
     if (!hasViewedGuide) {
       setHasViewedGuide(true);
-      try {
-        await AsyncStorage.setItem(GUIDE_STORAGE_KEY, 'true');
-      } catch (e) {
-        console.error('Rehber görüldü kaydedilemedi:', e);
-      }
+      AsyncStorage.setItem(GUIDE_STORAGE_KEY, 'true').catch(() => {});
     }
   };
 

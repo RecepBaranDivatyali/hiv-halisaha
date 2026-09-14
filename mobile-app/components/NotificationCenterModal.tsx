@@ -53,6 +53,8 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
 
   const unreadCount = notifs.filter(n => !n.read).length;
 
+  if (!visible) return null;
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
