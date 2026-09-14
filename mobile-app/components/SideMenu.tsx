@@ -64,7 +64,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
     { label: 'PROFİL', icon: 'person', route: '/(tabs)/profile', active: pathname?.includes('profile') },
     { label: 'BİLDİRİMLER', icon: 'notifications', action: 'notifications' },
     { label: 'AYARLAR', icon: 'settings', route: '/settings', active: pathname?.includes('settings') },
-    { label: 'YÖNETİCİ PANELİ', icon: 'admin-panel-settings', action: 'admin' },
+    ...(user?.role === 'admin' ? [{ label: 'YÖNETİCİ PANELİ', icon: 'admin-panel-settings', action: 'admin' }] : []),
     { label: 'NASIL KULLANILIR?', icon: 'help', action: 'guide' },
   ];
 

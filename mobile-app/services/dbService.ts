@@ -35,6 +35,7 @@ export interface MatchModel {
   isSubscription?: boolean;
   status: 'active' | 'completed' | 'cancelled';
   score?: string;
+  joinTerms?: number;
   slots?: {
     [key: string]: {
       uid: string;
@@ -127,6 +128,26 @@ export const dbService = {
       return true;
     } catch (error) {
       console.error("Profil güncelleme hatası:", error);
+      throw error;
+    }
+  },
+
+  updateUserReliability: async (userId: string, penalty: number) => {
+    try {
+      const userRef = doc(db, 'users', userId);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        const currentScore = userSnap.data()?.stats?.reliabilityScore ?? 100;
+        const newScore = Math.max(0, currentScore - penalty);
+        await updateDoc(userRef, {
+          'stats.reliabilityScore': newScore,
+          updatedAt: serverTimestamp()
+        });
+        return newScore;
+      }
+      return 100;
+    } catch (error) {
+      console.error("Güvenilirlik puanı düşürme hatası:", error);
       throw error;
     }
   },
@@ -272,7 +293,7 @@ export const dbService = {
     }
   },
 
-  saveMatchRating: async (matchId: string, ratingData: { userId: string; rating: number; mvpNominee?: string; comment?: string }) => {
+  saveMatchRating: async (matchId: string, ratingData: { userId: string; rating: number; mvpNominee?: string; comment?: string; ratedPlayerId?: string; ratedPlayerName?: string }) => {
     try {
       const ratingsRef = collection(db, 'ratings');
       await addDoc(ratingsRef, {
@@ -283,6 +304,35 @@ export const dbService = {
       return true;
     } catch (error) {
       console.error("Puan kaydetme hatası:", error);
+      throw error;
+    }
+  },
+
+  updateMatchScore: async (matchId: string, score: string) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      await updateDoc(matchRef, {
+        score,
+        status: 'completed',
+        completedAt: serverTimestamp()
+      });
+      return true;
+    } catch (error) {
+      console.error("Maç skoru güncelleme hatası:", error);
+      throw error;
+    }
+  },
+
+  updateMatchTerms: async (matchId: string, joinTerms: number) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      await updateDoc(matchRef, {
+        joinTerms,
+        updatedAt: serverTimestamp()
+      });
+      return true;
+    } catch (error) {
+      console.error("Maç katılım şartları güncelleme hatası:", error);
       throw error;
     }
   },

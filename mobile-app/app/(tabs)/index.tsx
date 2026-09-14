@@ -159,7 +159,21 @@ export default function HomeScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
       >
         {/* Live Match Countdown Card */}
-        {myMatches.length > 0 && <MatchCountdownCard targetHours={2} matchId={myMatches[0].id} />}
+        {myMatches.length > 0 ? (
+          <MatchCountdownCard 
+            matchId={myMatches[0].id} 
+            arena={myMatches[0].arena}
+            dateTime={myMatches[0].dateTime}
+            mode={myMatches[0].mode}
+          />
+        ) : upcomingMatches.length > 0 ? (
+          <MatchCountdownCard 
+            matchId={upcomingMatches[0].id} 
+            arena={upcomingMatches[0].arena}
+            dateTime={upcomingMatches[0].dateTime}
+            mode={upcomingMatches[0].mode}
+          />
+        ) : null}
 
         {/* Quick App Guide Banner (Only shown until viewed) */}
         {!hasViewedGuide && (

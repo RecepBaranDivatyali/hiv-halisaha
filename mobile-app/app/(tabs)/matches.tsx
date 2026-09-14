@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { SideMenu } from '@/components/SideMenu';
 import { CreateMatchModal } from '@/components/CreateMatchModal';
 import { useMatches } from '@/hooks/use-matches';
+import { useAuth } from '@/hooks/use-auth';
 import Animated, { FadeInRight } from 'react-native-reanimated';
 import { NotificationCenterModal } from '@/components/NotificationCenterModal';
 import { Skeleton } from '@/components/Skeleton';
@@ -14,6 +15,7 @@ import { useTheme } from '@/context/ThemeContext';
 
 export default function MatchesScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const { matches, pastMatches, loading, reloadMatches } = useMatches();
   const { theme } = useTheme();
   const styles = useStyles(theme);
@@ -142,7 +144,7 @@ export default function MatchesScreen() {
                 </TouchableOpacity>
               </View>
             ) : matches.map((match, idx) => {
-              const isOrganizer = match.organizer?.toLowerCase().includes('siz') || match.organizer?.toLowerCase().includes('kaptan');
+              const isOrganizer = (user?.uid && match.organizerId === user.uid) || match.organizer?.toLowerCase().includes('siz');
               return (
                 <Animated.View key={match.id || idx} entering={FadeInRight.delay(idx * 100).springify()}>
                   <View style={[styles.matchCard, { borderLeftColor: isOrganizer ? theme.primary : theme.secondary }]}>

@@ -7,6 +7,7 @@ import { DirectPaymentModal } from '@/components/DirectPaymentModal';
 import { PitchReviewModal } from '@/components/PitchReviewModal';
 import { MatchStoryModal } from '@/components/MatchStoryModal';
 import { WeatherAlertCard } from '@/components/WeatherAlertCard';
+import { AppModal as Modal } from '@/components/AppModal';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
 import { useMatches } from '@/hooks/use-matches';
@@ -46,12 +47,19 @@ export default function MatchRoomScreen() {
   const matchDateTime = activeMatch?.dateTime ?? 'Bugün, 21:00';
   const matchCity = activeMatch?.city ?? 'İstanbul';
   const isOrganizer = activeMatch?.organizer?.toLowerCase().includes('siz') || (activeMatch?.organizerId && activeMatch?.organizerId === user?.uid);
-  const [joinTerms, setJoinTerms] = useState(0);
+  const [joinTerms, setJoinTerms] = useState(activeMatch?.joinTerms ?? 0);
   const [userSlot, setUserSlot] = useState<string | null>(null);
+  const [activeTeam, setActiveTeam] = useState<'A' | 'B'>('A');
   const [directPayVisible, setDirectPayVisible] = useState(false);
   const [pitchReviewVisible, setPitchReviewVisible] = useState(false);
   const [storyModalVisible, setStoryModalVisible] = useState(false);
   
+  // Score modal state for captain
+  const [scoreModalVisible, setScoreModalVisible] = useState(false);
+  const [scoreTeamA, setScoreTeamA] = useState('7');
+  const [scoreTeamB, setScoreTeamB] = useState('5');
+  const [submittingScore, setSubmittingScore] = useState(false);
+
   // Payment State
   const [splitMode, setSplitMode] = useState<'separate' | 'joint'>('separate');
   const [payMethod, setPayMethod] = useState<'cash' | 'online'>('cash');
@@ -65,6 +73,7 @@ export default function MatchRoomScreen() {
         if (doc) {
           setRemoteMatch(doc);
           if (doc.totalFee) setTotalMatchFee(doc.totalFee);
+          if (doc.joinTerms !== undefined) setJoinTerms(doc.joinTerms);
         }
       });
       return () => {
@@ -96,6 +105,23 @@ export default function MatchRoomScreen() {
     if (matchTotalFee) setTotalMatchFee(matchTotalFee);
   }, [matchTotalFee]);
 
+  // Sync userSlot from Firestore match slots
+  React.useEffect(() => {
+    if (activeMatch?.slots && user?.uid) {
+      const foundSlot = Object.keys(activeMatch.slots).find(
+        (key) => activeMatch.slots?.[key]?.uid === user.uid
+      );
+      if (foundSlot) {
+        setUserSlot(foundSlot);
+        if (foundSlot.startsWith('B_')) {
+          setActiveTeam('B');
+        } else {
+          setActiveTeam('A');
+        }
+      }
+    }
+  }, [activeMatch?.slots, user?.uid]);
+
   const [playersPayment, setPlayersPayment] = useState<PlayerPayment[]>([]);
 
   const togglePlayerPayment = (id: string) => {
@@ -110,14 +136,22 @@ export default function MatchRoomScreen() {
     );
   };
 
-  const [isGkFree, setIsGkFree] = useState(false);
+  const [isGkFree, setIsGkFree] = useState(activeMatch?.isGkFree ?? false);
+
+  React.useEffect(() => {
+    if (activeMatch?.isGkFree !== undefined) {
+      setIsGkFree(activeMatch.isGkFree);
+    }
+  }, [activeMatch?.isGkFree]);
 
   const collectedAmount = playersPayment
     .filter((p) => p.paid)
     .reduce((sum, p) => sum + p.amount, 0);
 
-  // If GK is free, divide total fee by 12 field players instead of 14
-  const activePayersCount = isGkFree ? 12 : 14;
+  // Dynamic players and fee calculation based on match mode
+  const modePlayersPerTeam = parseInt(matchMode.split('v')[0], 10) || 7;
+  const totalPlayersCount = modePlayersPerTeam * 2;
+  const activePayersCount = isGkFree ? Math.max(1, totalPlayersCount - 2) : totalPlayersCount;
   const perPlayerFee = Math.round(totalMatchFee / activePayersCount);
 
   // Chat State
@@ -150,52 +184,224 @@ export default function MatchRoomScreen() {
     }
   };
 
-  const handleSelectSlot = async (slotKey: string, slotLabel: string) => {
-    if (userSlot === slotKey) {
-      setUserSlot(null);
-      if (params.matchId) {
-        try {
-          await dbService.leaveMatchSlot(params.matchId, slotKey);
-          Alert.alert('Ayrıldınız', `${slotLabel} mevkisinden ayrıldınız.`);
-        } catch (e) {
-          console.error('Slot ayrılma hatası:', e);
-          setUserSlot(slotKey); // Rollback
-          Alert.alert('Hata', 'Mevkiden ayrılırken bir sorun oluştu.');
+  // Remaining hours calculation for tiered penalty
+  const calculateHoursUntilMatch = (dateTimeStr: string): number => {
+    try {
+      const timeMatch = dateTimeStr.match(/(\d{1,2}):(\d{2})/);
+      const now = new Date();
+      if (timeMatch) {
+        const h = parseInt(timeMatch[1], 10);
+        const m = parseInt(timeMatch[2], 10);
+        const target = new Date();
+        target.setHours(h, m, 0, 0);
+        if (target.getTime() < now.getTime()) {
+          target.setDate(target.getDate() + 1);
         }
+        return (target.getTime() - now.getTime()) / (1000 * 3600);
+      }
+    } catch {}
+    return 25; // Default: > 24 hours
+  };
+
+  const executeLeaveSlot = async (slotKey: string, slotLabel: string, penaltyPercent: number) => {
+    setUserSlot(null);
+    if (params.matchId) {
+      try {
+        await dbService.leaveMatchSlot(params.matchId, slotKey, user?.uid);
+        if (penaltyPercent > 0 && user?.uid) {
+          const newScore = await dbService.updateUserReliability(user.uid, penaltyPercent);
+          Alert.alert(
+            'Mevkiden Ayrıldınız',
+            `${slotLabel} mevkisinden ayrıldınız.\n\n⚠️ Geç iptal nedeniyle Güvenilirlik Puanınız %${penaltyPercent} düşürüldü. (Yeni Puanınız: %${newScore})`
+          );
+        } else {
+          Alert.alert('Ayrıldınız', `${slotLabel} mevkisinden ayrıldınız.`);
+        }
+      } catch (e) {
+        console.error('Slot ayrılma hatası:', e);
+        setUserSlot(slotKey); // Rollback
+        Alert.alert('Hata', 'Mevkiden ayrılırken bir sorun oluştu.');
       }
     } else {
-      const oldSlot = userSlot;
-      setUserSlot(slotKey);
-      if (params.matchId) {
-        try {
-          if (oldSlot) {
-            await dbService.leaveMatchSlot(params.matchId, oldSlot);
-          }
-          await dbService.joinMatchSlot(params.matchId, slotKey, {
-            uid: user?.uid || 'anon',
-            name: user?.name || 'Oyuncu',
-            avatar: user?.avatar,
-            position: slotLabel
-          });
-          Alert.alert('Kadroya Girildi', `${slotLabel} mevkiine geçtiniz.`);
-        } catch (e) {
-          console.error('Slot katılma hatası:', e);
-          setUserSlot(oldSlot); // Rollback
-          Alert.alert('Hata', 'Mevkiye katılırken bir sorun oluştu veya mevki dolmuş olabilir.');
-        }
+      Alert.alert('Ayrıldınız', `${slotLabel} mevkisinden ayrıldınız.`);
+    }
+  };
+
+  const handleSelectSlot = async (slotKey: string, slotLabel: string) => {
+    if (userSlot === slotKey) {
+      // User is attempting to leave the slot -> apply tiered penalty!
+      const hoursLeft = calculateHoursUntilMatch(matchDateTime);
+      if (hoursLeft <= 2) {
+        Alert.alert(
+          '🚨 ACİL MAÇ BOZMA UYARISI',
+          `Maça 2 saatten az süre kaldı (${hoursLeft.toFixed(1)} saat)! Son dakika ayrılmak kadroyu eksik bırakır ve maçı tehlikeye atar.\n\nKadrodan ayrılırsanız Güvenilirlik Puanınız %15 düşürülecektir. Devam edilsin mi?`,
+          [
+            { text: 'Vazgeç', style: 'cancel' },
+            { 
+              text: 'Evet, Ayrıl (%15 Ceza)', 
+              style: 'destructive',
+              onPress: () => executeLeaveSlot(slotKey, slotLabel, 15)
+            }
+          ]
+        );
+      } else if (hoursLeft <= 6) {
+        Alert.alert(
+          '⚠️ Ciddi İptal Uyarısı',
+          `Maça 6 saatten az süre kaldı (${hoursLeft.toFixed(1)} saat)! Kadroyu eksik bırakmak maçı riske atar.\n\nAyrılırsanız Güvenilirlik Puanınız %8 düşecektir. Devam etmek istiyor musunuz?`,
+          [
+            { text: 'Vazgeç', style: 'cancel' },
+            { 
+              text: 'Ayrıl (%8 Ceza)', 
+              style: 'destructive',
+              onPress: () => executeLeaveSlot(slotKey, slotLabel, 8)
+            }
+          ]
+        );
+      } else if (hoursLeft <= 24) {
+        Alert.alert(
+          '⚠️ Geç İptal Uyarısı',
+          `Maça 24 saatten az süre kaldı (${Math.round(hoursLeft)} saat). Ayrılırsanız Güvenilirlik Puanınız %3 düşecektir. Onaylıyor musunuz?`,
+          [
+            { text: 'Vazgeç', style: 'cancel' },
+            { 
+              text: 'Ayrıl (%3 Ceza)', 
+              style: 'destructive',
+              onPress: () => executeLeaveSlot(slotKey, slotLabel, 3)
+            }
+          ]
+        );
       } else {
-        Alert.alert('Kadroya Girildi', `${slotLabel} mevkiine geçtiniz.`);
+        Alert.alert(
+          'Kadrodan Ayrıl',
+          `${slotLabel} mevkisinden ayrılmak istediğinize emin misiniz? (Maça 24 saatten fazla olduğu için ceza uygulanmaz)`,
+          [
+            { text: 'İptal', style: 'cancel' },
+            { text: 'Ayrıl', style: 'destructive', onPress: () => executeLeaveSlot(slotKey, slotLabel, 0) }
+          ]
+        );
       }
+      return;
+    }
+
+    // Check if slot is occupied by someone else
+    const existingOccupant = activeMatch?.slots?.[slotKey];
+    if (existingOccupant && existingOccupant.uid !== user?.uid) {
+      Alert.alert('Mevki Dolu', `Bu mevki ${existingOccupant.name} tarafından doldurulmuştur.`);
+      return;
+    }
+
+    const oldSlot = userSlot;
+    setUserSlot(slotKey);
+    if (params.matchId) {
+      try {
+        if (oldSlot) {
+          await dbService.leaveMatchSlot(params.matchId, oldSlot, user?.uid);
+        }
+        await dbService.joinMatchSlot(params.matchId, slotKey, {
+          uid: user?.uid || 'anon',
+          name: user?.name || 'Oyuncu',
+          avatar: user?.avatar,
+          position: slotLabel
+        });
+        Alert.alert('Kadroya Girildi', `${slotLabel} mevkiine geçtiniz.`);
+      } catch (e) {
+        console.error('Slot katılma hatası:', e);
+        setUserSlot(oldSlot); // Rollback
+        Alert.alert('Hata', 'Mevkiye katılırken bir sorun oluştu veya mevki dolmuş olabilir.');
+      }
+    } else {
+      Alert.alert('Kadroya Girildi', `${slotLabel} mevkiine geçtiniz.`);
     }
   };
 
   const handleConfirmTerms = async () => {
-    Alert.alert('✓ Şartlar Onaylandı', 'Maç katılım şartları kaydedildi.', [{ text: 'Tamam' }]);
+    if (params.matchId) {
+      try {
+        await dbService.updateMatchTerms(params.matchId, joinTerms);
+        Alert.alert('✓ Şartlar Kaydedildi', 'Maç katılım kuralları başarıyla güncellendi.', [{ text: 'Tamam' }]);
+      } catch (e) {
+        Alert.alert('Hata', 'Katılım şartları güncellenirken bir sorun oluştu.');
+      }
+    } else {
+      Alert.alert('✓ Şartlar Onaylandı', 'Maç katılım şartları kaydedildi.', [{ text: 'Tamam' }]);
+    }
   };
 
-  const openVenueLocation = () => {
-    const venue = encodeURIComponent(matchArena + ' ' + matchCity);
-    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${venue}`);
+  const handleFinishMatch = async () => {
+    if (submittingScore) return;
+    setSubmittingScore(true);
+    try {
+      const finalScore = `${scoreTeamA.trim()} - ${scoreTeamB.trim()}`;
+      if (params.matchId) {
+        await dbService.updateMatchScore(params.matchId, finalScore);
+      }
+      setScoreModalVisible(false);
+      Alert.alert(
+        '🏆 Maç Tamamlandı!',
+        `Maç skoru ${finalScore} olarak sisteme işlendi. Şimdi maçtaki oyuncuları puanlayabilirsiniz.`,
+        [
+          { 
+            text: 'Oyuncuları Puanla', 
+            onPress: () => router.push({ pathname: '/rate-match', params: { matchId: activeMatchId, matchScore: finalScore } }) 
+          },
+          { text: 'Tamam', onPress: () => router.back() }
+        ]
+      );
+    } catch (e) {
+      console.error('Maç tamamlama hatası:', e);
+      Alert.alert('Hata', 'Skor kaydedilirken bir sorun oluştu.');
+    } finally {
+      setSubmittingScore(false);
+    }
+  };
+
+  // Player counts for Team A & Team B
+  const matchSlots = activeMatch?.slots || {};
+  const teamAPlayers = Object.keys(matchSlots).filter(k => 
+    (k.startsWith('A_') || (!k.startsWith('B_') && ['FORVET', 'OS_SOL', 'OS_SAG', 'DEF_SOL', 'DEF_SAG', 'KALECI', 'KAPTAN', 'OS_ORTA'].includes(k))) && matchSlots[k]
+  );
+  const teamBPlayers = Object.keys(matchSlots).filter(k => k.startsWith('B_') && matchSlots[k]);
+  const teamACount = teamAPlayers.length;
+  const teamBCount = teamBPlayers.length;
+
+  const renderSlotItem = (keySuffix: string, roleName: string, numberStr: string) => {
+    const slotKey = `${activeTeam}_${keySuffix}`;
+    const isSelectedByMe = userSlot === slotKey;
+    const legacyKey = keySuffix;
+    const occupant = activeMatch?.slots?.[slotKey] || (activeTeam === 'A' ? activeMatch?.slots?.[legacyKey] : null);
+    const isOccupied = !!occupant;
+    const isMySlot = isSelectedByMe || (occupant && occupant.uid === user?.uid);
+    const teamColor = activeTeam === 'A' ? theme.primary : theme.secondary;
+
+    const avatarUrl = isMySlot
+      ? (user?.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG')
+      : (occupant?.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuCGEgY_XdNWMIj9yAYPG31RfO-rUvIt9prSpOqQHShIufOnkDbrYIlyKE5OZY68gsCgDSnwxHtMW-j19KupMZmC1tNOq2QEesdu0Hh1zinr1P_g8cyWt1cHFNPGGmiuhIZPaOmTY8ssYbYKbbtC1nP9RVOEgPKgWBYWiA4E6WPsGYKqCpqU3aMljt6lAwmwmmFRefyWbWiaAfQTMPcUlEPjZEzau9MIBiNfLMhzwyqoMX1Po75F4qVfsV9hLp3_uervSUefQPNM33cr');
+
+    return (
+      <View style={styles.slotContainer}>
+        {isOccupied || isMySlot ? (
+          <TouchableOpacity 
+            style={[styles.occupiedSlot, isMySlot && { borderColor: teamColor, borderWidth: 2 }]} 
+            onPress={() => handleSelectSlot(slotKey, roleName)}
+          >
+            <Image source={{ uri: avatarUrl }} style={styles.slotAvatar} />
+            <View style={[styles.slotBadge, { backgroundColor: teamColor }]}>
+              <Text style={[styles.slotBadgeText, { color: theme.background }]}>{numberStr}</Text>
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity 
+            style={[styles.emptySlot, { borderColor: `${teamColor}66` }]} 
+            onPress={() => handleSelectSlot(slotKey, roleName)}
+          >
+            <MaterialIcons name="add" size={24} color={teamColor} />
+          </TouchableOpacity>
+        )}
+        <Text style={[styles.slotLabel, isMySlot && { color: teamColor, fontWeight: 'bold' }]} numberOfLines={1}>
+          {isOccupied ? occupant?.name : roleName}
+        </Text>
+      </View>
+    );
   };
 
   return (
@@ -220,65 +426,80 @@ export default function MatchRoomScreen() {
         {/* TopAppBar */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <TouchableOpacity style={styles.iconBtnHover} onPress={() => router.back()}>
+            <TouchableOpacity style={styles.iconBtnHover} onPress={() => router.back()} accessibilityLabel="Geri" accessibilityRole="button">
               <MaterialIcons name="arrow-back" size={24} color={theme.primary} />
             </TouchableOpacity>
             <Text style={styles.brandTitle}>MAÇ ODASI</Text>
           </View>
-          <TouchableOpacity style={styles.storyHeaderBtn} onPress={() => setStoryModalVisible(true)}>
-            <MaterialIcons name="camera-alt" size={16} color={theme.background} />
-            <Text style={styles.storyHeaderBtnText}>STORY</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtnHover} onPress={openVenueLocation}>
-            <MaterialIcons name="location-on" size={24} color={theme.primary} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {isOrganizer && (
+              <TouchableOpacity style={styles.finishMatchHeaderBtn} onPress={() => setScoreModalVisible(true)} activeOpacity={0.85}>
+                <MaterialIcons name="sports-score" size={16} color={theme.background} />
+                <Text style={styles.finishMatchHeaderBtnText}>SKOR BİLDİR</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.storyHeaderBtn} onPress={() => setStoryModalVisible(true)} activeOpacity={0.85}>
+              <MaterialIcons name="camera-alt" size={16} color={theme.background} />
+              <Text style={styles.storyHeaderBtnText}>STORY</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.iconBtnHover} onPress={openVenueLocation} accessibilityLabel="Konum" accessibilityRole="button">
+              <MaterialIcons name="location-on" size={24} color={theme.primary} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {/* Live Weather Forecast Alert */}
-          <WeatherAlertCard temp="15°C" rainRisk={80} condition="Sağanak Yağış Riski" isOpenField={true} />
+          <WeatherAlertCard 
+            temp="18°C" 
+            rainRisk={matchArena.toLowerCase().includes('kapalı') ? 0 : 35} 
+            condition={matchArena.toLowerCase().includes('kapalı') ? 'Kapalı Saha' : 'Parçalı Bulutlu'} 
+            isOpenField={!matchArena.toLowerCase().includes('kapalı')} 
+          />
           
-          {/* Haftalık Düzenli Abonelik Ayarları */}
-          <View style={styles.subSettingsCard}>
-          <View style={styles.subSettingsHeader}>
-            <View style={styles.subSettingsLeft}>
-              <MaterialIcons name="update" size={20} color={theme.primary} />
-              <View>
-                <Text style={styles.subSettingsTitle}>HAFTALIK DÜZENLİ ABONELİK</Text>
-                <Text style={styles.subSettingsSub}>{matchDateTime} • {activeMatch?.isSubscription ? 'Otomatik Yenilenir' : 'Tek Seferlik'}</Text>
+          {/* Haftalık Düzenli Abonelik Ayarları - Sadece abonelik maçı ise */}
+          {activeMatch?.isSubscription && (
+            <View style={styles.subSettingsCard}>
+              <View style={styles.subSettingsHeader}>
+                <View style={styles.subSettingsLeft}>
+                  <MaterialIcons name="update" size={20} color={theme.primary} />
+                  <View>
+                    <Text style={styles.subSettingsTitle}>HAFTALIK DÜZENLİ ABONELİK</Text>
+                    <Text style={styles.subSettingsSub}>{matchDateTime} • Otomatik Yenilenir</Text>
+                  </View>
+                </View>
+                <View style={styles.activeSubBadge}>
+                  <Text style={styles.activeSubBadgeText}>AKTİF</Text>
+                </View>
               </View>
-            </View>
-            <View style={styles.activeSubBadge}>
-              <Text style={styles.activeSubBadgeText}>AKTİF</Text>
-            </View>
-          </View>
 
-          {isOrganizer && (
-            <View style={styles.subActionsRow}>
-              <TouchableOpacity 
-                style={styles.subActionBtn} 
-                onPress={() => Alert.alert('Saat Güncelleme', 'Abonelik saatini 22:00 olarak güncellemek istiyor musunuz?', [
-                  { text: 'Vazgeç', style: 'cancel' },
-                  { text: 'Güncelle', onPress: () => Alert.alert('✓ Başarılı', 'Abonelik saati güncellendi.') }
-                ])}
-              >
-                <MaterialIcons name="access-time" size={14} color={theme.primary} />
-                <Text style={styles.subActionText}>Saati Güncelle</Text>
-              </TouchableOpacity>
+              {isOrganizer && (
+                <View style={styles.subActionsRow}>
+                  <TouchableOpacity 
+                    style={styles.subActionBtn} 
+                    onPress={() => Alert.alert('Saat Güncelleme', 'Abonelik saatini 22:00 olarak güncellemek istiyor musunuz?', [
+                      { text: 'Vazgeç', style: 'cancel' },
+                      { text: 'Güncelle', onPress: () => Alert.alert('✓ Başarılı', 'Abonelik saati güncellendi.') }
+                    ])}
+                  >
+                    <MaterialIcons name="access-time" size={14} color={theme.primary} />
+                    <Text style={styles.subActionText}>Saati Güncelle</Text>
+                  </TouchableOpacity>
 
-              <TouchableOpacity 
-                style={[styles.subActionBtn, { borderColor: `${theme.error}66` }]} 
-                onPress={() => Alert.alert('Abonelik İptali', 'Haftalık aboneliğinizi iptal etmek istediğinize emin misiniz?', [
-                  { text: 'Vazgeç', style: 'cancel' },
-                  { text: 'Aboneliği Durdur', style: 'destructive', onPress: () => Alert.alert('İptal Edildi', 'Aboneliğiniz durduruldu.') }
-                ])}
-              >
-                <MaterialIcons name="cancel" size={14} color={theme.error} />
-                <Text style={[styles.subActionText, { color: theme.error }]}>Aboneliği Durdur</Text>
-              </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.subActionBtn, { borderColor: `${theme.error}66` }]} 
+                    onPress={() => Alert.alert('Abonelik İptali', 'Haftalık aboneliğinizi iptal etmek istediğinize emin misiniz?', [
+                      { text: 'Vazgeç', style: 'cancel' },
+                      { text: 'Aboneliği Durdur', style: 'destructive', onPress: () => Alert.alert('İptal Edildi', 'Aboneliğiniz durduruldu.') }
+                    ])}
+                  >
+                    <MaterialIcons name="cancel" size={14} color={theme.error} />
+                    <Text style={[styles.subActionText, { color: theme.error }]}>Aboneliği Durdur</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           )}
-        </View>
         
         {/* Strategy & Field */}
         <View style={styles.sectionContainer}>
@@ -309,6 +530,37 @@ export default function MatchRoomScreen() {
             <Text style={styles.aiBalanceBtnText}>TAKIMLARI OTOMATİK DENGELER (AI)</Text>
           </TouchableOpacity>
 
+          {/* Team Switcher Tabs */}
+          <View style={styles.teamTabsContainer}>
+            <TouchableOpacity 
+              style={[styles.teamTabBtn, activeTeam === 'A' && styles.teamTabBtnActiveA]} 
+              onPress={() => setActiveTeam('A')}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="shield" size={18} color={activeTeam === 'A' ? theme.primary : theme.textMuted} />
+              <Text style={[styles.teamTabText, activeTeam === 'A' && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                A TAKIMI (EV SAHİBİ)
+              </Text>
+              <View style={[styles.teamCountBadge, activeTeam === 'A' && { backgroundColor: `${theme.primary}33` }]}>
+                <Text style={[styles.teamCountText, activeTeam === 'A' && { color: theme.primary }]}>{teamACount}/{modePlayersPerTeam}</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.teamTabBtn, activeTeam === 'B' && styles.teamTabBtnActiveB]} 
+              onPress={() => setActiveTeam('B')}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="shield" size={18} color={activeTeam === 'B' ? theme.secondary : theme.textMuted} />
+              <Text style={[styles.teamTabText, activeTeam === 'B' && { color: theme.secondary, fontFamily: Fonts.headlineBold }]}>
+                B TAKIMI (DEPLASMAN)
+              </Text>
+              <View style={[styles.teamCountBadge, activeTeam === 'B' && { backgroundColor: `${theme.secondary}33` }]}>
+                <Text style={[styles.teamCountText, activeTeam === 'B' && { color: theme.secondary }]}>{teamBCount}/{modePlayersPerTeam}</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+
           {/* Field Visualization */}
           <View style={styles.fieldWrap}>
             <View style={styles.fieldBox}>
@@ -320,129 +572,59 @@ export default function MatchRoomScreen() {
 
               {/* Kale Dönmeli btn */}
               <TouchableOpacity style={styles.kaleBtn}>
-                <MaterialIcons name="sync-alt" size={12} color={theme.primary} />
-                <Text style={styles.kaleBtnText}>KALE DÖNMELİ</Text>
+                <MaterialIcons name="sync-alt" size={12} color={activeTeam === 'A' ? theme.primary : theme.secondary} />
+                <Text style={[styles.kaleBtnText, { color: activeTeam === 'A' ? theme.primary : theme.secondary }]}>
+                  {activeTeam === 'A' ? 'A TAKIMI KADROSU' : 'B TAKIMI KADROSU'}
+                </Text>
               </TouchableOpacity>
 
               {/* Slots */}
               <View style={styles.formationGrid}>
                 {/* Forward */}
                 <View style={styles.slotRow}>
-                   <View style={styles.slotContainer}>
-                     {userSlot === 'FORVET' ? (
-                       <TouchableOpacity style={styles.occupiedSlot} onPress={() => handleSelectSlot('FORVET', 'Forvet')}>
-                         <Image source={{ uri: user?.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG' }} style={styles.slotAvatar} />
-                         <View style={styles.slotBadge}><Text style={styles.slotBadgeText}>9</Text></View>
-                       </TouchableOpacity>
-                     ) : (
-                       <TouchableOpacity style={styles.emptySlot} onPress={() => handleSelectSlot('FORVET', 'Forvet')}>
-                         <MaterialIcons name="add" size={24} color={theme.primary + '66'} />
-                       </TouchableOpacity>
-                     )}
-                     <Text style={[styles.slotLabel, userSlot === 'FORVET' && { color: theme.primary, fontWeight: 'bold' }]}>FORVET</Text>
-                   </View>
+                   {renderSlotItem('FORVET', 'Forvet', '9')}
                 </View>
                 
                 {/* Midfielders */}
                 <View style={[styles.slotRow, { justifyContent: 'space-between', paddingHorizontal: 32 }]}>
-                   <View style={styles.slotContainer}>
-                     {userSlot === 'OS_SOL' ? (
-                       <TouchableOpacity style={styles.occupiedSlot} onPress={() => handleSelectSlot('OS_SOL', 'Sol Orta Saha')}>
-                         <Image source={{ uri: user?.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG' }} style={styles.slotAvatar} />
-                         <View style={styles.slotBadge}><Text style={styles.slotBadgeText}>8</Text></View>
-                       </TouchableOpacity>
-                     ) : (
-                       <TouchableOpacity style={styles.emptySlot} onPress={() => handleSelectSlot('OS_SOL', 'Sol Orta Saha')}>
-                         <MaterialIcons name="add" size={24} color={theme.primary + '66'} />
-                       </TouchableOpacity>
-                     )}
-                   </View>
-                   <View style={styles.slotContainer}>
-                     <View style={styles.occupiedSlot}>
-                       <Image source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCGEgY_XdNWMIj9yAYPG31RfO-rUvIt9prSpOqQHShIufOnkDbrYIlyKE5OZY68gsCgDSnwxHtMW-j19KupMZmC1tNOq2QEesdu0Hh1zinr1P_g8cyWt1cHFNPGGmiuhIZPaOmTY8ssYbYKbbtC1nP9RVOEgPKgWBYWiA4E6WPsGYKqCpqU3aMljt6lAwmwmmFRefyWbWiaAfQTMPcUlEPjZEzau9MIBiNfLMhzwyqoMX1Po75F4qVfsV9hLp3_uervSUefQPNM33cr' }} style={styles.slotAvatar} />
-                       <View style={styles.slotBadge}><Text style={styles.slotBadgeText}>10</Text></View>
-                     </View>
-                     <Text style={[styles.slotLabel, { color: theme.primary, fontWeight: 'bold' }]}>KAPTAN</Text>
-                   </View>
-                   <View style={styles.slotContainer}>
-                     {userSlot === 'OS_SAG' ? (
-                       <TouchableOpacity style={styles.occupiedSlot} onPress={() => handleSelectSlot('OS_SAG', 'Sağ Orta Saha')}>
-                         <Image source={{ uri: user?.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG' }} style={styles.slotAvatar} />
-                         <View style={styles.slotBadge}><Text style={styles.slotBadgeText}>7</Text></View>
-                       </TouchableOpacity>
-                     ) : (
-                       <TouchableOpacity style={styles.emptySlot} onPress={() => handleSelectSlot('OS_SAG', 'Sağ Orta Saha')}>
-                         <MaterialIcons name="add" size={24} color={theme.primary + '66'} />
-                       </TouchableOpacity>
-                     )}
-                   </View>
+                   {renderSlotItem('OS_SOL', 'Sol OS', '8')}
+                   {renderSlotItem('OS_ORTA', activeTeam === 'A' ? 'Kaptan' : 'Orta Saha', '10')}
+                   {renderSlotItem('OS_SAG', 'Sağ OS', '7')}
                 </View>
 
                 {/* Defenders */}
                 <View style={[styles.slotRow, { justifyContent: 'space-around', paddingHorizontal: 48 }]}>
-                   <View style={styles.slotContainer}>
-                     {userSlot === 'DEF_SOL' ? (
-                       <TouchableOpacity style={styles.occupiedSlot} onPress={() => handleSelectSlot('DEF_SOL', 'Sol Defans')}>
-                         <Image source={{ uri: user?.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG' }} style={styles.slotAvatar} />
-                         <View style={styles.slotBadge}><Text style={styles.slotBadgeText}>3</Text></View>
-                       </TouchableOpacity>
-                     ) : (
-                       <TouchableOpacity style={styles.emptySlot} onPress={() => handleSelectSlot('DEF_SOL', 'Sol Defans')}>
-                         <MaterialIcons name="add" size={24} color={theme.primary + '66'} />
-                       </TouchableOpacity>
-                     )}
-                   </View>
-                   <View style={styles.slotContainer}>
-                     {userSlot === 'DEF_SAG' ? (
-                       <TouchableOpacity style={styles.occupiedSlot} onPress={() => handleSelectSlot('DEF_SAG', 'Sağ Defans')}>
-                         <Image source={{ uri: user?.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG' }} style={styles.slotAvatar} />
-                         <View style={styles.slotBadge}><Text style={styles.slotBadgeText}>4</Text></View>
-                       </TouchableOpacity>
-                     ) : (
-                       <TouchableOpacity style={styles.emptySlot} onPress={() => handleSelectSlot('DEF_SAG', 'Sağ Defans')}>
-                         <MaterialIcons name="add" size={24} color={theme.primary + '66'} />
-                       </TouchableOpacity>
-                     )}
-                   </View>
+                   {renderSlotItem('DEF_SOL', 'Sol Def', '3')}
+                   {renderSlotItem('DEF_SAG', 'Sağ Def', '4')}
                 </View>
 
                 {/* GK */}
                 <View style={styles.slotRow}>
-                   <View style={styles.slotContainer}>
-                     {userSlot === 'KALECI' ? (
-                       <TouchableOpacity style={styles.occupiedSlot} onPress={() => handleSelectSlot('KALECI', 'Kaleci')}>
-                         <Image source={{ uri: user?.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG' }} style={styles.slotAvatar} />
-                         <View style={styles.slotBadge}><Text style={styles.slotBadgeText}>1</Text></View>
-                       </TouchableOpacity>
-                     ) : (
-                       <TouchableOpacity style={styles.emptySlot} onPress={() => handleSelectSlot('KALECI', 'Kaleci')}>
-                         <MaterialIcons name="add" size={24} color={theme.primary + '66'} />
-                       </TouchableOpacity>
-                     )}
-                     <Text style={[styles.slotLabel, userSlot === 'KALECI' && { color: theme.primary, fontWeight: 'bold' }]}>KALECİ</Text>
-                   </View>
+                   {renderSlotItem('KALECI', 'Kaleci', '1')}
                 </View>
               </View>
             </View>
           </View>
 
-          {/* Match Settings & Conditions */}
-          <View style={styles.termsBox}>
-            <Text style={styles.termsBoxTitle}>MAÇA KATILMA ŞARTLARI</Text>
-            <View style={styles.termsList}>
-              {['Davetle Katılma', 'İstekle Katılma', 'Katılma Kapalı'].map((term, idx) => (
-                <TouchableOpacity key={idx} style={styles.termRow} onPress={() => setJoinTerms(idx)}>
-                  <View style={[styles.radioOutline, joinTerms === idx && styles.radioActive]}>
-                    {joinTerms === idx && <View style={styles.radioInner} />}
-                  </View>
-                  <Text style={[styles.termText, joinTerms === idx && { color: theme.text }]}>{term}</Text>
-                </TouchableOpacity>
-              ))}
+          {/* Match Settings & Conditions - Only Captain/Organizer can edit */}
+          {isOrganizer && (
+            <View style={styles.termsBox}>
+              <Text style={styles.termsBoxTitle}>MAÇA KATILMA ŞARTLARI (KAPTAN YÖNETİMİ)</Text>
+              <View style={styles.termsList}>
+                {['Davetle Katılma', 'İstekle Katılma', 'Katılma Kapalı'].map((term, idx) => (
+                  <TouchableOpacity key={idx} style={styles.termRow} onPress={() => setJoinTerms(idx)}>
+                    <View style={[styles.radioOutline, joinTerms === idx && styles.radioActive]}>
+                      {joinTerms === idx && <View style={styles.radioInner} />}
+                    </View>
+                    <Text style={[styles.termText, joinTerms === idx && { color: theme.text }]}>{term}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmTerms}>
+                <Text style={styles.confirmBtnText}>ŞARTLARI KAYDET</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmTerms}>
-              <Text style={styles.confirmBtnText}>ŞARTLARI ONAYLA</Text>
-            </TouchableOpacity>
-          </View>
+          )}
         </View>
 
         {/* 💳 KAPTAN & OYUNCU HALISAHAYA ÜCRET ÖDEME TAKİBİ MODULE */}
@@ -456,7 +638,7 @@ export default function MatchRoomScreen() {
               <MaterialIcons name="account-balance-wallet" size={20} color={theme.primary} />
               <View>
                 <Text style={styles.sectionTitle}>HALISAHAYA ÜCRETİ & KAPTAN TAKİBİ</Text>
-                <Text style={styles.paymentSubTitle}>Kişi Başı Tahmini: ₺{perPlayerFee} • Toplam: ₺{totalMatchFee}</Text>
+                <Text style={styles.paymentSubTitle}>Kişi Başı: ₺{perPlayerFee} • Toplam: ₺{totalMatchFee}</Text>
               </View>
             </View>
             <MaterialIcons name={showPaymentDetails ? "expand-less" : "expand-more"} size={24} color={theme.primary} />
@@ -472,7 +654,7 @@ export default function MatchRoomScreen() {
                     <Text style={styles.gkFreeTitle}>KALECİDEN ÜCRET ALINMASIN (ÜCRETSİZ)</Text>
                   </View>
                   <Text style={styles.gkFreeSub}>
-                    {isGkFree ? 'Kaleciler muaf tutuldu. Ücret 12 saha oyuncusuna bölündü.' : 'Kaleciler dahil tüm 14 oyuncu ücreti eşit paylaşır.'}
+                    {isGkFree ? `Kaleciler muaf tutuldu. Ücret ${activePayersCount} saha oyuncusuna bölündü.` : `Kaleciler dahil tüm ${totalPlayersCount} oyuncu ücreti eşit paylaşır.`}
                   </Text>
                 </View>
                 <Switch
@@ -656,6 +838,74 @@ export default function MatchRoomScreen() {
         </View>
 
         </ScrollView>
+
+        {/* Kaptan Skor Giriş Modalı */}
+        <Modal
+          visible={scoreModalVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setScoreModalVisible(false)}
+        >
+          <View style={styles.scoreModalOverlay}>
+            <View style={styles.scoreModalContent}>
+              <View style={styles.scoreModalHeader}>
+                <MaterialIcons name="sports-score" size={28} color={theme.primary} />
+                <Text style={styles.scoreModalTitle}>MAÇ SKORUNU BİLDİR</Text>
+                <Text style={styles.scoreModalSub}>
+                  Maç bittiğinde resmi sonucu girerek maçı tamamlayın.
+                </Text>
+              </View>
+
+              <View style={styles.scoreInputsRow}>
+                <View style={styles.scoreTeamCol}>
+                  <Text style={[styles.scoreTeamName, { color: theme.primary }]}>A TAKIMI</Text>
+                  <TextInput
+                    style={styles.scoreInput}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                    value={scoreTeamA}
+                    onChangeText={setScoreTeamA}
+                    selectTextOnFocus
+                  />
+                </View>
+
+                <Text style={styles.scoreColon}>-</Text>
+
+                <View style={styles.scoreTeamCol}>
+                  <Text style={[styles.scoreTeamName, { color: theme.secondary }]}>B TAKIMI</Text>
+                  <TextInput
+                    style={styles.scoreInput}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                    value={scoreTeamB}
+                    onChangeText={setScoreTeamB}
+                    selectTextOnFocus
+                  />
+                </View>
+              </View>
+
+              <View style={styles.scoreModalActions}>
+                <TouchableOpacity
+                  style={styles.scoreCancelBtn}
+                  onPress={() => setScoreModalVisible(false)}
+                  disabled={submittingScore}
+                >
+                  <Text style={styles.scoreCancelText}>Vazgeç</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.scoreSubmitBtn, submittingScore && { opacity: 0.6 }]}
+                  onPress={handleFinishMatch}
+                  disabled={submittingScore}
+                >
+                  <Text style={styles.scoreSubmitText}>
+                    {submittingScore ? 'Kaydediliyor...' : 'Maçı Bitir ve Kaydet'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -1220,4 +1470,166 @@ const useStyles = (theme: any) => StyleSheet.create({
     borderColor: `${theme.primary}4D`,
   },
   subActionText: { fontFamily: Fonts.headlineBold, fontSize: 10, color: theme.primary },
+
+  finishMatchHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  finishMatchHeaderBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: '#000',
+    letterSpacing: 0.5,
+  },
+
+  teamTabsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 16,
+  },
+  teamTabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    backgroundColor: theme.surfaceContainerHighest,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  teamTabBtnActiveA: {
+    borderColor: theme.primary,
+    backgroundColor: `${theme.primary}18`,
+  },
+  teamTabBtnActiveB: {
+    borderColor: theme.secondary,
+    backgroundColor: `${theme.secondary}18`,
+  },
+  teamTabText: {
+    fontFamily: Fonts.headline,
+    fontSize: 11,
+    color: theme.textMuted,
+  },
+  teamCountBadge: {
+    backgroundColor: theme.surfaceContainer,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  teamCountText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: theme.textMuted,
+  },
+
+  scoreModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  scoreModalContent: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: theme.surface,
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    alignItems: 'center',
+  },
+  scoreModalHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  scoreModalTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 16,
+    color: theme.text,
+    letterSpacing: 0.5,
+    marginTop: 8,
+  },
+  scoreModalSub: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: theme.textMuted,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  scoreInputsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    marginBottom: 24,
+  },
+  scoreTeamCol: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  scoreTeamName: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 12,
+    letterSpacing: 0.5,
+  },
+  scoreInput: {
+    width: 64,
+    height: 64,
+    borderRadius: 14,
+    backgroundColor: theme.surfaceContainerHighest,
+    borderWidth: 2,
+    borderColor: theme.borderSubtle,
+    textAlign: 'center',
+    fontSize: 28,
+    fontFamily: Fonts.headlineBold,
+    color: theme.text,
+  },
+  scoreColon: {
+    fontSize: 28,
+    fontFamily: Fonts.headlineBold,
+    color: theme.textMuted,
+    marginTop: 20,
+  },
+  scoreModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  scoreCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: theme.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scoreCancelText: {
+    fontFamily: Fonts.headline,
+    fontSize: 13,
+    color: theme.textMuted,
+  },
+  scoreSubmitBtn: {
+    flex: 2,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: theme.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scoreSubmitText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 13,
+    color: theme.onPrimary,
+  },
 });

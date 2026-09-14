@@ -8,16 +8,38 @@ import { useTheme } from '@/context/ThemeContext';
 interface MatchCountdownCardProps {
   targetHours?: number;
   matchId?: string;
+  arena?: string;
+  dateTime?: string;
+  mode?: string;
 }
 
-export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({ targetHours = 2, matchId }) => {
+export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({ 
+  targetHours = 2, 
+  matchId,
+  arena = 'Beşiktaş Arena',
+  dateTime = '21:00',
+  mode = '7v7'
+}) => {
   const router = useRouter();
   const { theme } = useTheme();
   const styles = useStyles(theme);
-  const [timeLeft, setTimeLeft] = useState({ hours: targetHours, minutes: 45, seconds: 30 });
+  const [timeLeft, setTimeLeft] = useState({ hours: targetHours, minutes: 0, seconds: 0 });
 
   useEffect(() => {
-    const targetTimestamp = Date.now() + (targetHours * 3600 + 45 * 60 + 30) * 1000;
+    let targetTimestamp = Date.now() + (targetHours * 3600 + 30 * 60) * 1000;
+    if (dateTime) {
+      const timeMatch = dateTime.match(/(\d{1,2}):(\d{2})/);
+      if (timeMatch) {
+        const h = parseInt(timeMatch[1], 10);
+        const m = parseInt(timeMatch[2], 10);
+        const now = new Date();
+        const candidate = new Date();
+        candidate.setHours(h, m, 0, 0);
+        if (candidate.getTime() > now.getTime()) {
+          targetTimestamp = candidate.getTime();
+        }
+      }
+    }
 
     const updateTimer = () => {
       const remaining = Math.max(0, Math.floor((targetTimestamp - Date.now()) / 1000));
@@ -30,9 +52,11 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({ targetHo
     updateTimer();
     const timer = setInterval(updateTimer, 1000);
     return () => clearInterval(timer);
-  }, [targetHours]);
+  }, [targetHours, dateTime]);
 
   const format2Digits = (num: number) => num.toString().padStart(2, '0');
+
+  const displayTime = dateTime.includes(',') ? (dateTime.split(',').pop()?.trim() || dateTime) : dateTime;
 
   return (
     <TouchableOpacity 
@@ -45,7 +69,7 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({ targetHo
           <View style={styles.pulseDot} />
           <Text style={styles.badgeText}>YAKLAŞAN MAÇ GÜNÜ</Text>
         </View>
-        <Text style={styles.venueText}>Beşiktaş Arena • 21:00</Text>
+        <Text style={styles.venueText} numberOfLines={1}>{arena} • {displayTime}</Text>
       </View>
 
       {/* Countdown Timer Boxes */}
@@ -67,7 +91,7 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({ targetHo
       </View>
 
       <View style={styles.bottomRow}>
-        <Text style={styles.subHint}>7v7 Süper Lig Modu • Hazırlanmayı Unutmayın!</Text>
+        <Text style={styles.subHint}>{mode} Modu • Hazırlanmayı Unutmayın!</Text>
         <View style={styles.goBtn}>
           <Text style={styles.goBtnText}>ODAYA GİT</Text>
           <MaterialIcons name="chevron-right" size={16} color={theme.background} />

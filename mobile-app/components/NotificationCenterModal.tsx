@@ -4,6 +4,7 @@ import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
+import { useRouter } from 'expo-router';
 
 export interface NotificationItem {
   id: string;
@@ -12,6 +13,7 @@ export interface NotificationItem {
   message: string;
   time: string;
   read: boolean;
+  route?: string;
 }
 
 interface NotificationCenterModalProps {
@@ -20,13 +22,14 @@ interface NotificationCenterModalProps {
 }
 
 const DEFAULT_NOTIFS: NotificationItem[] = [
-  { id: '1', type: 'reminder', title: 'MAÇ GÜNÜ UYARISI', message: 'Beşiktaş Arena maçınıza 2 saat kaldı! Sağanak yağış riski var, yağmurluk almayı unutmayın.', time: '10dk önce', read: false },
-  { id: '2', type: 'chat', title: 'YENİ SOHBET MESAJI', message: 'Kaptan_Sarı: "Beyler kırmızı formalarla geliyoruz, unutmayın!"', time: '45dk önce', read: false },
-  { id: '3', type: 'alert', title: 'KADRO GÜNCELLEMESİ', message: 'Ege_Def kadrodan ayrıldı. Defans mevkii boşaldı, maça oyuncu çağırabilirsiniz.', time: '2 saat önce', read: true },
-  { id: '4', type: 'match', title: 'ÖDEME ONAYLANDI', message: '150 ₺ kapora ödemeniz 3D Secure ile başarıyla kaydedildi.', time: 'Dün', read: true },
+  { id: '1', type: 'reminder', title: 'MAÇ GÜNÜ UYARISI', message: 'Beşiktaş Arena maçınıza 2 saat kaldı! Sağanak yağış riski var, yağmurluk almayı unutmayın.', time: '10dk önce', read: false, route: '/match-room' },
+  { id: '2', type: 'chat', title: 'YENİ SOHBET MESAJI', message: 'Kaptan_Sarı: "Beyler kırmızı formalarla geliyoruz, unutmayın!"', time: '45dk önce', read: false, route: '/conversations' },
+  { id: '3', type: 'alert', title: 'KADRO GÜNCELLEMESİ', message: 'Ege_Def kadrodan ayrıldı. Defans mevkii boşaldı, maça oyuncu çağırabilirsiniz.', time: '2 saat önce', read: true, route: '/match-room' },
+  { id: '4', type: 'match', title: 'ÖDEME ONAYLANDI', message: '150 ₺ kapora ödemeniz 3D Secure ile başarıyla kaydedildi.', time: 'Dün', read: true, route: '/match-room' },
 ];
 
 export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = ({ visible, onClose }) => {
+  const router = useRouter();
   const { theme } = useTheme();
   const styles = useStyles(theme);
   const [notifs, setNotifs] = useState<NotificationItem[]>(DEFAULT_NOTIFS);
@@ -105,7 +108,12 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                     activeOpacity={0.8}
                     onPress={() => {
                       setNotifs(prev => prev.map(n => n.id === item.id ? { ...n, read: true } : n));
-                      Alert.alert(item.title, item.message);
+                      onClose();
+                      if (item.route) {
+                        router.push(item.route as any);
+                      } else {
+                        Alert.alert(item.title, item.message);
+                      }
                     }}
                   >
                     <View style={[styles.iconWrap, { backgroundColor: `${iconInfo.color}20` }]}>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -11,22 +11,64 @@ import { useAuth } from '@/hooks/use-auth';
 import { dbService } from '@/services/dbService';
 import Slider from '@react-native-community/slider';
 
+interface RosterPlayer {
+  id: string;
+  name: string;
+  avatar: string;
+  position: string;
+  number?: string;
+  team?: 'A' | 'B';
+}
+
+const DEFAULT_PLAYERS: RosterPlayer[] = [
+  { id: '1', name: 'Burak Kaleci', position: 'Kaleci', number: '#1', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG' },
+  { id: '2', name: 'Ege Kaptan', position: 'Orta Saha', number: '#10', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCGEgY_XdNWMIj9yAYPG31RfO-rUvIt9prSpOqQHShIufOnkDbrYIlyKE5OZY68gsCgDSnwxHtMW-j19KupMZmC1tNOq2QEesdu0Hh1zinr1P_g8cyWt1cHFNPGGmiuhIZPaOmTY8ssYbYKbbtC1nP9RVOEgPKgWBYWiA4E6WPsGYKqCpqU3aMljt6lAwmwmmFRefyWbWiaAfQTMPcUlEPjZEzau9MIBiNfLMhzwyqoMX1Po75F4qVfsV9hLp3_uervSUefQPNM33cr' },
+  { id: '3', name: 'Hızlı Forvet', position: 'Forvet', number: '#9', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB3zN4BMEVqYUF3QeCqfMmUKmw5cBXxBSRW3VsxvUV-KXfxcfUNy6Y82Uw5RqW42gjFGsQrYA81GzfjxHDInaql-eBPtBAeWIzYvIo5IstQNOYNqQ8g3WQjb_WA4gUlWI3jtxS0-dZvcC5Az1uvxxCDgdHFIH9RwA7ZsebYxmMiF16BfI2i_Ms9TkF9YUXKDArXyw9YMuFV1_yUlUT27aKrZhO--9EpUrIuSs9PmeIxM6YUFzjuQBP3bjtPS29-G09qbUuQ9_U0i825' },
+  { id: '4', name: 'Mert Defans', position: 'Defans', number: '#4', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG' },
+];
+
 export default function RateMatchScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const { user } = useAuth();
   const styles = useStyles(theme);
   const params = useLocalSearchParams<{ matchId?: string; playerName?: string; playerAvatar?: string; matchScore?: string }>();
-  const playerName = params.playerName || 'Seçilen Oyuncu';
-  const playerAvatar = params.playerAvatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuB3zN4BMEVqYUF3QeCqfMmUKmw5cBXxBSRW3VsxvUV-KXfxcfUNy6Y82Uw5RqW42gjFGsQrYA81GzfjxHDInaql-eBPtBAeWIzYvIo5IstQNOYNqQ8g3WQjb_WA4gUlWI3jtxS0-dZvcC5Az1uvxxCDgdHFIH9RwA7ZsebYxmMiF16BfI2i_Ms9TkF9YUXKDArXyw9YMuFV1_yUlUT27aKrZhO--9EpUrIuSs9PmeIxM6YUFzjuQBP3bjtPS29-G09qbUuQ9_U0i825';
   const matchScore = params.matchScore || '5 - 2';
+
+  const [roster, setRoster] = useState<RosterPlayer[]>(DEFAULT_PLAYERS);
+  const [selectedPlayer, setSelectedPlayer] = useState<RosterPlayer>(DEFAULT_PLAYERS[1]);
+
+  useEffect(() => {
+    if (params.matchId) {
+      dbService.getMatchById(params.matchId).then((match) => {
+        if (match && match.slots) {
+          const slotPlayers: RosterPlayer[] = Object.entries(match.slots)
+            .filter(([_, s]) => s && s.name)
+            .map(([slotKey, s], idx) => ({
+              id: s.uid || `player-${idx}`,
+              name: s.name,
+              avatar: s.avatar || DEFAULT_PLAYERS[0].avatar,
+              position: s.position || slotKey,
+              number: `#${idx + 1}`,
+              team: slotKey.startsWith('B_') ? 'B' : 'A',
+            }));
+          if (slotPlayers.length > 0) {
+            setRoster(slotPlayers);
+            const found = slotPlayers.find(p => p.name === params.playerName) || 
+                          slotPlayers.find(p => p.id !== user?.uid) || 
+                          slotPlayers[0];
+            setSelectedPlayer(found);
+          }
+        }
+      });
+    }
+  }, [params.matchId, params.playerName, user?.uid]);
 
   const [rating, setRating] = useState(8.0);
   const [isMvp, setIsMvp] = useState(false);
   const [storyVisible, setStoryVisible] = useState(false);
   const [notifVisible, setNotifVisible] = useState(false);
   const [activeTags, setActiveTags] = useState<string[]>(['Centilmen / Fair Play']);
-
   const [saving, setSaving] = useState(false);
 
   const tags = [
@@ -53,14 +95,16 @@ export default function RateMatchScreen() {
     try {
       await dbService.saveMatchRating(params.matchId || 'general_match', {
         userId: user?.uid || 'anon',
+        ratedPlayerId: selectedPlayer?.id,
+        ratedPlayerName: selectedPlayer?.name,
         rating,
-        mvpNominee: isMvp ? (playerName || 'MVP') : undefined,
+        mvpNominee: isMvp ? (selectedPlayer?.name || 'MVP') : undefined,
         comment: activeTags.join(', ')
       });
       
       Alert.alert(
         '✓ Değerlendirme Kaydedildi',
-        `Puan: ${rating.toFixed(1)}/10${isMvp ? ' • MVP adayı eklendi' : ''}`,
+        `${selectedPlayer?.name} için puanınız: ${rating.toFixed(1)}/10${isMvp ? ' • MVP adayı eklendi' : ''}`,
         [
           { text: 'Tamam', onPress: () => router.back() },
           { text: 'Story Oluştur', onPress: () => setStoryVisible(true) },
@@ -78,7 +122,7 @@ export default function RateMatchScreen() {
     <SafeAreaView style={styles.container}>
       <MatchStoryModal
         visible={storyVisible}
-        mvpName={isMvp ? playerName : 'KAPTAN SARI'}
+        mvpName={isMvp ? selectedPlayer?.name : 'KAPTAN SARI'}
         score={matchScore}
         onClose={() => setStoryVisible(false)}
       />
@@ -97,24 +141,64 @@ export default function RateMatchScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Roster Picker Section */}
+        <View style={styles.rosterSection}>
+          <View style={styles.rosterHeader}>
+            <MaterialIcons name="groups" size={18} color={theme.primary} />
+            <Text style={styles.rosterSectionTitle}>KADRODAN OYUNCU SEÇİN</Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rosterList}>
+            {roster.map((player) => {
+              const isSelected = selectedPlayer?.id === player.id;
+              const isSelf = player.id === user?.uid;
+              return (
+                <TouchableOpacity
+                  key={player.id}
+                  style={[styles.rosterItem, isSelected && styles.rosterItemActive]}
+                  onPress={() => {
+                    setSelectedPlayer(player);
+                    setIsMvp(false);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.rosterAvatarWrap, isSelected && { borderColor: theme.primary }]}>
+                    <Image source={{ uri: player.avatar }} style={styles.rosterAvatar} />
+                    {isSelected && (
+                      <View style={styles.rosterSelectedBadge}>
+                        <MaterialIcons name="check" size={10} color={theme.background} />
+                      </View>
+                    )}
+                  </View>
+                  <Text style={[styles.rosterName, isSelected && { color: theme.primary, fontFamily: Fonts.headlineBold }]} numberOfLines={1}>
+                    {player.name} {isSelf ? '(Siz)' : ''}
+                  </Text>
+                  <Text style={styles.rosterPosition} numberOfLines={1}>
+                    {player.position}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+
         {/* Player Context Section */}
         <View style={styles.playerContext}>
           <View style={styles.avatarWrap}>
             <View style={styles.avatarBorder}>
               <Image 
-                source={{ uri: playerAvatar }} 
+                source={{ uri: selectedPlayer?.avatar }} 
                 style={styles.avatarImg} 
               />
             </View>
             <View style={styles.numberBadge}>
-              <Text style={styles.numberBadgeText}>#10</Text>
+              <Text style={styles.numberBadgeText}>{selectedPlayer?.number || '#10'}</Text>
             </View>
           </View>
           <View style={styles.playerInfo}>
-            <Text style={styles.playerName}>{playerName}</Text>
+            <Text style={styles.playerName}>{selectedPlayer?.name}</Text>
             <View style={styles.statusRow}>
               <View style={styles.pulseDot} />
-              <Text style={styles.statusText}>Maç Sonu Değerlendirmesi</Text>
+              <Text style={styles.statusText}>{selectedPlayer?.position} • Maç Sonu Değerlendirmesi</Text>
             </View>
           </View>
         </View>
@@ -414,5 +498,77 @@ const useStyles = (theme: any) => StyleSheet.create({
     color: theme.background,
     fontStyle: 'italic',
     textTransform: 'uppercase',
-    letterSpacing: -0.5}
+    letterSpacing: -0.5},
+
+  rosterSection: {
+    marginBottom: 24,
+  },
+  rosterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  rosterSectionTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 12,
+    color: theme.text,
+    letterSpacing: 0.5,
+  },
+  rosterList: {
+    gap: 12,
+    paddingVertical: 4,
+  },
+  rosterItem: {
+    alignItems: 'center',
+    width: 80,
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: theme.surface,
+    borderWidth: 1.5,
+    borderColor: theme.borderSubtle,
+  },
+  rosterItemActive: {
+    borderColor: theme.primary,
+    backgroundColor: `${theme.primary}12`,
+  },
+  rosterAvatarWrap: {
+    position: 'relative',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    marginBottom: 6,
+  },
+  rosterAvatar: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 24,
+  },
+  rosterSelectedBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: theme.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rosterName: {
+    fontFamily: Fonts.headline,
+    fontSize: 11,
+    color: theme.text,
+    textAlign: 'center',
+    width: '100%',
+  },
+  rosterPosition: {
+    fontFamily: Fonts.body,
+    fontSize: 9,
+    color: theme.textMuted,
+    textAlign: 'center',
+    marginTop: 2,
+  },
 });

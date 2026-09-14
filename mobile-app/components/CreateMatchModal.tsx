@@ -75,7 +75,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   const { addMatch } = useMatches();
 
   // ── Şehir ──────────────────────────────────────────────
-  const [selectedCity, setSelectedCity] = useState('Ankara');
+  const [selectedCity, setSelectedCity] = useState(user?.city || 'İstanbul');
   const [citySelectorOpen, setCitySelectorOpen] = useState(false);
 
   // ── Halısaha Picker ──────────────────────────────────────────────
