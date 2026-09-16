@@ -82,6 +82,26 @@ export default function MatchRoomScreen() {
     }
   }, [params.matchId]);
 
+  // Dynamic Pitch Rating
+  const [pitchRating, setPitchRating] = useState<number>(4.8);
+
+  const fetchPitchScore = React.useCallback(async () => {
+    if (!matchArena) return;
+    try {
+      const reviews = await dbService.getPitchReviews(matchArena);
+      if (reviews && reviews.length > 0) {
+        const avg = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
+        setPitchRating(parseFloat(avg.toFixed(1)));
+      }
+    } catch {
+      // keep fallback
+    }
+  }, [matchArena]);
+
+  React.useEffect(() => {
+    fetchPitchScore();
+  }, [fetchPitchScore]);
+
   // Firestore live chat subscription
   React.useEffect(() => {
     const unsubChat = dbService.subscribeMessages(`match_${activeMatchId}`, (msgs) => {
@@ -416,7 +436,10 @@ export default function MatchRoomScreen() {
         <PitchReviewModal
           pitchName={matchArena}
           visible={pitchReviewVisible}
-          onClose={() => setPitchReviewVisible(false)}
+          onClose={() => {
+            setPitchReviewVisible(false);
+            fetchPitchScore();
+          }}
         />
         <MatchStoryModal
           visible={storyModalVisible}
@@ -451,9 +474,7 @@ export default function MatchRoomScreen() {
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {/* Live Weather Forecast Alert */}
           <WeatherAlertCard 
-            temp="18°C" 
-            rainRisk={matchArena.toLowerCase().includes('kapalı') ? 0 : 35} 
-            condition={matchArena.toLowerCase().includes('kapalı') ? 'Kapalı Saha' : 'Parçalı Bulutlu'} 
+            city={matchCity}
             isOpenField={!matchArena.toLowerCase().includes('kapalı')} 
           />
           
@@ -510,7 +531,7 @@ export default function MatchRoomScreen() {
             </View>
             <TouchableOpacity style={styles.settingsBtn} onPress={() => setPitchReviewVisible(true)}>
               <MaterialIcons name="star" size={14} color={theme.primary} />
-              <Text style={styles.settingsBtnText}>TESİS PUANI (4.8)</Text>
+              <Text style={styles.settingsBtnText}>TESİS PUANI ({pitchRating.toFixed(1)})</Text>
             </TouchableOpacity>
           </View>
 

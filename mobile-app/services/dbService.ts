@@ -52,6 +52,7 @@ export interface ClubModel {
   id?: string;
   name: string;
   desc: string;
+  city?: string;
   rank?: string;
   points?: number;
   membersCount?: number;
@@ -62,6 +63,24 @@ export interface ClubModel {
   logo?: string;
   color?: string;
   members?: string[];
+  createdAt?: any;
+}
+
+export interface PitchReviewModel {
+  id?: string;
+  pitchName: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  rating: number;
+  comment: string;
+  date?: string;
+  criteria?: {
+    turf?: number;
+    showers?: number;
+    lighting?: number;
+    parking?: number;
+  };
   createdAt?: any;
 }
 
@@ -368,7 +387,7 @@ export const dbService = {
     }
   },
 
-  searchMatches: async (criteria: { city?: string; district?: string; mode?: string; difficulty?: string }) => {
+  searchMatches: async (criteria: { city?: string; district?: string; mode?: string; difficulty?: string; arena?: string }) => {
     try {
       const matchesRef = collection(db, 'matches');
       let q = query(matchesRef, where('status', '==', 'active'), limit(50));
@@ -382,6 +401,10 @@ export const dbService = {
       }
       if (criteria.mode) {
         list = list.filter(m => m.mode === criteria.mode);
+      }
+      if (criteria.arena && criteria.arena !== 'Tüm Sahalar') {
+        const arenaLower = criteria.arena.trim().toLocaleLowerCase('tr');
+        list = list.filter(m => m.arena && m.arena.toLocaleLowerCase('tr').includes(arenaLower));
       }
 
       return list;
@@ -528,6 +551,42 @@ export const dbService = {
       return true;
     } catch (error) {
       console.error("Kulübe katılma hatası:", error);
+      throw error;
+    }
+  },
+
+  // ==========================================
+  // 6. TESİS & HALISAHA PUANLAMA (PITCH REVIEWS)
+  // ==========================================
+
+  getPitchReviews: async (pitchName: string) => {
+    try {
+      const reviewsRef = collection(db, 'pitch_reviews');
+      const q = query(reviewsRef, where('pitchName', '==', pitchName), limit(50));
+      const snapshot = await getDocs(q);
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PitchReviewModel));
+      return list.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+        return timeB - timeA;
+      });
+    } catch (error) {
+      console.error("Tesis yorumları çekme hatası:", error);
+      return [];
+    }
+  },
+
+  addPitchReview: async (pitchName: string, review: Omit<PitchReviewModel, 'id' | 'createdAt'>) => {
+    try {
+      const reviewsRef = collection(db, 'pitch_reviews');
+      const docRef = await addDoc(reviewsRef, {
+        pitchName,
+        ...review,
+        createdAt: serverTimestamp()
+      });
+      return { id: docRef.id, pitchName, ...review };
+    } catch (error) {
+      console.error("Tesis yorumu ekleme hatası:", error);
       throw error;
     }
   }

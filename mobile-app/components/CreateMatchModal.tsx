@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import {
   StyleSheet, View, Text, TouchableOpacity,
   ScrollView, TextInput, Alert, Switch, FlatList,
-  Platform,
+  Platform, ActivityIndicator,
 } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -88,17 +88,28 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   const filteredPitches = useMemo(() => {
     if (!pitchSearch.trim()) return cityPitches;
     const q = pitchSearch.toLowerCase();
-    return cityPitches.filter(
-      p => p.name.toLowerCase().includes(q) || p.district.toLowerCase().includes(q)
+    return PITCH_DATABASE.filter(
+      p => p.name.toLowerCase().includes(q) || p.district.toLowerCase().includes(q) || p.city.toLowerCase().includes(q)
     );
   }, [cityPitches, pitchSearch]);
 
-  const [selectedPitch, setSelectedPitch] = useState<PitchDatabaseItem>(
-    cityPitches[0] || PITCH_DATABASE[0]
-  );
+  const [selectedPitch, setSelectedPitch] = useState<PitchDatabaseItem>(() => {
+    const initialCity = user?.city || 'İstanbul';
+    return PITCH_DATABASE.find(p => p.city === initialCity) || PITCH_DATABASE[0];
+  });
   const [selectedSubField, setSelectedSubField] = useState(
     selectedPitch.subFields[0]?.name || 'Tek Saha'
   );
+
+  const handleSelectCity = (c: string) => {
+    setSelectedCity(c);
+    setCitySelectorOpen(false);
+    const firstPitch = PITCH_DATABASE.find(p => p.city === c);
+    if (firstPitch) {
+      setSelectedPitch(firstPitch);
+      setSelectedSubField(firstPitch.subFields[0]?.name || 'Tek Saha');
+    }
+  };
 
   // ── Tarih ──────────────────────────────────────────────
   const today = new Date();
@@ -151,6 +162,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
 
   // ── Abonelik ──────────────────────────────────────────────
   const [isSubscription, setIsSubscription] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // ── Hesaplama ──────────────────────────────────────────────
   const getPlayerCount = (mode: string) => {
@@ -166,6 +178,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   // ── Handlers ──────────────────────────────────────────────
   const handlePitchSelect = (pitch: PitchDatabaseItem) => {
     setSelectedPitch(pitch);
+    setSelectedCity(pitch.city); // Sync city!
     setSelectedSubField(pitch.subFields[0]?.name || 'Tek Saha');
     setPitchPickerOpen(false);
     setPitchSearch('');
@@ -186,6 +199,8 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     : formatDateTR(selectedDate);
 
   const handleCreate = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     const dateStr = formatDateTR(selectedDate);
     const fullArenaName = `${selectedPitch.name} — ${selectedSubField}`;
     const fullDateTime = `${dateStr}, ${selectedTimeSlot}`;
@@ -208,14 +223,15 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
 
     try {
       const created = await addMatch(newMatch as any, user);
-
-      Alert.alert(
-        '⚽ Maç İlanı Kaydedildi!',
-        `${fullArenaName}\n${fullDateTime}\nToplam: ${totalFeeNum.toLocaleString('tr-TR')} ₺  •  Kişi Başı: ${perPlayerFee} ₺${isGkFree ? ' (2 Kaleci Muaf)' : ''}${isSubscription ? '\n🔄 Haftalık Abonelik Maçı' : ''}`,
-        [{ text: 'Maç Odasına Git', onPress: () => { if (onSuccess) onSuccess((created || newMatch) as any); onClose(); } }]
-      );
-    } catch {
+      onClose();
+      if (onSuccess) {
+        onSuccess((created || newMatch) as any);
+      }
+    } catch (err) {
+      console.error('Maç oluşturma hatası:', err);
       Alert.alert('Hata', 'Maç oluşturulurken bir sorun oluştu.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -252,7 +268,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                   <TouchableOpacity
                     key={c}
                     style={[styles.cityChip, selectedCity === c && styles.cityChipActive]}
-                    onPress={() => { setSelectedCity(c); setCitySelectorOpen(false); }}
+                    onPress={() => handleSelectCity(c)}
                   >
                     <Text style={[styles.cityChipText, selectedCity === c && styles.cityChipTextActive]}>{c}</Text>
                   </TouchableOpacity>
@@ -490,9 +506,23 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
             </View>
 
             {/* ── KAYDET BUTONU ── */}
-            <TouchableOpacity style={styles.createBtn} activeOpacity={0.85} onPress={handleCreate}>
-              <MaterialIcons name="check-circle" size={22} color={theme.background} />
-              <Text style={styles.createBtnText}>MAÇ İLANINI KAYDET</Text>
+            <TouchableOpacity 
+              style={[styles.createBtn, isSubmitting && { opacity: 0.6 }]} 
+              activeOpacity={0.85} 
+              onPress={handleCreate}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <ActivityIndicator size="small" color={theme.background} />
+                  <Text style={styles.createBtnText}>KAYDEDİLİYOR...</Text>
+                </>
+              ) : (
+                <>
+                  <MaterialIcons name="check-circle" size={22} color={theme.background} />
+                  <Text style={styles.createBtnText}>MAÇ İLANINI KAYDET</Text>
+                </>
+              )}
             </TouchableOpacity>
 
           </ScrollView>

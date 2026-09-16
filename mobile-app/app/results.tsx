@@ -42,7 +42,8 @@ export default function ResultsScreen() {
           city: params.city,
           district: params.district,
           mode: params.mode,
-          difficulty: params.difficulty
+          difficulty: params.difficulty,
+          arena: params.arena,
         });
         setMatches(list);
       } else if (searchTab === 'Rakip') {

@@ -55,6 +55,23 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
     }
   };
 
+  const handleItemPress = (item: NotificationItem) => {
+    setNotifs(prev => prev.map(n => n.id === item.id ? { ...n, read: true } : n));
+    const targetRoute = item.route;
+    onClose();
+    if (targetRoute) {
+      setTimeout(() => {
+        try {
+          router.push(targetRoute as any);
+        } catch (e) {
+          console.warn('Navigation error:', e);
+        }
+      }, 150);
+    } else {
+      Alert.alert(item.title, item.message);
+    }
+  };
+
   const unreadCount = notifs.filter(n => !n.read).length;
 
   if (!visible) return null;
@@ -96,7 +113,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
             {notifs.length === 0 ? (
               <View style={styles.emptyBox}>
                 <MaterialIcons name="notifications-off" size={48} color={theme.surfaceContainerHighest} />
-                <Text style={styles.emptyText}>Henüz bildirimiz yok</Text>
+                <Text style={styles.emptyText}>Henüz bildiriminiz yok</Text>
               </View>
             ) : (
               notifs.map((item) => {
@@ -106,15 +123,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                     key={item.id}
                     style={[styles.notifCard, !item.read && styles.notifCardUnread]}
                     activeOpacity={0.8}
-                    onPress={() => {
-                      setNotifs(prev => prev.map(n => n.id === item.id ? { ...n, read: true } : n));
-                      onClose();
-                      if (item.route) {
-                        router.push(item.route as any);
-                      } else {
-                        Alert.alert(item.title, item.message);
-                      }
-                    }}
+                    onPress={() => handleItemPress(item)}
                   >
                     <View style={[styles.iconWrap, { backgroundColor: `${iconInfo.color}20` }]}>
                       <MaterialIcons name={iconInfo.name as any} size={20} color={iconInfo.color} />

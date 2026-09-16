@@ -13,6 +13,72 @@ interface MatchCountdownCardProps {
   mode?: string;
 }
 
+const TURKISH_MONTHS: Record<string, number> = {
+  ocak: 0, subat: 1, şubat: 1, mart: 2, nisan: 3, mayis: 4, mayıs: 4,
+  haziran: 5, temmuz: 6, agustos: 7, ağustos: 7, eylul: 8, eylül: 8,
+  ekim: 9, kasim: 10, kasım: 10, aralik: 11, aralık: 11,
+};
+
+function parseTargetTimestamp(dateTime?: string, targetHours: number = 2): number {
+  const defaultFuture = Date.now() + (targetHours * 3600 + 30 * 60) * 1000;
+  if (!dateTime) return defaultFuture;
+
+  const now = new Date();
+  const lower = dateTime.toLowerCase().trim();
+
+  // Try direct date parse if it's ISO or standard date format
+  const directDate = new Date(dateTime);
+  if (!isNaN(directDate.getTime()) && directDate.getFullYear() > 2020) {
+    return directDate.getTime();
+  }
+
+  // Extract HH:mm
+  const timeMatch = dateTime.match(/(\d{1,2}):(\d{2})/);
+  const hour = timeMatch ? parseInt(timeMatch[1], 10) : 21;
+  const minute = timeMatch ? parseInt(timeMatch[2], 10) : 0;
+
+  if (lower.includes('bugün') || lower.includes('bugun')) {
+    const d = new Date();
+    d.setHours(hour, minute, 0, 0);
+    return d.getTime();
+  }
+
+  if (lower.includes('yarın') || lower.includes('yarin')) {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(hour, minute, 0, 0);
+    return d.getTime();
+  }
+
+  // Match "15 Eylül 2026" or "15 Eylül"
+  const dateMatch = lower.match(/(\d{1,2})\s+([a-zçğıöşü]+)(?:\s+(\d{4}))?/i);
+  if (dateMatch) {
+    const day = parseInt(dateMatch[1], 10);
+    const monthName = dateMatch[2].toLowerCase();
+    const year = dateMatch[3] ? parseInt(dateMatch[3], 10) : now.getFullYear();
+
+    if (TURKISH_MONTHS[monthName] !== undefined) {
+      const month = TURKISH_MONTHS[monthName];
+      const d = new Date(year, month, day, hour, minute, 0, 0);
+      if (!isNaN(d.getTime())) {
+        return d.getTime();
+      }
+    }
+  }
+
+  // If only time was provided (e.g. "21:00")
+  if (timeMatch) {
+    const d = new Date();
+    d.setHours(hour, minute, 0, 0);
+    if (d.getTime() < now.getTime()) {
+      d.setDate(d.getDate() + 1);
+    }
+    return d.getTime();
+  }
+
+  return defaultFuture;
+}
+
 export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({ 
   targetHours = 2, 
   matchId,
@@ -23,30 +89,30 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
   const router = useRouter();
   const { theme } = useTheme();
   const styles = useStyles(theme);
-  const [timeLeft, setTimeLeft] = useState({ hours: targetHours, minutes: 0, seconds: 0 });
+  const [timeLeft, setTimeLeft] = useState({ hours: targetHours, minutes: 0, seconds: 0, isLive: false, isPast: false });
 
   useEffect(() => {
-    let targetTimestamp = Date.now() + (targetHours * 3600 + 30 * 60) * 1000;
-    if (dateTime) {
-      const timeMatch = dateTime.match(/(\d{1,2}):(\d{2})/);
-      if (timeMatch) {
-        const h = parseInt(timeMatch[1], 10);
-        const m = parseInt(timeMatch[2], 10);
-        const now = new Date();
-        const candidate = new Date();
-        candidate.setHours(h, m, 0, 0);
-        if (candidate.getTime() > now.getTime()) {
-          targetTimestamp = candidate.getTime();
-        }
-      }
-    }
+    const targetTimestamp = parseTargetTimestamp(dateTime, targetHours);
 
     const updateTimer = () => {
-      const remaining = Math.max(0, Math.floor((targetTimestamp - Date.now()) / 1000));
-      const hours = Math.floor(remaining / 3600);
-      const minutes = Math.floor((remaining % 3600) / 60);
-      const seconds = remaining % 60;
-      setTimeLeft({ hours, minutes, seconds });
+      const now = Date.now();
+      const diffSec = Math.floor((targetTimestamp - now) / 1000);
+
+      if (diffSec <= 0) {
+        if (diffSec >= -5400) {
+          // Started within the last 90 minutes -> Match is actively playing!
+          const elapsed = Math.min(90, Math.floor(Math.abs(diffSec) / 60));
+          setTimeLeft({ hours: 0, minutes: elapsed, seconds: Math.abs(diffSec) % 60, isLive: true, isPast: false });
+        } else {
+          // Ended more than 90 minutes ago -> Match finished
+          setTimeLeft({ hours: 0, minutes: 0, seconds: 0, isLive: false, isPast: true });
+        }
+      } else {
+        const hours = Math.floor(diffSec / 3600);
+        const minutes = Math.floor((diffSec % 3600) / 60);
+        const seconds = diffSec % 60;
+        setTimeLeft({ hours, minutes, seconds, isLive: false, isPast: false });
+      }
     };
 
     updateTimer();
@@ -65,33 +131,60 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
       onPress={() => router.push(matchId ? { pathname: '/match-room', params: { matchId } } : '/match-room')}
     >
       <View style={styles.topRow}>
-        <View style={styles.badge}>
-          <View style={styles.pulseDot} />
-          <Text style={styles.badgeText}>YAKLAŞAN MAÇ GÜNÜ</Text>
+        <View style={[styles.badge, timeLeft.isLive && { backgroundColor: `${theme.secondary}26` }]}>
+          <View style={[styles.pulseDot, timeLeft.isLive && { backgroundColor: theme.secondary }]} />
+          <Text style={[styles.badgeText, timeLeft.isLive && { color: theme.secondary }]}>
+            {timeLeft.isLive ? '🔴 CANLI MAÇ OYNANIYOR' : timeLeft.isPast ? 'MAÇ TAMAMLANDI' : 'YAKLAŞAN MAÇ GÜNÜ'}
+          </Text>
         </View>
         <Text style={styles.venueText} numberOfLines={1}>{arena} • {displayTime}</Text>
       </View>
 
-      {/* Countdown Timer Boxes */}
-      <View style={styles.timerRow}>
-        <View style={styles.timeBox}>
-          <Text style={styles.timeVal}>{format2Digits(timeLeft.hours)}</Text>
-          <Text style={styles.timeLabel}>SAAT</Text>
+      {/* Countdown / Live Display Boxes */}
+      {timeLeft.isLive ? (
+        <View style={styles.timerRow}>
+          <View style={styles.timeBox}>
+            <Text style={[styles.timeVal, { color: theme.secondary }]}>{format2Digits(timeLeft.minutes)}'</Text>
+            <Text style={styles.timeLabel}>DAKİKA</Text>
+          </View>
+          <Text style={[styles.colon, { color: theme.secondary }]}>:</Text>
+          <View style={[styles.timeBox, { width: 90 }]}>
+            <Text style={[styles.timeVal, { fontSize: 18, color: theme.secondary }]}>CANLI</Text>
+            <Text style={styles.timeLabel}>DURUM</Text>
+          </View>
+          <Text style={[styles.colon, { color: theme.secondary }]}>:</Text>
+          <View style={styles.timeBox}>
+            <Text style={[styles.timeVal, { color: theme.secondary }]}>{format2Digits(timeLeft.seconds)}</Text>
+            <Text style={styles.timeLabel}>SANİYE</Text>
+          </View>
         </View>
-        <Text style={styles.colon}>:</Text>
-        <View style={styles.timeBox}>
-          <Text style={styles.timeVal}>{format2Digits(timeLeft.minutes)}</Text>
-          <Text style={styles.timeLabel}>DAKİKA</Text>
+      ) : (
+        <View style={styles.timerRow}>
+          <View style={styles.timeBox}>
+            <Text style={styles.timeVal}>{format2Digits(timeLeft.hours)}</Text>
+            <Text style={styles.timeLabel}>SAAT</Text>
+          </View>
+          <Text style={styles.colon}>:</Text>
+          <View style={styles.timeBox}>
+            <Text style={styles.timeVal}>{format2Digits(timeLeft.minutes)}</Text>
+            <Text style={styles.timeLabel}>DAKİKA</Text>
+          </View>
+          <Text style={styles.colon}>:</Text>
+          <View style={styles.timeBox}>
+            <Text style={[styles.timeVal, { color: theme.primary }]}>{format2Digits(timeLeft.seconds)}</Text>
+            <Text style={styles.timeLabel}>SANİYE</Text>
+          </View>
         </View>
-        <Text style={styles.colon}>:</Text>
-        <View style={styles.timeBox}>
-          <Text style={[styles.timeVal, { color: theme.primary }]}>{format2Digits(timeLeft.seconds)}</Text>
-          <Text style={styles.timeLabel}>SANİYE</Text>
-        </View>
-      </View>
+      )}
 
       <View style={styles.bottomRow}>
-        <Text style={styles.subHint}>{mode} Modu • Hazırlanmayı Unutmayın!</Text>
+        <Text style={styles.subHint}>
+          {timeLeft.isLive 
+            ? 'Maç oynanıyor • Skoru ve oyuncuları takip edin!' 
+            : timeLeft.isPast 
+            ? 'Maç sona erdi • Kaptan olarak skoru kaydedin' 
+            : `${mode} Modu • Hazırlanmayı Unutmayın!`}
+        </Text>
         <View style={styles.goBtn}>
           <Text style={styles.goBtnText}>ODAYA GİT</Text>
           <MaterialIcons name="chevron-right" size={16} color={theme.background} />

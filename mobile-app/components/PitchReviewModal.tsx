@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, TextInput, Alert, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, TextInput, Alert, Image, ActivityIndicator } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
+import { useAuth } from '@/hooks/use-auth';
+import { dbService } from '@/services/dbService';
 
 interface PitchReviewModalProps {
   pitchName?: string;
@@ -18,30 +20,78 @@ const SAMPLE_REVIEWS = [
 
 export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 'Beşiktaş Arena', visible, onClose }) => {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const styles = useStyles(theme);
-  const [reviews, setReviews] = useState(SAMPLE_REVIEWS);
+  const [reviews, setReviews] = useState<any[]>(SAMPLE_REVIEWS);
   const [userRating, setUserRating] = useState(5);
   const [userComment, setUserComment] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleAddReview = () => {
+  useEffect(() => {
+    if (visible && pitchName) {
+      setLoading(true);
+      dbService.getPitchReviews(pitchName).then((remoteReviews) => {
+        if (remoteReviews && remoteReviews.length > 0) {
+          const mapped = remoteReviews.map(r => ({
+            id: r.id || Date.now().toString(),
+            name: r.userName || 'Halısaha Oyuncusu',
+            rating: r.rating || 5,
+            comment: r.comment,
+            date: 'Yeni',
+            avatar: r.userAvatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuCKH5OYGgw6kyLLpH5wMB9LQxlysnBPQOzGlTYgCblgjVquca3KkOX5eAQ0rqvOjVr9qEQGj-yP235XnroUuyzg7ZsmyIXWpDnxXISTalw3NzTDuw_ZmQX-Ne1hFDC0eysnPT4qZ1-8DGKiHIfmwdX8oJRjOJuuspWloG3YJSs7bU4_nXnrmNdlVphCmkNnCmyMAplXu8T0BShbsk-UUGhVj3_acb9UxRLlDA44DPG15QZILO7eSCKY16cXOu2I3DQjKW4ccIolcKzm',
+          }));
+          setReviews([...mapped, ...SAMPLE_REVIEWS]);
+        }
+      }).catch(err => {
+        console.error('Tesis yorumları yüklenemedi:', err);
+      }).finally(() => {
+        setLoading(false);
+      });
+    }
+  }, [visible, pitchName]);
+
+  const handleAddReview = async () => {
     if (!userComment.trim()) {
       Alert.alert('Eksik Bilgi', 'Lütfen bir yorum yazın.');
       return;
     }
-    const newRev = {
-      id: Date.now().toString(),
-      name: 'Siz (Oyuncu)',
-      rating: userRating,
-      comment: userComment.trim(),
-      date: 'Az önce',
-      avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG',
-    };
-    setReviews([newRev, ...reviews]);
-    setUserComment('');
-    setShowAddForm(false);
-    Alert.alert('✅ Yorum Yayınlandı', 'Tesis değerlendirmeniz kaydedildi.');
+    setSubmitting(true);
+    try {
+      const reviewPayload = {
+        pitchName,
+        userId: user?.uid || 'anon',
+        userName: user?.name || 'Siz (Oyuncu)',
+        userAvatar: user?.avatar,
+        rating: userRating,
+        comment: userComment.trim(),
+      };
+      await dbService.addPitchReview(pitchName, reviewPayload);
+
+      const newRev = {
+        id: Date.now().toString(),
+        name: user?.name || 'Siz (Oyuncu)',
+        rating: userRating,
+        comment: userComment.trim(),
+        date: 'Az önce',
+        avatar: user?.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG',
+      };
+      setReviews(prev => [newRev, ...prev]);
+      setUserComment('');
+      setShowAddForm(false);
+      Alert.alert('✅ Değerlendirme Kaydedildi', 'Tesis puanınız ve yorumunuz başarıyla kaydedildi.');
+    } catch (e) {
+      console.error('Yorum ekleme hatası:', e);
+      Alert.alert('Hata', 'Değerlendirmeniz kaydedilirken bir sorun oluştu.');
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  const averageRating = reviews.length > 0 
+    ? (reviews.reduce((sum, r) => sum + (r.rating || 5), 0) / reviews.length).toFixed(1)
+    : '4.8';
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -65,21 +115,21 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
             {/* Overall Score Banner */}
             <View style={styles.scoreBanner}>
               <View style={styles.scoreLeft}>
-                <Text style={styles.bigScore}>4.8</Text>
+                <Text style={styles.bigScore}>{averageRating}</Text>
                 <View style={styles.starRow}>
                   {[1, 2, 3, 4, 5].map((s) => (
                     <MaterialIcons key={s} name="star" size={16} color={theme.primary} />
                   ))}
                 </View>
-                <Text style={styles.totalCount}>48 Değerlendirme</Text>
+                <Text style={styles.totalCount}>{reviews.length} Değerlendirme</Text>
               </View>
 
               {/* Criteria Bars */}
               <View style={styles.criteriaRight}>
                 {[
-                  { label: '⚽ Zemin', val: '4.9' },
+                  { label: '⚽ Zemin', val: (parseFloat(averageRating) > 4.5 ? '4.9' : averageRating) },
                   { label: '🚿 Duş / Soyunma', val: '4.7' },
-                  { label: '💡 Işıklandırma', val: '4.8' },
+                  { label: '💡 Işıklandırma', val: averageRating },
                   { label: '🚗 Otopark', val: '4.5' },
                 ].map((crit, i) => (
                   <View key={i} style={styles.critRow}>
@@ -119,8 +169,12 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
                   <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowAddForm(false)}>
                     <Text style={styles.cancelBtnText}>İPTAL</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.submitReviewBtn} onPress={handleAddReview}>
-                    <Text style={styles.submitReviewBtnText}>YAYINLA</Text>
+                  <TouchableOpacity style={[styles.submitReviewBtn, submitting && { opacity: 0.6 }]} onPress={handleAddReview} disabled={submitting}>
+                    {submitting ? (
+                      <ActivityIndicator size="small" color={theme.onPrimary} />
+                    ) : (
+                      <Text style={styles.submitReviewBtnText}>YAYINLA</Text>
+                    )}
                   </TouchableOpacity>
                 </View>
               </View>

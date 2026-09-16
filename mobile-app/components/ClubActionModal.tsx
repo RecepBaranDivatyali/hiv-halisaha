@@ -16,6 +16,23 @@ interface ClubActionModalProps {
   initialTab?: 'create' | 'join';
 }
 
+const CITIES = ['İstanbul', 'Ankara', 'İzmir', 'Bursa', 'Antalya', 'Adana', 'Trabzon', 'Eskişehir'];
+
+const PRESET_LOGOS = [
+  { id: '1', name: 'Kaplan', uri: 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=150&h=150&fit=crop' },
+  { id: '2', name: 'Kartal', uri: 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=150&h=150&fit=crop' },
+  { id: '3', name: 'Şimşek', uri: 'https://images.unsplash.com/photo-1517466787929-bc90951d0974?w=150&h=150&fit=crop' },
+  { id: '4', name: 'Aslan', uri: 'https://images.unsplash.com/photo-1551958219-acbc608c6377?w=150&h=150&fit=crop' },
+  { id: '5', name: 'Boğaziçi', uri: 'https://images.unsplash.com/photo-1518091043644-c1d4457512c6?w=150&h=150&fit=crop' },
+  { id: '6', name: 'Yıldız', uri: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=150&h=150&fit=crop' },
+  { id: '7', name: 'Kuzey Gücü', uri: 'https://images.unsplash.com/photo-1560272564-c83b66b1ad12?w=150&h=150&fit=crop' },
+  { id: '8', name: 'Demir Spor', uri: 'https://images.unsplash.com/photo-1517927033932-b3d18e61fb3a?w=150&h=150&fit=crop' },
+  { id: '9', name: 'Ateş Spor', uri: 'https://images.unsplash.com/photo-1543326727-cf6c39e8f84c?w=150&h=150&fit=crop' },
+  { id: '10', name: 'Kurtlar', uri: 'https://images.unsplash.com/photo-1511886929837-354d827aae26?w=150&h=150&fit=crop' },
+  { id: '11', name: 'Atlas FC', uri: 'https://images.unsplash.com/photo-1486286701208-1d58e9338013?w=150&h=150&fit=crop' },
+  { id: '12', name: 'Zirve Spor', uri: 'https://images.unsplash.com/photo-1575361204480-aadea25e6e68?w=150&h=150&fit=crop' },
+];
+
 export const ClubActionModal: React.FC<ClubActionModalProps> = ({ 
   visible, 
   onClose, 
@@ -31,7 +48,9 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
   // Create Club State
   const [clubName, setClubName] = useState('');
   const [clubDesc, setClubDesc] = useState('');
-  const [selectedLogo, setSelectedLogo] = useState<string | null>(null);
+  const [selectedCity, setSelectedCity] = useState(user?.city || 'İstanbul');
+  const [citySelectorOpen, setCitySelectorOpen] = useState(false);
+  const [selectedLogo, setSelectedLogo] = useState<string>(PRESET_LOGOS[0].uri);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Join Club State
@@ -40,8 +59,9 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
   useEffect(() => {
     if (visible) {
       setActiveTab(initialTab);
+      if (user?.city) setSelectedCity(user.city);
     }
-  }, [visible, initialTab]);
+  }, [visible, initialTab, user?.city]);
 
   const handleLogoSelect = async () => {
     try {
@@ -65,14 +85,18 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
         const newClub = await dbService.createClub({
           name: clubName.trim(),
           desc: clubDesc.trim() || 'Halısaha Takımı',
-          logo: selectedLogo || undefined,
+          city: selectedCity,
+          logo: selectedLogo || PRESET_LOGOS[0].uri,
           ownerId: user?.uid,
+          captainId: user?.uid,
+          captainName: user?.name || 'Kaptan',
           color: theme.primary,
           rank: 'YENİ',
           points: 100,
           membersCount: 1,
           maxMembers: 50,
           level: 1,
+          members: user?.uid ? [user.uid] : [],
         });
 
         if (newClub?.id) {
@@ -81,14 +105,14 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
 
         Alert.alert(
           'Tebrikler! 🏆',
-          `"${clubName.trim()}" kulübünüz başarıyla kuruldu!`,
+          `"${clubName.trim()}" (${selectedCity}) kulübünüz başarıyla kuruldu!`,
           [
             {
               text: 'Tamam',
               onPress: () => {
                 setClubName('');
                 setClubDesc('');
-                setSelectedLogo(null);
+                setSelectedLogo(PRESET_LOGOS[0].uri);
                 onClose();
                 if (onSuccess) onSuccess();
               },
@@ -148,18 +172,49 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
           <ScrollView style={styles.body} contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
             {activeTab === 'create' ? (
               <View style={styles.formContainer}>
-                {/* Logo Picker */}
+                {/* Active Selected Logo Display */}
                 <View style={styles.logoPickerContainer}>
-                  <TouchableOpacity style={styles.logoPickerBtn} onPress={handleLogoSelect}>
-                    {selectedLogo ? (
-                      <Image source={{ uri: selectedLogo }} style={{ width: 64, height: 64, borderRadius: 32 }} />
-                    ) : (
-                      <View style={{ alignItems: 'center' }}>
-                        <MaterialIcons name="add-photo-alternate" size={32} color={theme.secondary} />
-                        <Text style={styles.logoPickerText}>Logo Seç</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
+                  <View style={styles.activeLogoWrap}>
+                    <Image source={{ uri: selectedLogo }} style={styles.activeLogoImg} />
+                    <TouchableOpacity style={styles.uploadBadgeBtn} onPress={handleLogoSelect} activeOpacity={0.8}>
+                      <MaterialIcons name="photo-camera" size={14} color={theme.background} />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.selectedLogoHint}>Kulüp Arması Seçin veya Fotoğraf Yükleyin</Text>
+                </View>
+
+                {/* Preset Logos Horizontal List */}
+                <View style={styles.presetSection}>
+                  <View style={styles.presetHeader}>
+                    <Text style={styles.inputLabel}>HAZIR LOGOLAR (12 ÇEŞİT)</Text>
+                    <TouchableOpacity onPress={handleLogoSelect} style={styles.uploadCustomBtn}>
+                      <MaterialIcons name="upload" size={14} color={theme.primary} />
+                      <Text style={styles.uploadCustomText}>Galeriden Yükle</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetList}>
+                    {PRESET_LOGOS.map((p) => {
+                      const isChosen = selectedLogo === p.uri;
+                      return (
+                        <TouchableOpacity
+                          key={p.id}
+                          style={[styles.presetItem, isChosen && styles.presetItemActive]}
+                          onPress={() => setSelectedLogo(p.uri)}
+                          activeOpacity={0.8}
+                        >
+                          <Image source={{ uri: p.uri }} style={styles.presetThumb} />
+                          {isChosen && (
+                            <View style={styles.presetCheckBadge}>
+                              <MaterialIcons name="check" size={10} color={theme.background} />
+                            </View>
+                          )}
+                          <Text style={[styles.presetName, isChosen && { color: theme.primary, fontFamily: Fonts.headlineBold }]} numberOfLines={1}>
+                            {p.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
                 </View>
 
                 {/* Form Fields */}
@@ -185,12 +240,37 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
                   />
                 </View>
 
+                {/* Şehir Seçici */}
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Şehir</Text>
-                  <View style={[styles.input, styles.inputDisabled]}>
-                    <Text style={{ color: theme.text }}>İstanbul / Tüm İlçeler</Text>
-                    <MaterialIcons name="location-on" size={16} color={theme.primary} />
-                  </View>
+                  <TouchableOpacity 
+                    style={styles.citySelectorBtn} 
+                    onPress={() => setCitySelectorOpen(!citySelectorOpen)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <MaterialIcons name="location-on" size={18} color={theme.primary} />
+                      <Text style={styles.citySelectorText}>{selectedCity}</Text>
+                    </View>
+                    <MaterialIcons name={citySelectorOpen ? "keyboard-arrow-up" : "keyboard-arrow-down"} size={20} color={theme.primary} />
+                  </TouchableOpacity>
+
+                  {citySelectorOpen && (
+                    <View style={styles.cityChipsGrid}>
+                      {CITIES.map((c) => (
+                        <TouchableOpacity
+                          key={c}
+                          style={[styles.cityChip, selectedCity === c && styles.cityChipActive]}
+                          onPress={() => {
+                            setSelectedCity(c);
+                            setCitySelectorOpen(false);
+                          }}
+                        >
+                          <Text style={[styles.cityChipText, selectedCity === c && styles.cityChipTextActive]}>{c}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
                 </View>
               </View>
             ) : (
@@ -384,5 +464,148 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontSize: 15,
     color: theme.onPrimary,
     letterSpacing: 1,
+  },
+
+  activeLogoWrap: {
+    position: 'relative',
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    borderWidth: 2,
+    borderColor: theme.primary,
+    overflow: 'hidden',
+  },
+  activeLogoImg: {
+    width: '100%',
+    height: '100%',
+  },
+  uploadBadgeBtn: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: theme.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: theme.background,
+  },
+  selectedLogoHint: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: theme.textMuted,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+
+  presetSection: {
+    gap: 8,
+  },
+  presetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  uploadCustomBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  uploadCustomText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.primary,
+  },
+  presetList: {
+    gap: 12,
+    paddingVertical: 4,
+  },
+  presetItem: {
+    alignItems: 'center',
+    width: 64,
+    padding: 6,
+    borderRadius: 12,
+    backgroundColor: theme.surfaceContainer,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    position: 'relative',
+  },
+  presetItemActive: {
+    borderColor: theme.primary,
+    backgroundColor: `${theme.primary}1A`,
+  },
+  presetThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    marginBottom: 4,
+  },
+  presetCheckBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: theme.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  presetName: {
+    fontFamily: Fonts.body,
+    fontSize: 9,
+    color: theme.textMuted,
+    textAlign: 'center',
+  },
+
+  citySelectorBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.surfaceContainer,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  citySelectorText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 14,
+    color: theme.text,
+  },
+  cityChipsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    backgroundColor: theme.surfaceContainerHigh,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    marginTop: 6,
+  },
+  cityChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+  },
+  cityChipActive: {
+    backgroundColor: `${theme.primary}26`,
+    borderColor: theme.primary,
+  },
+  cityChipText: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: theme.textMuted,
+  },
+  cityChipTextActive: {
+    color: theme.primary,
+    fontFamily: Fonts.headlineBold,
   },
 });

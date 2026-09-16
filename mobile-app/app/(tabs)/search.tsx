@@ -8,6 +8,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { PitchReviewModal } from '@/components/PitchReviewModal';
 import { useTheme } from '@/context/ThemeContext';
 import { Skeleton } from '@/components/Skeleton';
+import { PITCH_DATABASE } from '@/config/pitches';
 
 type Tab = 'Maç' | 'Oyuncu' | 'Rakip';
 
@@ -37,12 +38,13 @@ export default function SearchScreen() {
 
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [pitchReviewVisible, setPitchReviewVisible] = useState(false);
-  const [selectedPitch, setSelectedPitch] = useState('Powerleague Arena');
+  const [selectedPitch, setSelectedPitch] = useState('Tüm Sahalar');
   const [selectedCity, setSelectedCity] = useState('İstanbul');
   const [selectedDistrict, setSelectedDistrict] = useState('Kadıköy');
 
   const [cityModalVisible, setCityModalVisible] = useState(false);
   const [districtModalVisible, setDistrictModalVisible] = useState(false);
+  const [pitchModalVisible, setPitchModalVisible] = useState(false);
 
   const [pos, setPos] = useState('KL');
   const [level, setLevel] = useState('0-3.9');
@@ -51,6 +53,7 @@ export default function SearchScreen() {
   const [isLoading, setIsLoading] = useState(true);
 
   const availableDistricts = DISTRICTS_MAP[selectedCity] || ['Merkez', '1. Bölge', '2. Bölge'];
+  const cityPitches = PITCH_DATABASE.filter(p => p.city === selectedCity);
 
   // Load remembered preferences
   useEffect(() => {
@@ -98,7 +101,8 @@ export default function SearchScreen() {
         difficulty: difficulty, 
         level: level, 
         city: selectedCity, 
-        district: selectedDistrict 
+        district: selectedDistrict,
+        arena: selectedPitch !== 'Tüm Sahalar' ? selectedPitch : undefined,
       }
     });
   };
@@ -116,7 +120,7 @@ export default function SearchScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <PitchReviewModal 
-        pitchName={selectedPitch} 
+        pitchName={selectedPitch === 'Tüm Sahalar' ? (cityPitches[0]?.name || 'Beşiktaş Arena') : selectedPitch} 
         visible={pitchReviewVisible} 
         onClose={() => setPitchReviewVisible(false)} 
       />
@@ -128,6 +132,7 @@ export default function SearchScreen() {
           onPress={() => {
             setSelectedCity('İstanbul');
             setSelectedDistrict('Kadıköy');
+            setSelectedPitch('Tüm Sahalar');
             setPos('KL');
             setLevel('0-3.9');
             setDifficulty('Eğlence');
@@ -174,14 +179,31 @@ export default function SearchScreen() {
             </View>
             <MaterialIcons name="expand-more" size={24} color={theme.primary} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.dropdownBtn} onPress={() => { setSelectedPitch('Powerleague Arena'); setPitchReviewVisible(true); }} accessibilityLabel="Saha İncele" accessibilityRole="button">
-            <View>
-              <Text style={styles.dropdownLabel}>Saha (İncelemeler & Puanlar)</Text>
-              <Text style={styles.dropdownValue}>Powerleague Arena ★ 4.8</Text>
+
+          {/* Saha Seçici */}
+          <TouchableOpacity 
+            style={styles.dropdownBtn} 
+            onPress={() => setPitchModalVisible(true)} 
+            accessibilityLabel="Saha Seç" 
+            accessibilityRole="button"
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.dropdownLabel}>Saha / Tesis</Text>
+              <Text style={styles.dropdownValue} numberOfLines={1}>{selectedPitch}</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <MaterialIcons name="rate-review" size={18} color={theme.primary} />
-              <MaterialIcons name="expand-more" size={24} color={theme.textMuted} />
+              {selectedPitch !== 'Tüm Sahalar' && (
+                <TouchableOpacity 
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    setPitchReviewVisible(true);
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <MaterialIcons name="rate-review" size={18} color={theme.primary} />
+                </TouchableOpacity>
+              )}
+              <MaterialIcons name="expand-more" size={24} color={theme.primary} />
             </View>
           </TouchableOpacity>
         </View>
@@ -309,6 +331,7 @@ export default function SearchScreen() {
                     setSelectedCity(city);
                     const defaultDist = (DISTRICTS_MAP[city] && DISTRICTS_MAP[city][0]) || 'Merkez';
                     setSelectedDistrict(defaultDist);
+                    setSelectedPitch('Tüm Sahalar');
                     setCityModalVisible(false);
                   }}
                 >
@@ -352,6 +375,58 @@ export default function SearchScreen() {
             <TouchableOpacity 
               style={styles.modalCloseBtn}
               onPress={() => setDistrictModalVisible(false)}
+            >
+              <Text style={styles.modalCloseText}>KAPAT</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      )}
+
+      {/* Pitch Modal with backdrop tap dismissal */}
+      {pitchModalVisible && (
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setPitchModalVisible(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{selectedCity.toUpperCase()} - SAHA SEÇİN</Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <TouchableOpacity 
+                style={styles.modalItem}
+                onPress={() => {
+                  setSelectedPitch('Tüm Sahalar');
+                  setPitchModalVisible(false);
+                }}
+              >
+                <Text style={[styles.modalItemText, selectedPitch === 'Tüm Sahalar' && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                  🏟️ Tüm Sahalar (Filtresiz)
+                </Text>
+              </TouchableOpacity>
+              {cityPitches.map((pitch) => (
+                <TouchableOpacity 
+                  key={pitch.id}
+                  style={styles.modalItem}
+                  onPress={() => {
+                    setSelectedPitch(pitch.name);
+                    setSelectedDistrict(pitch.district);
+                    setPitchModalVisible(false);
+                  }}
+                >
+                  <View>
+                    <Text style={[styles.modalItemText, selectedPitch === pitch.name && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                      {pitch.name}
+                    </Text>
+                    <Text style={{ fontFamily: Fonts.body, fontSize: 11, color: theme.textMuted }}>
+                      {pitch.district} • ★ {pitch.rating}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity 
+              style={styles.modalCloseBtn}
+              onPress={() => setPitchModalVisible(false)}
             >
               <Text style={styles.modalCloseText}>KAPAT</Text>
             </TouchableOpacity>
