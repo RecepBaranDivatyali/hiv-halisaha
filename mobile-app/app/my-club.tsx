@@ -90,7 +90,11 @@ export default function MyClubScreen() {
               </View>
               <View style={styles.heroContent}>
                 <View style={styles.clubLogoBox}>
-                  <MaterialIcons name="sports-soccer" size={48} color={theme.primary} />
+                  {clubData?.logo ? (
+                    <Image source={{ uri: clubData.logo }} style={styles.clubLogoImg} />
+                  ) : (
+                    <MaterialIcons name="sports-soccer" size={44} color={theme.primary} />
+                  )}
                 </View>
                 <View style={styles.clubInfo}>
                   <Text style={styles.clubName}>{clubData?.name || user?.clubName || 'Vanguard FC'}</Text>
@@ -117,7 +121,9 @@ export default function MyClubScreen() {
               <View style={styles.statBoxHalf}>
                 <Text style={styles.statLabel}>GALİBİYET ORANI</Text>
                 <View style={styles.statValueRow}>
-                  <Text style={[styles.statValue, { color: theme.primary }]}>%80</Text>
+                  <Text style={[styles.statValue, { color: theme.primary }]}>
+                    %{clubData?.points ? Math.min(100, Math.round((clubData.points / 120) * 100)) : 75}
+                  </Text>
                   <MaterialIcons name="trending-up" size={16} color={theme.primary} />
                 </View>
               </View>
@@ -260,7 +266,13 @@ const useStyles = (theme: any) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: `${theme.primary}40`
+    borderColor: `${theme.primary}40`,
+    overflow: 'hidden'
+  },
+  clubLogoImg: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 34
   },
   clubInfo: {
     flex: 1,

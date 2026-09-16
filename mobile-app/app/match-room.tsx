@@ -438,6 +438,19 @@ export default function MatchRoomScreen() {
           matchTitle={matchArena + ' • ' + matchMode}
           visible={directPayVisible}
           onClose={() => setDirectPayVisible(false)}
+          onSuccess={async () => {
+            if (userSlot && activeMatchId) {
+              try {
+                await dbService.updateSlotPayment(activeMatchId, userSlot, true);
+              } catch (e) {
+                console.error('Ödeme senkronize hatası:', e);
+              }
+            }
+            if (user?.uid) {
+              setPlayersPayment(prev => prev.map(p => p.id === user.uid ? { ...p, paid: true, method: 'online' } : p));
+            }
+            Alert.alert('✅ Ödeme Başarılı', `${matchFee} ₺ tutarındaki payınız mevkisinize 'ÖDENDİ' olarak işlendi.`);
+          }}
         />
         <PitchReviewModal
           pitchName={matchArena}
@@ -631,6 +644,91 @@ export default function MatchRoomScreen() {
                 </View>
               </View>
             </View>
+          </View>
+
+          {/* 🪑 YEDEK KULÜBESİ (RESERVE BENCH) */}
+          <View style={styles.reserveSection}>
+            <View style={styles.reserveHeader}>
+              <View style={styles.reserveHeaderLeft}>
+                <MaterialIcons name="event-seat" size={18} color={theme.tertiary} />
+                <Text style={styles.reserveTitle}>YEDEK KULÜBESİ ({activeMatch?.reserves?.length || 0})</Text>
+              </View>
+              <Text style={styles.reserveSubHint}>Asil kadrodan çıkan olursa ilk sıradaki geçer</Text>
+            </View>
+
+            {/* Reserve players row */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.reserveList}>
+              {(!activeMatch?.reserves || activeMatch.reserves.length === 0) ? (
+                <Text style={styles.emptyReserveText}>Şu an yedekte bekleyen oyuncu yok</Text>
+              ) : (
+                activeMatch.reserves.map((reserve, idx) => (
+                  <View key={reserve.uid || idx} style={styles.reserveItem}>
+                    <View style={styles.reserveAvatarWrap}>
+                      <Image source={{ uri: reserve.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100' }} style={styles.reserveAvatar} />
+                      <View style={styles.reserveOrderBadge}>
+                        <Text style={styles.reserveOrderText}>#{idx + 1}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.reserveName} numberOfLines={1}>{reserve.name}</Text>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+
+            {/* Action button: Join or Leave Reserve Queue */}
+            {(() => {
+              const isAlreadyInMainSlot = Boolean(userSlot);
+              const isAlreadyInReserve = Boolean(user?.uid && activeMatch?.reserves?.some(r => r.uid === user.uid));
+
+              if (isAlreadyInMainSlot) {
+                return null;
+              }
+
+              if (isAlreadyInReserve) {
+                return (
+                  <TouchableOpacity
+                    style={styles.leaveReserveBtn}
+                    onPress={async () => {
+                      if (!user?.uid || !activeMatchId) return;
+                      try {
+                        await dbService.leaveMatchReserve(activeMatchId, user.uid);
+                        Alert.alert('Ayrıldınız', 'Yedek sırasından ayrıldınız.');
+                      } catch (e) {
+                        Alert.alert('Hata', 'Yedek sırasından ayrılırken bir hata oluştu.');
+                      }
+                    }}
+                  >
+                    <MaterialIcons name="person-remove" size={16} color={theme.error} />
+                    <Text style={styles.leaveReserveBtnText}>Yedek Sırasından Çık</Text>
+                  </TouchableOpacity>
+                );
+              }
+
+              return (
+                <TouchableOpacity
+                  style={styles.joinReserveBtn}
+                  onPress={async () => {
+                    if (!user?.uid || !activeMatchId) {
+                      Alert.alert('Giriş Yapın', 'Yedek sırasına girmek için giriş yapmalısınız.');
+                      return;
+                    }
+                    try {
+                      await dbService.joinMatchReserve(activeMatchId, {
+                        uid: user.uid,
+                        name: user.name || 'Yedek Oyuncu',
+                        avatar: user.avatar
+                      });
+                      Alert.alert('✓ Sıraya Girildi', 'Yedek listesine eklendiniz. Asil kadrodan biri ayrıldığında öncelik sizin olacak!');
+                    } catch (e) {
+                      Alert.alert('Hata', 'Yedek sırasına girilirken bir hata oluştu.');
+                    }
+                  }}
+                >
+                  <MaterialIcons name="person-add" size={16} color={theme.background} />
+                  <Text style={styles.joinReserveBtnText}>YEDEK SIRASINA YAZIL</Text>
+                </TouchableOpacity>
+              );
+            })()}
           </View>
 
           {/* Match Settings & Conditions - Only Captain/Organizer can edit */}
@@ -1658,5 +1756,115 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontFamily: Fonts.headlineBold,
     fontSize: 13,
     color: theme.onPrimary,
+  },
+  reserveSection: {
+    backgroundColor: theme.surface,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: `${theme.tertiary}4D`,
+    marginTop: 14,
+    gap: 10,
+  },
+  reserveHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  reserveHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  reserveTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 12,
+    color: theme.tertiary,
+    letterSpacing: 0.5,
+  },
+  reserveSubHint: {
+    fontFamily: Fonts.body,
+    fontSize: 9,
+    color: theme.textMuted,
+  },
+  reserveList: {
+    gap: 12,
+    paddingVertical: 6,
+  },
+  emptyReserveText: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: theme.textMuted,
+    fontStyle: 'italic',
+    paddingVertical: 6,
+  },
+  reserveItem: {
+    alignItems: 'center',
+    width: 60,
+    gap: 4,
+  },
+  reserveAvatarWrap: {
+    position: 'relative',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: theme.tertiary,
+    overflow: 'hidden',
+  },
+  reserveAvatar: {
+    width: '100%',
+    height: '100%',
+  },
+  reserveOrderBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: theme.tertiary,
+    paddingHorizontal: 4,
+    borderRadius: 4,
+  },
+  reserveOrderText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 8,
+    color: theme.background,
+  },
+  reserveName: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: theme.text,
+    textAlign: 'center',
+  },
+  joinReserveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: theme.tertiary,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  joinReserveBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.background,
+  },
+  leaveReserveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: `${theme.error}1A`,
+    borderWidth: 1,
+    borderColor: `${theme.error}66`,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  leaveReserveBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.error,
   },
 });

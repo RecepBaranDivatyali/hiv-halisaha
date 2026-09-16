@@ -49,6 +49,7 @@ export default function SearchScreen() {
   const [pos, setPos] = useState('KL');
   const [level, setLevel] = useState('0-3.9');
   const [difficulty, setDifficulty] = useState('Eğlence');
+  const [selectedTimeFrame, setSelectedTimeFrame] = useState('Tümü');
   const [remember, setRemember] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -103,6 +104,7 @@ export default function SearchScreen() {
         city: selectedCity, 
         district: selectedDistrict,
         arena: selectedPitch !== 'Tüm Sahalar' ? selectedPitch : undefined,
+        timeFrame: selectedTimeFrame !== 'Tümü' ? selectedTimeFrame : undefined,
       }
     });
   };
@@ -136,6 +138,7 @@ export default function SearchScreen() {
             setPos('KL');
             setLevel('0-3.9');
             setDifficulty('Eğlence');
+            setSelectedTimeFrame('Tümü');
             Alert.alert('Filtreler Sıfırlandı', 'Arama kriterleri varsayılan değerlere döndürüldü.');
           }} 
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -239,6 +242,30 @@ export default function SearchScreen() {
                       >
                         <Text style={[styles.posIconText, active && styles.posIconTextActive]}>{p}</Text>
                         <Text style={[styles.posLabelText, active && styles.posLabelTextActive]}>{labels[i]}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* Timeframe filter for Maç tab */}
+            {activeTab === 'Maç' && (
+              <View style={styles.sectionBox}>
+                <Text style={styles.sectionTitle}>MAÇ ZAMANI</Text>
+                <View style={styles.levelGrid}>
+                  {['Tümü', 'Bugün', 'Yarın', 'Bu Hafta Sonu'].map((tf) => {
+                    const active = selectedTimeFrame === tf;
+                    return (
+                      <TouchableOpacity
+                        key={tf}
+                        style={levelBtnStyle(active)}
+                        onPress={() => setSelectedTimeFrame(tf)}
+                        activeOpacity={0.8}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                      >
+                        <Text style={[styles.levelText, active && styles.levelTextActive]}>{tf}</Text>
                       </TouchableOpacity>
                     );
                   })}

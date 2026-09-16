@@ -14,7 +14,7 @@ export default function ResultsScreen() {
   const { theme } = useTheme();
   const styles = useStyles(theme);
   const router = useRouter();
-  const params = useLocalSearchParams<{ tab?: string; pos?: string; city?: string; district?: string; level?: string; difficulty?: string; mode?: string; arena?: string }>();
+  const params = useLocalSearchParams<{ tab?: string; pos?: string; city?: string; district?: string; level?: string; difficulty?: string; mode?: string; arena?: string; timeFrame?: string }>();
   const searchTab = (params.tab || 'Oyuncu') as string;
   const posName = params.pos ? `(${params.pos})` : '';
 
@@ -44,6 +44,7 @@ export default function ResultsScreen() {
           mode: params.mode,
           difficulty: params.difficulty,
           arena: params.arena,
+          timeFrame: params.timeFrame,
         });
         setMatches(list);
       } else if (searchTab === 'Rakip') {
@@ -56,7 +57,7 @@ export default function ResultsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [searchTab, params.city, params.district, params.pos, params.level, params.mode, params.difficulty]);
+  }, [searchTab, params.city, params.district, params.pos, params.level, params.mode, params.difficulty, params.arena, params.timeFrame]);
 
   useEffect(() => {
     fetchResults();
@@ -97,7 +98,7 @@ export default function ResultsScreen() {
             EŞLEŞEN <Text style={{ color: theme.primary }}>{tabTitle} {posName}</Text>
           </Text>
           <Text style={styles.statusDesc}>
-            {loading ? 'Aranıyor...' : `${resultsCount} Sonuç Bulundu (${params.city || 'Tüm Şehirler'})`}
+            {loading ? 'Aranıyor...' : `${resultsCount} Sonuç Bulundu (${params.city || 'Tüm Şehirler'}${params.timeFrame ? ` • ${params.timeFrame}` : ''})`}
           </Text>
         </View>
 

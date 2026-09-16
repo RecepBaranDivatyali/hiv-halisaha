@@ -37,6 +37,12 @@ export interface MatchModel {
   status: 'active' | 'completed' | 'cancelled';
   score?: string;
   joinTerms?: number;
+  reserves?: {
+    uid: string;
+    name: string;
+    avatar?: string;
+    joinedAt?: any;
+  }[];
   slots?: {
     [key: string]: {
       uid: string;
@@ -328,14 +334,112 @@ export const dbService = {
     }
   },
 
+  updateSlotPayment: async (matchId: string, slotKey: string, paid: boolean) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      await updateDoc(matchRef, {
+        [`slots.${slotKey}.paid`]: paid,
+        updatedAt: serverTimestamp()
+      });
+      return true;
+    } catch (error) {
+      console.error("Ödeme durumu güncelleme hatası:", error);
+      throw error;
+    }
+  },
+
+  joinMatchReserve: async (matchId: string, player: { uid: string; name: string; avatar?: string }) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      await updateDoc(matchRef, {
+        reserves: arrayUnion({
+          ...player,
+          joinedAt: new Date().toISOString()
+        })
+      });
+      return true;
+    } catch (error) {
+      console.error("Yedek sırasına girme hatası:", error);
+      throw error;
+    }
+  },
+
+  leaveMatchReserve: async (matchId: string, userId: string) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      const snap = await getDoc(matchRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        const updatedReserves = (data.reserves || []).filter((r: any) => r.uid !== userId);
+        await updateDoc(matchRef, { reserves: updatedReserves });
+      }
+      return true;
+    } catch (error) {
+      console.error("Yedek sırasından çıkma hatası:", error);
+      throw error;
+    }
+  },
+
   updateMatchScore: async (matchId: string, score: string) => {
     try {
       const matchRef = doc(db, 'matches', matchId);
+      const matchSnap = await getDoc(matchRef);
+
       await updateDoc(matchRef, {
         score,
         status: 'completed',
         completedAt: serverTimestamp()
       });
+
+      // Update player profile statistics (matchesPlayed, wins, losses, draws)
+      if (matchSnap.exists()) {
+        const data = matchSnap.data();
+        const slots = data.slots || {};
+        
+        const scoreParts = score.split('-').map(s => parseInt(s.trim(), 10));
+        const scoreA = !isNaN(scoreParts[0]) ? scoreParts[0] : 0;
+        const scoreB = !isNaN(scoreParts[1]) ? scoreParts[1] : 0;
+        
+        const teamAPlayers: string[] = [];
+        const teamBPlayers: string[] = [];
+        
+        Object.entries(slots).forEach(([slotKey, slotData]: [string, any]) => {
+          if (slotData && slotData.uid) {
+            if (slotKey.startsWith('B_')) {
+              teamBPlayers.push(slotData.uid);
+            } else {
+              teamAPlayers.push(slotData.uid);
+            }
+          }
+        });
+
+        const batch = writeBatch(db);
+        
+        const updatePlayerStats = (uid: string, result: 'win' | 'loss' | 'draw') => {
+          const userRef = doc(db, 'users', uid);
+          batch.set(userRef, {
+            stats: {
+              matchesPlayed: increment(1),
+              ...(result === 'win' ? { wins: increment(1) } : {}),
+              ...(result === 'loss' ? { losses: increment(1) } : {}),
+              ...(result === 'draw' ? { draws: increment(1) } : {}),
+            }
+          }, { merge: true });
+        };
+
+        if (scoreA > scoreB) {
+          teamAPlayers.forEach(uid => updatePlayerStats(uid, 'win'));
+          teamBPlayers.forEach(uid => updatePlayerStats(uid, 'loss'));
+        } else if (scoreB > scoreA) {
+          teamBPlayers.forEach(uid => updatePlayerStats(uid, 'win'));
+          teamAPlayers.forEach(uid => updatePlayerStats(uid, 'loss'));
+        } else {
+          teamAPlayers.forEach(uid => updatePlayerStats(uid, 'draw'));
+          teamBPlayers.forEach(uid => updatePlayerStats(uid, 'draw'));
+        }
+
+        await batch.commit().catch(err => console.warn("Profil istatistikleri batch güncelleme hatası:", err));
+      }
       return true;
     } catch (error) {
       console.error("Maç skoru güncelleme hatası:", error);
@@ -353,6 +457,30 @@ export const dbService = {
       return true;
     } catch (error) {
       console.error("Maç katılım şartları güncelleme hatası:", error);
+      throw error;
+    }
+  },
+
+  sendClubChallenge: async (challengeData: {
+    fromClubId?: string;
+    fromClubName: string;
+    toClubId?: string;
+    toClubName: string;
+    venue: string;
+    date: string;
+    senderId: string;
+    senderName: string;
+  }) => {
+    try {
+      const colRef = collection(db, 'club_challenges');
+      const docRef = await addDoc(colRef, {
+        ...challengeData,
+        status: 'pending',
+        createdAt: serverTimestamp()
+      });
+      return { id: docRef.id, ...challengeData };
+    } catch (error) {
+      console.error("Meydan okuma gönderme hatası:", error);
       throw error;
     }
   },
@@ -388,7 +516,7 @@ export const dbService = {
     }
   },
 
-  searchMatches: async (criteria: { city?: string; district?: string; mode?: string; difficulty?: string; arena?: string }) => {
+  searchMatches: async (criteria: { city?: string; district?: string; mode?: string; difficulty?: string; arena?: string; timeFrame?: string }) => {
     try {
       const matchesRef = collection(db, 'matches');
       let q = query(matchesRef, where('status', '==', 'active'), limit(50));
@@ -406,6 +534,19 @@ export const dbService = {
       if (criteria.arena && criteria.arena !== 'Tüm Sahalar') {
         const arenaLower = criteria.arena.trim().toLocaleLowerCase('tr');
         list = list.filter(m => m.arena && m.arena.toLocaleLowerCase('tr').includes(arenaLower));
+      }
+      if (criteria.timeFrame && criteria.timeFrame !== 'Tümü' && criteria.timeFrame !== 'all') {
+        const tf = criteria.timeFrame.toLowerCase();
+        if (tf.includes('bugün')) {
+          list = list.filter(m => m.dateTime && m.dateTime.toLowerCase().includes('bugün'));
+        } else if (tf.includes('yarın')) {
+          list = list.filter(m => m.dateTime && m.dateTime.toLowerCase().includes('yarın'));
+        } else if (tf.includes('hafta sonu')) {
+          list = list.filter(m => m.dateTime && (
+            m.dateTime.toLowerCase().includes('cumartesi') || 
+            m.dateTime.toLowerCase().includes('pazar')
+          ));
+        }
       }
 
       return list;

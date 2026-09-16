@@ -91,6 +91,10 @@ export default function RateMatchScreen() {
 
   const handleSaveRating = async () => {
     if (saving) return;
+    if (selectedPlayer?.id === user?.uid) {
+      Alert.alert('Centilmenlik Kuralı', 'Kendinizi puanlayamazsınız. Lütfen takım arkadaşlarınızı veya rakiplerinizi değerlendirin.');
+      return;
+    }
     setSaving(true);
     try {
       await dbService.saveMatchRating(params.matchId || 'general_match', {
@@ -154,8 +158,20 @@ export default function RateMatchScreen() {
               return (
                 <TouchableOpacity
                   key={player.id}
-                  style={[styles.rosterItem, isSelected && styles.rosterItemActive]}
+                  style={[
+                    styles.rosterItem, 
+                    isSelected && styles.rosterItemActive,
+                    isSelf && { borderColor: `${theme.secondary}66` }
+                  ]}
                   onPress={() => {
+                    if (isSelf) {
+                      Alert.alert(
+                        '⚖️ Centilmenlik Kuralı',
+                        'Centilmenlik ve lig adaleti gereği kendinizi puanlayamazsınız. Lütfen takım arkadaşlarınızı veya rakiplerinizi değerlendirin.',
+                        [{ text: 'Anladım' }]
+                      );
+                      return;
+                    }
                     setSelectedPlayer(player);
                     setIsMvp(false);
                   }}
@@ -168,12 +184,17 @@ export default function RateMatchScreen() {
                         <MaterialIcons name="check" size={10} color={theme.background} />
                       </View>
                     )}
+                    {isSelf && !isSelected && (
+                      <View style={[styles.rosterSelectedBadge, { backgroundColor: theme.secondary }]}>
+                        <Text style={{ fontSize: 7, color: theme.background, fontWeight: 'bold' }}>SİZ</Text>
+                      </View>
+                    )}
                   </View>
                   <Text style={[styles.rosterName, isSelected && { color: theme.primary, fontFamily: Fonts.headlineBold }]} numberOfLines={1}>
-                    {player.name} {isSelf ? '(Siz)' : ''}
+                    {player.name}
                   </Text>
                   <Text style={styles.rosterPosition} numberOfLines={1}>
-                    {player.position}
+                    {isSelf ? '(Kendiniz)' : player.position}
                   </Text>
                 </TouchableOpacity>
               );
@@ -281,13 +302,15 @@ export default function RateMatchScreen() {
 
         {/* Action Buttons */}
         <TouchableOpacity 
-          style={[styles.submitBtn, saving && { opacity: 0.7 }]} 
+          style={[styles.submitBtn, (saving || selectedPlayer?.id === user?.uid) && { opacity: 0.6 }]} 
           activeOpacity={0.9} 
           onPress={handleSaveRating}
-          disabled={saving}
+          disabled={saving || selectedPlayer?.id === user?.uid}
         >
           <MaterialIcons name="check" size={20} color={theme.background} />
-          <Text style={styles.submitBtnText}>DEĞERLENDİRMEYİ GÖNDER</Text>
+          <Text style={styles.submitBtnText}>
+            {selectedPlayer?.id === user?.uid ? 'KENDİNİZİ PUANLAYAMAZSINIZ' : 'DEĞERLENDİRMEYİ GÖNDER'}
+          </Text>
         </TouchableOpacity>
       </ScrollView>
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, TextInput, ImageBackground, Alert, RefreshControl } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, TextInput, ImageBackground, Image, Alert, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
@@ -20,6 +20,7 @@ export default function ClubsScreen() {
   const { user, saveUser } = useAuth();
   const [menuVisible, setMenuVisible] = useState(false);
   const [challengeModalVisible, setChallengeModalVisible] = useState(false);
+  const [selectedClubForChallenge, setSelectedClubForChallenge] = useState<ClubModel | null>(null);
   const [notifVisible, setNotifVisible] = useState(false);
   const [clubActionVisible, setClubActionVisible] = useState(false);
   const [clubActionTab, setClubActionTab] = useState<'create' | 'join'>('create');
@@ -100,7 +101,15 @@ export default function ClubsScreen() {
         onClose={() => setMenuVisible(false)} 
         onOpenNotifications={() => setNotifVisible(true)} 
       />
-      <ChallengeModal visible={challengeModalVisible} onClose={() => setChallengeModalVisible(false)} />
+      <ChallengeModal 
+        visible={challengeModalVisible} 
+        onClose={() => {
+          setChallengeModalVisible(false);
+          setSelectedClubForChallenge(null);
+        }} 
+        targetClub={selectedClubForChallenge}
+        clubsList={clubsList}
+      />
       <NotificationCenterModal visible={notifVisible} onClose={() => setNotifVisible(false)} />
       <ClubActionModal 
         visible={clubActionVisible} 
@@ -252,7 +261,10 @@ export default function ClubsScreen() {
                   <Text style={styles.headerCreateBtnText}>KULÜP KUR</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
-                  onPress={() => setChallengeModalVisible(true)}
+                  onPress={() => {
+                    setSelectedClubForChallenge(null);
+                    setChallengeModalVisible(true);
+                  }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <Text style={styles.filterBtnText}>MEYDAN OKU</Text>
@@ -288,9 +300,13 @@ export default function ClubsScreen() {
               ) : filteredClubs.map((club) => (
                 <View key={club.id || club.name} style={styles.clubCard}>
                   <View style={styles.clubCardTop}>
-                    <View style={[styles.clubIconCircle, { backgroundColor: `${club.color || theme.primary}20` }]}>
-                      <MaterialIcons name="shield" size={28} color={club.color || theme.primary} />
-                    </View>
+                    {club.logo ? (
+                      <Image source={{ uri: club.logo }} style={styles.clubLogoImg} />
+                    ) : (
+                      <View style={[styles.clubIconCircle, { backgroundColor: `${club.color || theme.primary}20` }]}>
+                        <MaterialIcons name="shield" size={28} color={club.color || theme.primary} />
+                      </View>
+                    )}
                     <View style={styles.clubTitleWrap}>
                       <Text style={styles.clubNameTitle}>{club.name}</Text>
                       <Text style={styles.clubDesc}>{club.desc}</Text>
@@ -301,10 +317,28 @@ export default function ClubsScreen() {
                       <Text style={styles.clubPointsText}>{club.points || 100} PK</Text>
                       <Text style={styles.clubRankSub}>{club.rank || 'LİG TAKIMI'}</Text>
                     </View>
-                    <TouchableOpacity style={styles.actionJoinBtn} onPress={() => handleJoinClub(club)}>
-                      <Text style={styles.actionJoinBtnText}>KATIL</Text>
-                      <MaterialIcons name="person-add" size={14} color={theme.primary} />
-                    </TouchableOpacity>
+                    {user?.clubId && user.clubId !== club.id ? (
+                      <TouchableOpacity 
+                        style={[styles.actionJoinBtn, { backgroundColor: 'rgba(255, 115, 81, 0.12)', borderColor: theme.error }]} 
+                        onPress={() => {
+                          setSelectedClubForChallenge(club);
+                          setChallengeModalVisible(true);
+                        }}
+                      >
+                        <Text style={[styles.actionJoinBtnText, { color: theme.error }]}>MEYDAN OKU</Text>
+                        <MaterialIcons name="sports-mma" size={14} color={theme.error} />
+                      </TouchableOpacity>
+                    ) : user?.clubId === club.id ? (
+                      <View style={[styles.actionJoinBtn, { opacity: 0.6, borderColor: theme.borderSubtle }]}>
+                        <Text style={[styles.actionJoinBtnText, { color: theme.textMuted }]}>KULÜBÜNÜZ</Text>
+                        <MaterialIcons name="check" size={14} color={theme.textMuted} />
+                      </View>
+                    ) : (
+                      <TouchableOpacity style={styles.actionJoinBtn} onPress={() => handleJoinClub(club)}>
+                        <Text style={styles.actionJoinBtnText}>KATIL</Text>
+                        <MaterialIcons name="person-add" size={14} color={theme.primary} />
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               ))}
@@ -686,6 +720,11 @@ const useStyles = (theme: any) => StyleSheet.create({
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center'
+  },
+  clubLogoImg: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
   clubTitleWrap: {
     flex: 1
