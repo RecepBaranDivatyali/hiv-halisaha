@@ -87,7 +87,6 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
           desc: clubDesc.trim() || 'Halısaha Takımı',
           city: selectedCity,
           logo: selectedLogo || PRESET_LOGOS[0].uri,
-          ownerId: user?.uid,
           captainId: user?.uid,
           captainName: user?.name || 'Kaptan',
           color: theme.primary,

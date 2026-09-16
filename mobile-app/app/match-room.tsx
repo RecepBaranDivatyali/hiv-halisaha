@@ -46,6 +46,12 @@ export default function MatchRoomScreen() {
   const matchMode = activeMatch?.mode ?? '7v7';
   const matchDateTime = activeMatch?.dateTime ?? 'Bugün, 21:00';
   const matchCity = activeMatch?.city ?? 'İstanbul';
+
+  const openVenueLocation = () => {
+    const query = encodeURIComponent(`${matchArena} ${matchCity}`);
+    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`);
+  };
+
   const isOrganizer = activeMatch?.organizer?.toLowerCase().includes('siz') || (activeMatch?.organizerId && activeMatch?.organizerId === user?.uid);
   const [joinTerms, setJoinTerms] = useState(activeMatch?.joinTerms ?? 0);
   const [userSlot, setUserSlot] = useState<string | null>(null);

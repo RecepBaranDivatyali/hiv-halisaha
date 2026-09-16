@@ -33,6 +33,7 @@ export interface MatchModel {
   organizer: string;
   organizerId?: string;
   isSubscription?: boolean;
+  isGkFree?: boolean;
   status: 'active' | 'completed' | 'cancelled';
   score?: string;
   joinTerms?: number;
@@ -576,7 +577,7 @@ export const dbService = {
     }
   },
 
-  addPitchReview: async (pitchName: string, review: Omit<PitchReviewModel, 'id' | 'createdAt'>) => {
+  addPitchReview: async (pitchName: string, review: Omit<PitchReviewModel, 'id' | 'createdAt' | 'pitchName'>) => {
     try {
       const reviewsRef = collection(db, 'pitch_reviews');
       const docRef = await addDoc(reviewsRef, {

@@ -14,7 +14,7 @@ export default function ResultsScreen() {
   const { theme } = useTheme();
   const styles = useStyles(theme);
   const router = useRouter();
-  const params = useLocalSearchParams<{ tab?: string; pos?: string; city?: string; district?: string; level?: string; difficulty?: string; mode?: string }>();
+  const params = useLocalSearchParams<{ tab?: string; pos?: string; city?: string; district?: string; level?: string; difficulty?: string; mode?: string; arena?: string }>();
   const searchTab = (params.tab || 'Oyuncu') as string;
   const posName = params.pos ? `(${params.pos})` : '';
 

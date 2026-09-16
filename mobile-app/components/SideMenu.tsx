@@ -60,7 +60,16 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
     });
   };
 
-  const menuItems = [
+  interface MenuItem {
+    label: string;
+    icon: string;
+    route?: string;
+    action?: string;
+    active?: boolean;
+    soon?: boolean;
+  }
+
+  const menuItems: MenuItem[] = [
     { label: 'PROFİL', icon: 'person', route: '/(tabs)/profile', active: pathname?.includes('profile') },
     { label: 'BİLDİRİMLER', icon: 'notifications', action: 'notifications' },
     { label: 'AYARLAR', icon: 'settings', route: '/settings', active: pathname?.includes('settings') },
@@ -68,7 +77,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
     { label: 'NASIL KULLANILIR?', icon: 'help', action: 'guide' },
   ];
 
-  const handleNavigate = (item: typeof menuItems[0]) => {
+  const handleNavigate = (item: MenuItem) => {
     if (item.action === 'notifications') {
       onClose();
       if (onOpenNotifications) {

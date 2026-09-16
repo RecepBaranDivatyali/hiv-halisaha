@@ -43,7 +43,7 @@ export default function RateMatchScreen() {
       dbService.getMatchById(params.matchId).then((match) => {
         if (match && match.slots) {
           const slotPlayers: RosterPlayer[] = Object.entries(match.slots)
-            .filter(([_, s]) => s && s.name)
+            .filter((entry): entry is [string, NonNullable<typeof entry[1]>] => Boolean(entry[1] && entry[1].name))
             .map(([slotKey, s], idx) => ({
               id: s.uid || `player-${idx}`,
               name: s.name,
