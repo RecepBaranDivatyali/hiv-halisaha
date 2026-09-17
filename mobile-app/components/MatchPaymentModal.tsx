@@ -47,6 +47,13 @@ export const MatchPaymentModal: React.FC<MatchPaymentModalProps> = ({
 
   const [copied, setCopied] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const copiedTimeoutRef = React.useRef<any>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (copiedTimeoutRef.current) clearTimeout(copiedTimeoutRef.current);
+    };
+  }, []);
 
   const isExempt = isGoalkeeper && isGkFree;
 
@@ -61,7 +68,8 @@ export const MatchPaymentModal: React.FC<MatchPaymentModalProps> = ({
     const clean = organizerIban.replace(/\s+/g, '').toUpperCase();
     await Clipboard.setStringAsync(clean);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    if (copiedTimeoutRef.current) clearTimeout(copiedTimeoutRef.current);
+    copiedTimeoutRef.current = setTimeout(() => setCopied(false), 2500);
   };
 
   const handleNotifyIbanPayment = async () => {

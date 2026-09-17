@@ -367,6 +367,11 @@ export default function MatchRoomScreen() {
   };
 
   const handleSelectSlot = async (slotKey: string, slotLabel: string) => {
+    if (!user?.uid) {
+      Alert.alert('Giriş Yapın', 'Kadroya katılmak veya mevkiden ayrılmak için lütfen önce giriş yapın.');
+      return;
+    }
+
     if (userSlot === slotKey) {
       // User is attempting to leave the slot -> apply tiered penalty!
       const hoursLeft = calculateHoursUntilMatch(matchDateTime);

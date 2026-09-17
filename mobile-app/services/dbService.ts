@@ -16,7 +16,8 @@ import {
   increment,
   runTransaction,
   writeBatch,
-  serverTimestamp
+  serverTimestamp,
+  deleteField
 } from 'firebase/firestore';
 
 export interface MatchModel {
@@ -313,7 +314,7 @@ export const dbService = {
           throw new Error("Bu mevki size ait değil!");
         }
         transaction.update(matchRef, {
-          [`slots.${slotKey}`]: null,
+          [`slots.${slotKey}`]: deleteField(),
           joinedPlayersCount: increment(-1)
         });
       });

@@ -169,6 +169,21 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   const [organizerBankName, setOrganizerBankName] = useState(user?.bankName || '');
   const [showIbanInput, setShowIbanInput] = useState(Boolean(user?.iban));
 
+  React.useEffect(() => {
+    if (visible && user) {
+      if (user.iban) {
+        setOrganizerIban(user.iban);
+        setShowIbanInput(true);
+      }
+      if (user.ibanName || user.name) {
+        setOrganizerIbanName(user.ibanName || user.name || '');
+      }
+      if (user.bankName) {
+        setOrganizerBankName(user.bankName);
+      }
+    }
+  }, [visible, user]);
+
   // ── Abonelik ──────────────────────────────────────────────
   const [isSubscription, setIsSubscription] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
