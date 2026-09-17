@@ -3,11 +3,12 @@ import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, TextInput,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
-import { DirectPaymentModal } from '@/components/DirectPaymentModal';
+import { MatchPaymentModal } from '@/components/MatchPaymentModal';
 import { PitchReviewModal } from '@/components/PitchReviewModal';
 import { MatchStoryModal } from '@/components/MatchStoryModal';
 import { WeatherAlertCard } from '@/components/WeatherAlertCard';
 import { AppModal as Modal } from '@/components/AppModal';
+import * as Clipboard from 'expo-clipboard';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
 import { useMatches } from '@/hooks/use-matches';
@@ -15,13 +16,16 @@ import { useAuth } from '@/hooks/use-auth';
 import { dbService, MatchModel } from '@/services/dbService';
 
 interface PlayerPayment {
-  id: string;
+  slotKey: string;
+  uid: string;
   name: string;
   role: string;
   avatar: string;
   paid: boolean;
-  method: 'nakit' | 'online';
+  paymentStatus: 'paid' | 'pending_approval' | 'unpaid' | 'cash_on_pitch' | 'exempt';
+  paymentMethod: 'iban' | 'cash';
   amount: number;
+  isGk: boolean;
 }
 
 export default function MatchRoomScreen() {
@@ -148,20 +152,6 @@ export default function MatchRoomScreen() {
     }
   }, [activeMatch?.slots, user?.uid]);
 
-  const [playersPayment, setPlayersPayment] = useState<PlayerPayment[]>([]);
-
-  const togglePlayerPayment = (id: string) => {
-    setPlayersPayment((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, paid: !p.paid } : p))
-    );
-  };
-
-  const togglePaymentMethod = (id: string) => {
-    setPlayersPayment((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, method: p.method === 'nakit' ? 'online' : 'nakit' } : p))
-    );
-  };
-
   const [isGkFree, setIsGkFree] = useState(activeMatch?.isGkFree ?? false);
 
   React.useEffect(() => {
@@ -170,15 +160,138 @@ export default function MatchRoomScreen() {
     }
   }, [activeMatch?.isGkFree]);
 
-  const collectedAmount = playersPayment
-    .filter((p) => p.paid)
-    .reduce((sum, p) => sum + p.amount, 0);
-
   // Dynamic players and fee calculation based on match mode
   const modePlayersPerTeam = parseInt(matchMode.split('v')[0], 10) || 7;
   const totalPlayersCount = modePlayersPerTeam * 2;
   const activePayersCount = isGkFree ? Math.max(1, totalPlayersCount - 2) : totalPlayersCount;
   const perPlayerFee = Math.round(totalMatchFee / activePayersCount);
+
+  // Dynamic Roster Payments synchronized with Firestore slots
+  const rosterPayments: PlayerPayment[] = React.useMemo(() => {
+    const slots = activeMatch?.slots || {};
+    const list: PlayerPayment[] = [];
+
+    Object.entries(slots).forEach(([slotKey, slotData]) => {
+      if (!slotData || !slotData.uid) return;
+      const isGk = slotKey.includes('KALECI');
+      const isExempt = isGkFree && isGk;
+      const isPaid = Boolean(slotData.paid) || slotData.paymentStatus === 'paid';
+      const paymentStatus: 'paid' | 'pending_approval' | 'unpaid' | 'cash_on_pitch' | 'exempt' = isExempt
+        ? 'exempt'
+        : (slotData.paymentStatus || (isPaid ? 'paid' : 'unpaid'));
+
+      list.push({
+        slotKey,
+        uid: slotData.uid,
+        name: slotData.name,
+        role: slotData.position || slotKey,
+        avatar: slotData.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100',
+        paid: isPaid,
+        paymentStatus,
+        paymentMethod: slotData.paymentMethod || 'cash',
+        amount: isExempt ? 0 : perPlayerFee,
+        isGk
+      });
+    });
+
+    return list;
+  }, [activeMatch?.slots, isGkFree, perPlayerFee]);
+
+  const collectedPaidAmount = rosterPayments
+    .filter((p) => p.paymentStatus === 'paid')
+    .reduce((sum, p) => sum + p.amount, 0);
+
+  const collectedCashAmount = rosterPayments
+    .filter((p) => p.paymentStatus === 'cash_on_pitch')
+    .reduce((sum, p) => sum + p.amount, 0);
+
+  const pendingApprovalAmount = rosterPayments
+    .filter((p) => p.paymentStatus === 'pending_approval')
+    .reduce((sum, p) => sum + p.amount, 0);
+
+  const totalCollectedOrPledged = collectedPaidAmount + collectedCashAmount;
+  const unpaidAmount = Math.max(0, totalMatchFee - collectedPaidAmount - collectedCashAmount);
+
+  // Captain Quick Payment Toggle
+  const handleCaptainTogglePayment = (slotKey: string, playerName: string, currentStatus: string) => {
+    if (!isOrganizer) return;
+    if (currentStatus === 'exempt') {
+      Alert.alert('Muaf Oyuncu', 'Bu oyuncu kaleci olduğu için maç kuralları gereği ücret muafiyetine sahiptir.');
+      return;
+    }
+
+    Alert.alert(
+      `Ödeme Durumu: ${playerName}`,
+      'Oyuncunun ödeme durumunu güncelleyin:',
+      [
+        {
+          text: '✅ Ödendi Olarak Onayla',
+          onPress: async () => {
+            try {
+              await dbService.updateSlotPayment(activeMatchId, slotKey, true, 'paid');
+              await dbService.sendMessage(`match_${activeMatchId}`, {
+                senderId: user?.uid || 'anon',
+                senderName: 'Kaptan',
+                text: `✅ [Kaptan Onayı]: ${playerName} oyuncusunun maç ücreti alındı ve "ÖDENDİ" olarak onaylandı.`
+              });
+            } catch (e) {
+              Alert.alert('Hata', 'Ödeme durumu güncellenemedi.');
+            }
+          }
+        },
+        {
+          text: '💵 Sahada Nakit Olarak İşaretle',
+          onPress: async () => {
+            try {
+              await dbService.updateSlotPayment(activeMatchId, slotKey, false, 'cash_on_pitch', 'cash');
+            } catch (e) {
+              Alert.alert('Hata', 'Ödeme durumu güncellenemedi.');
+            }
+          }
+        },
+        {
+          text: '❌ Ödenmedi Yap',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await dbService.updateSlotPayment(activeMatchId, slotKey, false, 'unpaid');
+            } catch (e) {
+              Alert.alert('Hata', 'Ödeme durumu güncellenemedi.');
+            }
+          }
+        },
+        { text: 'Vazgeç', style: 'cancel' }
+      ]
+    );
+  };
+
+  // Captain IBAN Modal state
+  const [captainIbanModalVisible, setCaptainIbanModalVisible] = useState(false);
+  const [captainIbanInput, setCaptainIbanInput] = useState(activeMatch?.organizerIban || user?.iban || '');
+  const [captainIbanNameInput, setCaptainIbanNameInput] = useState(activeMatch?.organizerIbanName || user?.ibanName || user?.name || '');
+  const [captainBankNameInput, setCaptainBankNameInput] = useState(activeMatch?.organizerBankName || user?.bankName || '');
+  const [savingCaptainIban, setSavingCaptainIban] = useState(false);
+
+  const handleSaveCaptainIban = async () => {
+    if (!captainIbanInput.trim()) {
+      Alert.alert('Eksik Bilgi', 'Lütfen geçerli bir IBAN girin.');
+      return;
+    }
+    setSavingCaptainIban(true);
+    try {
+      await dbService.updateMatchOrganizerIban(activeMatchId, {
+        organizerIban: captainIbanInput.trim().toUpperCase(),
+        organizerIbanName: captainIbanNameInput.trim(),
+        organizerBankName: captainBankNameInput.trim() || 'Banka Hesabı'
+      });
+      setCaptainIbanModalVisible(false);
+      Alert.alert('✓ IBAN Kaydedildi', 'Kaptan IBAN bilgileriniz güncellendi. Oyuncular artık bu IBAN\'ı görerek FAST ile maç ücretini gönderebilir.');
+    } catch (e) {
+      Alert.alert('Hata', 'IBAN bilgileri güncellenirken bir sorun oluştu.');
+    } finally {
+      setSavingCaptainIban(false);
+    }
+  };
 
   // Chat State
   const [chatInput, setChatInput] = useState('');
@@ -403,6 +516,33 @@ export default function MatchRoomScreen() {
       ? (user?.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG')
       : (occupant?.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuCGEgY_XdNWMIj9yAYPG31RfO-rUvIt9prSpOqQHShIufOnkDbrYIlyKE5OZY68gsCgDSnwxHtMW-j19KupMZmC1tNOq2QEesdu0Hh1zinr1P_g8cyWt1cHFNPGGmiuhIZPaOmTY8ssYbYKbbtC1nP9RVOEgPKgWBYWiA4E6WPsGYKqCpqU3aMljt6lAwmwmmFRefyWbWiaAfQTMPcUlEPjZEzau9MIBiNfLMhzwyqoMX1Po75F4qVfsV9hLp3_uervSUefQPNM33cr');
 
+    const isGk = slotKey.includes('KALECI');
+    const isSlotExempt = isGkFree && isGk;
+    const isPaid = occupant?.paid || occupant?.paymentStatus === 'paid';
+    const isPending = occupant?.paymentStatus === 'pending_approval';
+    const isCash = occupant?.paymentStatus === 'cash_on_pitch';
+
+    let badgeText = 'ÖDENMEDİ';
+    let badgeColor = theme.error;
+    let badgeIcon: any = 'cancel';
+    if (isSlotExempt) {
+      badgeText = 'MUAF';
+      badgeColor = theme.secondary;
+      badgeIcon = 'sports-handball';
+    } else if (isPaid) {
+      badgeText = 'ÖDENDİ';
+      badgeColor = theme.primary;
+      badgeIcon = 'check-circle';
+    } else if (isPending) {
+      badgeText = 'BEKLİYOR';
+      badgeColor = '#ffb703';
+      badgeIcon = 'hourglass-top';
+    } else if (isCash) {
+      badgeText = 'NAKİT';
+      badgeColor = '#6e9bff';
+      badgeIcon = 'payments';
+    }
+
     return (
       <View style={styles.slotContainer}>
         {isOccupied || isMySlot ? (
@@ -426,6 +566,22 @@ export default function MatchRoomScreen() {
         <Text style={[styles.slotLabel, isMySlot && { color: teamColor, fontWeight: 'bold' }]} numberOfLines={1}>
           {isOccupied ? occupant?.name : roleName}
         </Text>
+        {(isOccupied || isMySlot) && (
+          <TouchableOpacity 
+            style={[styles.slotPaymentPill, { backgroundColor: `${badgeColor}22`, borderColor: badgeColor }]}
+            onPress={() => {
+              if (isOrganizer) {
+                handleCaptainTogglePayment(slotKey, occupant?.name || user?.name || 'Oyuncu', occupant?.paymentStatus || (isPaid ? 'paid' : 'unpaid'));
+              } else if (isMySlot && !isPaid && !isSlotExempt) {
+                setDirectPayVisible(true);
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name={badgeIcon} size={9} color={badgeColor} />
+            <Text style={[styles.slotPaymentPillText, { color: badgeColor }]}>{badgeText}</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   };
@@ -433,25 +589,92 @@ export default function MatchRoomScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <DirectPaymentModal
-          amount={matchFee}
+        <MatchPaymentModal
+          amount={perPlayerFee}
           matchTitle={matchArena + ' • ' + matchMode}
           visible={directPayVisible}
           onClose={() => setDirectPayVisible(false)}
-          onSuccess={async () => {
-            if (userSlot && activeMatchId) {
-              try {
-                await dbService.updateSlotPayment(activeMatchId, userSlot, true);
-              } catch (e) {
-                console.error('Ödeme senkronize hatası:', e);
-              }
-            }
-            if (user?.uid) {
-              setPlayersPayment(prev => prev.map(p => p.id === user.uid ? { ...p, paid: true, method: 'online' } : p));
-            }
-            Alert.alert('✅ Ödeme Başarılı', `${matchFee} ₺ tutarındaki payınız mevkisinize 'ÖDENDİ' olarak işlendi.`);
+          matchId={activeMatchId}
+          isGoalkeeper={Boolean(userSlot?.includes('KALECI'))}
+          isGkFree={isGkFree}
+          organizerName={activeMatch?.organizer || 'Kaptan'}
+          organizerIban={activeMatch?.organizerIban}
+          organizerIbanName={activeMatch?.organizerIbanName}
+          organizerBankName={activeMatch?.organizerBankName}
+          userSlotKey={userSlot}
+          currentStatus={userSlot ? (activeMatch?.slots?.[userSlot]?.paymentStatus || (activeMatch?.slots?.[userSlot]?.paid ? 'paid' : 'unpaid')) : 'unpaid'}
+          onSuccess={() => {
+            setDirectPayVisible(false);
           }}
         />
+
+        {/* Captain IBAN Edit Modal */}
+        <Modal visible={captainIbanModalVisible} transparent animationType="slide" onRequestClose={() => setCaptainIbanModalVisible(false)}>
+          <View style={styles.captainIbanOverlay}>
+            <View style={styles.captainIbanSheet}>
+              <View style={styles.captainIbanHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <MaterialIcons name="account-balance" size={20} color={theme.primary} />
+                  <Text style={styles.captainIbanTitle}>KAPTAN IBAN BİLGİLERİ</Text>
+                </View>
+                <TouchableOpacity onPress={() => setCaptainIbanModalVisible(false)} style={styles.closeBtn}>
+                  <MaterialIcons name="close" size={20} color={theme.text} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
+                <Text style={{ fontFamily: Fonts.body, fontSize: 12, color: theme.textMuted, lineHeight: 16 }}>
+                  Oyuncuların maç ücretini FAST ile gönderebilmesi için kendi banka ve IBAN bilgilerinizi girin.
+                </Text>
+
+                <View style={styles.miniInputGroup}>
+                  <Text style={styles.miniInputLabel}>BANKA ADI</Text>
+                  <TextInput
+                    style={styles.captainIbanInput}
+                    value={captainBankNameInput}
+                    onChangeText={setCaptainBankNameInput}
+                    placeholder="Örn: Ziraat Bankası, Garanti BBVA"
+                    placeholderTextColor="#adaaaa"
+                  />
+                </View>
+
+                <View style={styles.miniInputGroup}>
+                  <Text style={styles.miniInputLabel}>HESAP SAHİBİ (AD SOYAD)</Text>
+                  <TextInput
+                    style={styles.captainIbanInput}
+                    value={captainIbanNameInput}
+                    onChangeText={setCaptainIbanNameInput}
+                    placeholder="Örn: Ahmet Yılmaz"
+                    placeholderTextColor="#adaaaa"
+                  />
+                </View>
+
+                <View style={styles.miniInputGroup}>
+                  <Text style={styles.miniInputLabel}>IBAN NUMARASI</Text>
+                  <TextInput
+                    style={styles.captainIbanInput}
+                    value={captainIbanInput}
+                    onChangeText={(t) => setCaptainIbanInput(t.toUpperCase())}
+                    placeholder="TR00 0000 0000 0000 0000 0000 00"
+                    placeholderTextColor="#adaaaa"
+                    autoCapitalize="characters"
+                  />
+                </View>
+
+                <TouchableOpacity 
+                  style={[styles.saveIbanBtn, savingCaptainIban && { opacity: 0.7 }]}
+                  onPress={handleSaveCaptainIban}
+                  disabled={savingCaptainIban}
+                >
+                  <Text style={styles.saveIbanBtnText}>
+                    {savingCaptainIban ? 'KAYDEDİLİYOR...' : 'IBAN BİLGİLERİNİ KAYDET'}
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
         <PitchReviewModal
           pitchName={matchArena}
           visible={pitchReviewVisible}
@@ -782,96 +1005,302 @@ export default function MatchRoomScreen() {
                     {isGkFree ? `Kaleciler muaf tutuldu. Ücret ${activePayersCount} saha oyuncusuna bölündü.` : `Kaleciler dahil tüm ${totalPlayersCount} oyuncu ücreti eşit paylaşır.`}
                   </Text>
                 </View>
-                <Switch
-                  value={isGkFree}
-                  onValueChange={setIsGkFree}
-                  trackColor={{ false: theme.surfaceContainerHighest, true: theme.primary }}
-                  thumbColor={isGkFree ? theme.text : theme.textMuted}
-                />
+                {isOrganizer ? (
+                  <Switch
+                    value={isGkFree}
+                    onValueChange={async (val) => {
+                      setIsGkFree(val);
+                      if (activeMatchId) {
+                        try {
+                          await dbService.updateMatchGkFree(activeMatchId, val);
+                        } catch (e) {
+                          console.error('Kaleci muafiyet güncelleme hatası:', e);
+                        }
+                      }
+                    }}
+                    trackColor={{ false: theme.surfaceContainerHighest, true: theme.primary }}
+                    thumbColor={isGkFree ? theme.text : theme.textMuted}
+                  />
+                ) : (
+                  <View style={[styles.activeSubBadge, { backgroundColor: isGkFree ? `${theme.primary}26` : theme.surfaceContainerHighest }]}>
+                    <Text style={[styles.activeSubBadgeText, { color: isGkFree ? theme.primary : theme.textMuted }]}>
+                      {isGkFree ? 'AKTİF' : 'KAPALI'}
+                    </Text>
+                  </View>
+                )}
               </View>
 
-              {/* Split Mode Selector */}
-              <Text style={styles.paymentLabel}>1. ÖDEME PAYLAŞIM KURALI</Text>
-              <View style={styles.splitToggleRow}>
-                <TouchableOpacity 
-                  style={[styles.splitBtn, splitMode === 'separate' && styles.splitBtnActive]}
-                  onPress={() => setSplitMode('separate')}
-                >
-                  <MaterialIcons name="groups" size={18} color={splitMode === 'separate' ? theme.onPrimary : theme.textMuted} />
-                  <Text style={[styles.splitBtnText, splitMode === 'separate' && styles.splitBtnTextActive]}>TAKIMLAR AYRI</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={[styles.splitBtn, splitMode === 'joint' && styles.splitBtnActive]}
-                  onPress={() => setSplitMode('joint')}
-                >
-                  <MaterialIcons name="pie-chart" size={18} color={splitMode === 'joint' ? theme.onPrimary : theme.textMuted} />
-                  <Text style={[styles.splitBtnText, splitMode === 'joint' && styles.splitBtnTextActive]}>ORTAK HESAP</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Payment Method Selector */}
-              <Text style={[styles.paymentLabel, { marginTop: 16 }]}>2. VARSAYILAN ÖDEME YÖNTEMİ</Text>
-              <View style={styles.splitToggleRow}>
-                <TouchableOpacity 
-                  style={[styles.splitBtn, payMethod === 'cash' && styles.splitBtnActive]}
-                  onPress={() => setPayMethod('cash')}
-                >
-                  <MaterialIcons name="payments" size={18} color={payMethod === 'cash' ? theme.onPrimary : theme.textMuted} />
-                  <Text style={[styles.splitBtnText, payMethod === 'cash' && styles.splitBtnTextActive]}>NAKİT (KAPTANA)</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={[styles.splitBtn, payMethod === 'online' && styles.splitBtnActive]}
-                  onPress={() => { setPayMethod('online'); setDirectPayVisible(true); }}
-                >
-                  <MaterialIcons name="credit-card" size={18} color={payMethod === 'online' ? theme.onPrimary : theme.textMuted} />
-                  <Text style={[styles.splitBtnText, payMethod === 'online' && styles.splitBtnTextActive]}>ONLINE (KARTLA)</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Payment Progress Summary */}
-              <View style={styles.paymentSummaryCard}>
-                <View style={styles.paymentSummaryRow}>
-                  <Text style={styles.summaryLabel}>TOPLANAN KANITLI ÜCRET</Text>
-                  <Text style={styles.summaryValue}>₺{collectedAmount} / <Text style={{ color: theme.textMuted }}>₺{totalMatchFee}</Text></Text>
+              {/* 1. KAPTAN IBAN BİLGİSİ & KOPYALAMA KARTI */}
+              <Text style={[styles.paymentLabel, { marginTop: 14 }]}>1. KAPTAN IBAN & FAST BİLGİSİ</Text>
+              <View style={styles.ibanCardWrap}>
+                <View style={styles.ibanCardHeader}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <MaterialIcons name="account-balance" size={18} color={theme.primary} />
+                    <Text style={styles.ibanBankTitle}>
+                      {activeMatch?.organizerBankName || 'BANKA HESABI / FAST'}
+                    </Text>
+                  </View>
+                  {isOrganizer ? (
+                    <TouchableOpacity 
+                      style={styles.editIbanPill} 
+                      onPress={() => setCaptainIbanModalVisible(true)}
+                    >
+                      <MaterialIcons name="edit" size={12} color={theme.primary} />
+                      <Text style={styles.editIbanPillText}>IBAN Düzenle</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
 
-                <View style={styles.paymentProgressBg}>
-                  <View style={[styles.paymentProgressFill, { width: `${Math.min(100, Math.round((collectedAmount / totalMatchFee) * 100))}%` }]} />
-                </View>
-                <Text style={styles.progressPercentText}>%{Math.round((collectedAmount / totalMatchFee) * 100)} Tamamlandı</Text>
+                {activeMatch?.organizerIban ? (
+                  <View style={styles.ibanCardBody}>
+                    <Text style={styles.ibanHolderName}>
+                      Alıcı: <Text style={{ color: theme.text, fontFamily: Fonts.headlineBold }}>{activeMatch?.organizerIbanName || activeMatch?.organizer || 'Kaptan'}</Text>
+                    </Text>
+                    <View style={styles.ibanCopyRow}>
+                      <Text style={styles.ibanNumberText} numberOfLines={1} ellipsizeMode="middle">
+                        {activeMatch.organizerIban}
+                      </Text>
+                      <TouchableOpacity 
+                        style={styles.copyIbanBtn} 
+                        onPress={async () => {
+                          await Clipboard.setStringAsync(activeMatch.organizerIban!);
+                          Alert.alert('✓ Kopyalandı', 'Kaptan IBAN panoya kopyalandı. Banka uygulamanızdan FAST ile gönderebilirsiniz.');
+                        }}
+                      >
+                        <MaterialIcons name="content-copy" size={14} color={theme.onPrimary} />
+                        <Text style={styles.copyIbanBtnText}>Kopyala</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.ibanFastHint}>
+                      💡 Açıklamaya adınızı yazıp gönderdikten sonra aşağıdan kaptana bildirim yapabilirsiniz.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.noIbanBox}>
+                    <MaterialIcons name="info-outline" size={18} color={theme.textMuted} />
+                    <Text style={styles.noIbanText}>
+                      {isOrganizer 
+                        ? 'Henüz IBAN eklemediniz. Oyuncuların FAST ile ödeme yapabilmesi için IBAN bilgilerinizi ekleyin.' 
+                        : 'Kaptan henüz IBAN bilgisi eklemedi. Ödemenizi sahada nakit olarak elden teslim edebilirsiniz.'}
+                    </Text>
+                    {isOrganizer && (
+                      <TouchableOpacity 
+                        style={styles.addIbanBtn} 
+                        onPress={() => setCaptainIbanModalVisible(true)}
+                      >
+                        <MaterialIcons name="add" size={14} color={theme.onPrimary} />
+                        <Text style={styles.addIbanBtnText}>IBAN EKLE</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
               </View>
 
-              {/* Captain Player Payment List */}
-              <Text style={[styles.paymentLabel, { marginTop: 20, marginBottom: 8 }]}>3. OYUNCU ÖDEME DURUMU (KAPTAN DÜZENLEMESİ)</Text>
-              <View style={styles.paymentPlayerList}>
-                {playersPayment.map((player) => (
-                  <View key={player.id} style={styles.playerPayCard}>
-                    <Image source={{ uri: player.avatar }} style={styles.playerPayAvatar} />
-                    <View style={styles.playerPayInfo}>
-                      <Text style={styles.playerPayName}>{player.name}</Text>
-                      <View style={styles.playerPaySubRow}>
-                        <Text style={styles.playerPayRole}>{player.role}</Text>
-                        <TouchableOpacity onPress={() => togglePaymentMethod(player.id)}>
-                          <Text style={styles.playerPayMethodTag}>
-                            {player.method === 'nakit' ? '💵 Nakit' : '💳 Online'} (Değiştir)
-                          </Text>
-                        </TouchableOpacity>
+              {/* 2. KASA & MUHASEBE DURUMU (ACCOUNTING BAR) */}
+              <Text style={[styles.paymentLabel, { marginTop: 18 }]}>2. KASA & MUHASEBE TAKİBİ</Text>
+              <View style={styles.accountingCard}>
+                <View style={styles.accountingStatsRow}>
+                  <View style={styles.accountingCol}>
+                    <Text style={[styles.accColLabel, { color: theme.primary }]}>ÖDENDİ</Text>
+                    <Text style={[styles.accColVal, { color: theme.primary }]}>₺{collectedPaidAmount}</Text>
+                  </View>
+                  <View style={styles.accountingDivider} />
+                  <View style={styles.accountingCol}>
+                    <Text style={[styles.accColLabel, { color: '#6e9bff' }]}>SAHADA NAKİT</Text>
+                    <Text style={[styles.accColVal, { color: '#6e9bff' }]}>₺{collectedCashAmount}</Text>
+                  </View>
+                  <View style={styles.accountingDivider} />
+                  <View style={styles.accountingCol}>
+                    <Text style={[styles.accColLabel, { color: '#ffb703' }]}>ONAY BEKLEYEN</Text>
+                    <Text style={[styles.accColVal, { color: '#ffb703' }]}>₺{pendingApprovalAmount}</Text>
+                  </View>
+                  <View style={styles.accountingDivider} />
+                  <View style={styles.accountingCol}>
+                    <Text style={[styles.accColLabel, { color: theme.error }]}>KALAN</Text>
+                    <Text style={[styles.accColVal, { color: theme.error }]}>₺{unpaidAmount}</Text>
+                  </View>
+                </View>
+
+                {/* Multi-segment Progress Bar */}
+                <View style={styles.multiProgressWrap}>
+                  <View style={[styles.multiProgressPaid, { flex: Math.max(0.001, collectedPaidAmount) }]} />
+                  <View style={[styles.multiProgressCash, { flex: Math.max(0.001, collectedCashAmount) }]} />
+                  <View style={[styles.multiProgressPending, { flex: Math.max(0.001, pendingApprovalAmount) }]} />
+                  <View style={[styles.multiProgressUnpaid, { flex: Math.max(0.001, unpaidAmount) }]} />
+                </View>
+                <View style={styles.progressSubInfo}>
+                  <Text style={styles.progressSubText}>
+                    Toplam: ₺{totalMatchFee} • Kişi Başı: ₺{perPlayerFee}
+                  </Text>
+                  <Text style={[styles.progressSubText, { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                    %{totalMatchFee > 0 ? Math.min(100, Math.round(((collectedPaidAmount + collectedCashAmount) / totalMatchFee) * 100)) : 0} Güvencede
+                  </Text>
+                </View>
+              </View>
+
+              {/* OYUNCU KENDİ ÖDEME AKSİYONU (Eğer mevkisi varsa ve henüz ödememişse) */}
+              {(() => {
+                if (!userSlot) return null;
+                const myP = rosterPayments.find(p => p.slotKey === userSlot);
+                if (!myP) return null;
+                if (myP.isGk && isGkFree) {
+                  return (
+                    <View style={styles.myPayNoticeCard}>
+                      <MaterialIcons name="sports-handball" size={20} color={theme.secondary} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.myPayNoticeTitle, { color: theme.secondary }]}>KALECİ ÜCRET MUAFİYETİ</Text>
+                        <Text style={styles.myPayNoticeSub}>Bu maçta kalecilerden ücret talep edilmemektedir.</Text>
                       </View>
                     </View>
-
-                    <TouchableOpacity 
-                      style={[styles.payStatusBtn, player.paid ? styles.payStatusPaid : styles.payStatusUnpaid]}
-                      onPress={() => togglePlayerPayment(player.id)}
-                    >
-                      <MaterialIcons name={player.paid ? "check-circle" : "cancel"} size={16} color={player.paid ? theme.onPrimary : theme.error} />
-                      <Text style={[styles.payStatusBtnText, player.paid ? { color: theme.onPrimary } : { color: theme.error }]}>
-                        {player.paid ? 'ÖDENDİ' : 'ÖDENMEDİ'}
-                      </Text>
+                  );
+                }
+                if (myP.paymentStatus === 'paid') {
+                  return (
+                    <View style={[styles.myPayNoticeCard, { borderColor: theme.primary }]}>
+                      <MaterialIcons name="check-circle" size={20} color={theme.primary} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.myPayNoticeTitle, { color: theme.primary }]}>PAYINIZ ÖDENDİ (₺{myP.amount})</Text>
+                        <Text style={styles.myPayNoticeSub}>Kaptan ödemenizi teyit etti, teşekkürler!</Text>
+                      </View>
+                    </View>
+                  );
+                }
+                if (myP.paymentStatus === 'pending_approval') {
+                  return (
+                    <View style={[styles.myPayNoticeCard, { borderColor: '#ffb703' }]}>
+                      <MaterialIcons name="hourglass-top" size={20} color="#ffb703" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.myPayNoticeTitle, { color: '#ffb703' }]}>KAPTAN ONAYI BEKLENİYOR</Text>
+                        <Text style={styles.myPayNoticeSub}>FAST bildirimi yapıldı. Kaptan hesabını kontrol edip onaylayacaktır.</Text>
+                      </View>
+                      <TouchableOpacity style={styles.myPayNoticeAction} onPress={() => setDirectPayVisible(true)}>
+                        <Text style={styles.myPayNoticeActionText}>Değiştir</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                }
+                if (myP.paymentStatus === 'cash_on_pitch') {
+                  return (
+                    <View style={[styles.myPayNoticeCard, { borderColor: '#6e9bff' }]}>
+                      <MaterialIcons name="payments" size={20} color="#6e9bff" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.myPayNoticeTitle, { color: '#6e9bff' }]}>SAHADA NAKİT ÖDENECEK (₺{myP.amount})</Text>
+                        <Text style={styles.myPayNoticeSub}>Maç saatinde kaptana elden teslim edeceksiniz.</Text>
+                      </View>
+                      <TouchableOpacity style={styles.myPayNoticeAction} onPress={() => setDirectPayVisible(true)}>
+                        <Text style={styles.myPayNoticeActionText}>Değiştir</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                }
+                return (
+                  <View style={[styles.myPayNoticeCard, { borderColor: theme.error }]}>
+                    <MaterialIcons name="announcement" size={22} color={theme.error} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.myPayNoticeTitle, { color: theme.error }]}>MAÇ PAYINIZ: ₺{perPlayerFee}</Text>
+                      <Text style={styles.myPayNoticeSub}>IBAN (FAST) ile gönderin ya da sahada nakit seçeneğini bildirin.</Text>
+                    </View>
+                    <TouchableOpacity style={styles.payNowBtn} onPress={() => setDirectPayVisible(true)}>
+                      <Text style={styles.payNowBtnText}>ÖDEME SEÇENEKLERİ</Text>
                     </TouchableOpacity>
                   </View>
-                ))}
+                );
+              })()}
+
+              {/* 3. TÜM OYUNCULARIN ÖDEME LİSTESİ & KAPTAN YÖNETİMİ */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, marginBottom: 8 }}>
+                <Text style={styles.paymentLabel}>3. KADRO ÖDEME ÇİZELGESİ</Text>
+                {isOrganizer && (
+                  <Text style={styles.captainHintText}>💡 Durumu değiştirmek için dokunun</Text>
+                )}
+              </View>
+
+              <View style={styles.paymentPlayerList}>
+                {rosterPayments.length === 0 ? (
+                  <View style={{ paddingVertical: 14, alignItems: 'center' }}>
+                    <Text style={{ fontFamily: Fonts.body, fontSize: 12, color: theme.textMuted }}>
+                      Kadroda henüz oyuncu bulunmuyor.
+                    </Text>
+                  </View>
+                ) : (
+                  rosterPayments.map((player) => {
+                    const isMe = player.uid === user?.uid;
+                    let badgeBg = `${theme.error}22`;
+                    let badgeBorder = theme.error;
+                    let badgeText = 'ÖDENMEDİ';
+                    let badgeIcon: any = 'cancel';
+                    let badgeTextColor = theme.error;
+
+                    if (player.paymentStatus === 'exempt') {
+                      badgeBg = `${theme.secondary}22`;
+                      badgeBorder = theme.secondary;
+                      badgeText = 'MUAF';
+                      badgeIcon = 'sports-handball';
+                      badgeTextColor = theme.secondary;
+                    } else if (player.paymentStatus === 'paid') {
+                      badgeBg = `${theme.primary}22`;
+                      badgeBorder = theme.primary;
+                      badgeText = 'ÖDENDİ';
+                      badgeIcon = 'check-circle';
+                      badgeTextColor = theme.primary;
+                    } else if (player.paymentStatus === 'pending_approval') {
+                      badgeBg = '#ffb70326';
+                      badgeBorder = '#ffb703';
+                      badgeText = 'ONAY BEKLİYOR';
+                      badgeIcon = 'hourglass-top';
+                      badgeTextColor = '#ffb703';
+                    } else if (player.paymentStatus === 'cash_on_pitch') {
+                      badgeBg = '#6e9bff26';
+                      badgeBorder = '#6e9bff';
+                      badgeText = 'SAHADA NAKİT';
+                      badgeIcon = 'payments';
+                      badgeTextColor = '#6e9bff';
+                    }
+
+                    return (
+                      <TouchableOpacity
+                        key={player.slotKey}
+                        style={[styles.playerPayCard, isMe && { borderColor: `${theme.primary}4D`, borderWidth: 1 }]}
+                        onPress={() => {
+                          if (isOrganizer) {
+                            handleCaptainTogglePayment(player.slotKey, player.name, player.paymentStatus);
+                          } else if (isMe && player.paymentStatus !== 'paid' && player.paymentStatus !== 'exempt') {
+                            setDirectPayVisible(true);
+                          }
+                        }}
+                        activeOpacity={isOrganizer || (isMe && player.paymentStatus !== 'paid') ? 0.7 : 1}
+                      >
+                        <Image source={{ uri: player.avatar }} style={styles.playerPayAvatar} />
+                        <View style={styles.playerPayInfo}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={styles.playerPayName} numberOfLines={1}>
+                              {player.name} {isMe ? '(Siz)' : ''}
+                            </Text>
+                            {isOrganizer && player.slotKey.includes('A_FORVET_1') && (
+                              <View style={styles.captainBadge}>
+                                <Text style={styles.captainBadgeText}>KAPTAN</Text>
+                              </View>
+                            )}
+                          </View>
+                          <View style={styles.playerPaySubRow}>
+                            <Text style={styles.playerPayRole}>{player.role}</Text>
+                            <Text style={{ fontFamily: Fonts.label, fontSize: 10, color: theme.textMuted }}>•</Text>
+                            <Text style={[styles.playerPayAmountText, player.paymentStatus === 'exempt' && { color: theme.secondary }]}>
+                              {player.paymentStatus === 'exempt' ? '0 ₺' : `₺${player.amount}`}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={[styles.payStatusBtn, { backgroundColor: badgeBg, borderColor: badgeBorder }]}>
+                          <MaterialIcons name={badgeIcon} size={14} color={badgeTextColor} />
+                          <Text style={[styles.payStatusBtnText, { color: badgeTextColor }]}>
+                            {badgeText}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
               </View>
 
             </View>
@@ -888,17 +1317,17 @@ export default function MatchRoomScreen() {
           </View>
           
           <View style={styles.playersList}>
-            {playersPayment.length === 0 ? (
+            {rosterPayments.length === 0 ? (
               <View style={{ paddingVertical: 16, alignItems: 'center' }}>
                 <Text style={{ fontFamily: Fonts.body, fontSize: 13, color: theme.textMuted, textAlign: 'center' }}>
                   Henüz kadroya katılan oyuncu yok. Sahadaki boş bir mevkiye tıklayarak ilk siz katılın!
                 </Text>
               </View>
             ) : (
-              playersPayment.map((player) => {
-                const isCurrent = player.name.includes('Siz') || (player.name === user?.name);
+              rosterPayments.map((player) => {
+                const isCurrent = player.uid === user?.uid;
                 return (
-                  <View key={player.id} style={[styles.playerItem, { borderLeftColor: isCurrent ? theme.primary : 'transparent' }]}>
+                  <View key={player.slotKey} style={[styles.playerItem, { borderLeftColor: isCurrent ? theme.primary : 'transparent' }]}>
                     <View style={styles.playerItemLeft}>
                       <Image source={{ uri: player.avatar || user?.avatar }} style={styles.playerAvatar} />
                       <View>
@@ -919,7 +1348,7 @@ export default function MatchRoomScreen() {
             )}
             
             <View style={styles.playerCountFooter}>
-              <Text style={styles.playerCountText}>{playersPayment.length} / {activeMatch?.totalRequiredPlayers ?? 14} OYUNCU KATILDI</Text>
+              <Text style={styles.playerCountText}>{rosterPayments.length} / {totalPlayersCount} OYUNCU KATILDI</Text>
             </View>
           </View>
         </View>
@@ -1866,5 +2295,341 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontFamily: Fonts.headlineBold,
     fontSize: 11,
     color: theme.error,
+  },
+
+  // Slot Payment Pill Styles
+  slotPaymentPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    marginTop: 2,
+  },
+  slotPaymentPillText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 8,
+    letterSpacing: 0.5,
+  },
+
+  // Captain IBAN Modal Styles
+  captainIbanOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-end',
+  },
+  captainIbanSheet: {
+    backgroundColor: theme.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    maxHeight: '85%',
+  },
+  captainIbanHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.borderSubtle,
+  },
+  captainIbanTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 14,
+    color: theme.text,
+    letterSpacing: 0.5,
+  },
+  closeBtn: {
+    padding: 4,
+  },
+  miniInputGroup: {
+    gap: 6,
+  },
+  miniInputLabel: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: theme.textMuted,
+    letterSpacing: 1,
+  },
+  captainIbanInput: {
+    backgroundColor: theme.surfaceContainerHighest,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontFamily: Fonts.body,
+    fontSize: 13,
+    color: theme.text,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+  },
+  saveIbanBtn: {
+    backgroundColor: theme.primary,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  saveIbanBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 13,
+    color: theme.onPrimary,
+    letterSpacing: 0.5,
+  },
+
+  // P2P IBAN Card Styles
+  ibanCardWrap: {
+    backgroundColor: theme.surfaceContainerHigh,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: `${theme.primary}33`,
+    overflow: 'hidden',
+  },
+  ibanCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: theme.surfaceContainerHighest,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.borderSubtle,
+  },
+  ibanBankTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 12,
+    color: theme.primary,
+    letterSpacing: 0.5,
+  },
+  editIbanPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: `${theme.primary}22`,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  editIbanPillText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: theme.primary,
+  },
+  ibanCardBody: {
+    padding: 14,
+    gap: 8,
+  },
+  ibanHolderName: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: theme.textMuted,
+  },
+  ibanCopyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.surfaceContainer,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    gap: 8,
+  },
+  ibanNumberText: {
+    flex: 1,
+    fontFamily: Fonts.headlineBold,
+    fontSize: 13,
+    color: theme.text,
+    letterSpacing: 0.5,
+  },
+  copyIbanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: theme.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  copyIbanBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: theme.onPrimary,
+  },
+  ibanFastHint: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: theme.textMuted,
+    lineHeight: 14,
+  },
+  noIbanBox: {
+    padding: 16,
+    alignItems: 'center',
+    gap: 8,
+  },
+  noIbanText: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: theme.textMuted,
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  addIbanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: theme.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  addIbanBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.onPrimary,
+  },
+
+  // Accounting Bar Styles
+  accountingCard: {
+    backgroundColor: theme.surfaceContainerHigh,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    gap: 12,
+  },
+  accountingStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  accountingCol: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  accColLabel: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 8,
+    letterSpacing: 0.5,
+  },
+  accColVal: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 13,
+  },
+  accountingDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: theme.borderSubtle,
+  },
+  multiProgressWrap: {
+    flexDirection: 'row',
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: theme.surfaceContainerHighest,
+    overflow: 'hidden',
+  },
+  multiProgressPaid: {
+    backgroundColor: theme.primary,
+    height: '100%',
+  },
+  multiProgressCash: {
+    backgroundColor: '#6e9bff',
+    height: '100%',
+  },
+  multiProgressPending: {
+    backgroundColor: '#ffb703',
+    height: '100%',
+  },
+  multiProgressUnpaid: {
+    backgroundColor: `${theme.error}44`,
+    height: '100%',
+  },
+  progressSubInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  progressSubText: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: theme.textMuted,
+  },
+
+  // Player's Notice Card Styles
+  myPayNoticeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: theme.surfaceContainerHighest,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: theme.borderSubtle,
+    marginTop: 14,
+  },
+  myPayNoticeTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    letterSpacing: 0.5,
+  },
+  myPayNoticeSub: {
+    fontFamily: Fonts.body,
+    fontSize: 9,
+    color: theme.textMuted,
+    marginTop: 2,
+  },
+  myPayNoticeAction: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: theme.surfaceContainer,
+  },
+  myPayNoticeActionText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: theme.text,
+  },
+  payNowBtn: {
+    backgroundColor: theme.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  payNowBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: theme.onPrimary,
+  },
+
+  // Other List Styles
+  captainHintText: {
+    fontFamily: Fonts.body,
+    fontSize: 9,
+    color: theme.textMuted,
+  },
+  captainBadge: {
+    backgroundColor: `${theme.primary}22`,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 0.5,
+    borderColor: theme.primary,
+  },
+  captainBadgeText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 8,
+    color: theme.primary,
+  },
+  playerPayAmountText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: theme.text,
   },
 });

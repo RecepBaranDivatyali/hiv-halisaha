@@ -24,6 +24,9 @@ export default function EditProfileScreen() {
   const [city, setCity] = useState(user?.city || 'İSTANBUL');
   const [bio, setBio] = useState(user?.bio || 'Futbol tutkunu, takım oyuncusu.');
   const [avatar, setAvatar] = useState(user?.avatar || '');
+  const [iban, setIban] = useState(user?.iban || '');
+  const [ibanName, setIbanName] = useState(user?.ibanName || user?.name || '');
+  const [bankName, setBankName] = useState(user?.bankName || '');
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -48,7 +51,10 @@ export default function EditProfileScreen() {
         position,
         city,
         bio,
-        avatar
+        avatar,
+        iban,
+        ibanName,
+        bankName,
       });
 
       setToast({
@@ -135,6 +141,50 @@ export default function EditProfileScreen() {
             placeholder="Kısa biyografi..."
             multiline
           />
+        </View>
+
+        {/* Kaptan Banka & IBAN Bilgileri (Opsiyonel) */}
+        <View style={{ marginTop: 16, padding: 16, backgroundColor: `${theme.primary}0D`, borderRadius: 16, borderWidth: 1, borderColor: `${theme.primary}25`, gap: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <MaterialIcons name="account-balance" size={20} color={theme.primary} />
+            <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.text }}>
+              KAPTAN IBAN BİLGİLERİ (OPSİYONEL)
+            </Text>
+          </View>
+          <Text style={{ fontFamily: Fonts.body, fontSize: 11, color: theme.textMuted, lineHeight: 15 }}>
+            Maç kurduğunuzda oyuncuların FAST ile maç ücretini gönderebilmesi için IBAN bilgilerinizi kaydedebilirsiniz.
+          </Text>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>BANKA ADI</Text>
+            <CustomInput
+              icon="account-balance"
+              value={bankName}
+              onChangeText={setBankName}
+              placeholder="Örn: Ziraat Bankası, Garanti BBVA"
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>HESAP SAHİBİ (AD SOYAD)</Text>
+            <CustomInput
+              icon="badge"
+              value={ibanName}
+              onChangeText={setIbanName}
+              placeholder="Örn: Ahmet Yılmaz"
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>IBAN NUMARASI</Text>
+            <CustomInput
+              icon="credit-card"
+              value={iban}
+              onChangeText={(t) => setIban(t.toUpperCase())}
+              placeholder="TR00 0000 0000 0000 0000 0000 00"
+              autoCapitalize="characters"
+            />
+          </View>
         </View>
 
       </ScrollView>

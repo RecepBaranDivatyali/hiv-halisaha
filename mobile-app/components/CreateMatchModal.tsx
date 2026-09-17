@@ -27,6 +27,9 @@ export interface NewMatchData {
   searchForPlayers?: boolean;
   positions: { [key: string]: number };
   isGkFree?: boolean;
+  organizerIban?: string;
+  organizerIbanName?: string;
+  organizerBankName?: string;
 }
 
 interface CreateMatchModalProps {
@@ -160,6 +163,12 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   // ── Ücret ──────────────────────────────────────────────
   const [totalFeeInput, setTotalFeeInput] = useState('2100');
 
+  // ── Kaptan IBAN ──────────────────────────────────────────
+  const [organizerIban, setOrganizerIban] = useState(user?.iban || '');
+  const [organizerIbanName, setOrganizerIbanName] = useState(user?.ibanName || user?.name || '');
+  const [organizerBankName, setOrganizerBankName] = useState(user?.bankName || '');
+  const [showIbanInput, setShowIbanInput] = useState(Boolean(user?.iban));
+
   // ── Abonelik ──────────────────────────────────────────────
   const [isSubscription, setIsSubscription] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -218,6 +227,9 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       fee: perPlayerFee,
       isSubscription,
       isGkFree,
+      organizerIban: showIbanInput && organizerIban ? organizerIban.trim() : undefined,
+      organizerIbanName: showIbanInput && organizerIbanName ? organizerIbanName.trim() : undefined,
+      organizerBankName: showIbanInput && organizerBankName ? organizerBankName.trim() : undefined,
       positions: { KL: 1, DF: 2, OS: 2, FV: 1 },
     };
 
@@ -484,7 +496,72 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               </View>
             </View>
 
-            {/* ── 6. HAFTAlık ABONELİK ── */}
+            {/* ── KAPTAN IBAN (FAST İLE MAÇ ÜCRETİ TOPLAMA) ── */}
+            <View style={styles.ibanSettingCard}>
+              <TouchableOpacity 
+                style={styles.ibanSettingHeader}
+                onPress={() => setShowIbanInput(!showIbanInput)}
+                activeOpacity={0.8}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                  <MaterialIcons name="account-balance" size={20} color={theme.primary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.ibanSettingTitle}>KAPTAN IBAN TANIMLA (FAST)</Text>
+                    <Text style={styles.ibanSettingSub}>
+                      {showIbanInput 
+                        ? 'Oyuncular maç odasında IBAN kopyalayıp FAST ile ücret atabilir.' 
+                        : 'Kapalı • Oyuncular sahada elden nakit öder.'}
+                    </Text>
+                  </View>
+                </View>
+                <Switch
+                  value={showIbanInput}
+                  onValueChange={setShowIbanInput}
+                  trackColor={{ false: theme.surfaceContainerHighest, true: theme.primary }}
+                  thumbColor={showIbanInput ? theme.text : theme.textMuted}
+                />
+              </TouchableOpacity>
+
+              {showIbanInput && (
+                <View style={styles.ibanInputsWrap}>
+                  <View style={styles.miniInputGroup}>
+                    <Text style={styles.miniInputLabel}>BANKA ADI</Text>
+                    <TextInput
+                      style={styles.miniTextInput}
+                      value={organizerBankName}
+                      onChangeText={setOrganizerBankName}
+                      placeholder="Örn: Ziraat Bankası, Garanti BBVA"
+                      placeholderTextColor="#adaaaa"
+                    />
+                  </View>
+
+                  <View style={styles.miniInputGroup}>
+                    <Text style={styles.miniInputLabel}>HESAP SAHİBİ ADI SOYADI</Text>
+                    <TextInput
+                      style={styles.miniTextInput}
+                      value={organizerIbanName}
+                      onChangeText={setOrganizerIbanName}
+                      placeholder="Örn: Ahmet Yılmaz"
+                      placeholderTextColor="#adaaaa"
+                    />
+                  </View>
+
+                  <View style={styles.miniInputGroup}>
+                    <Text style={styles.miniInputLabel}>IBAN NUMARASI</Text>
+                    <TextInput
+                      style={styles.miniTextInput}
+                      value={organizerIban}
+                      onChangeText={(t) => setOrganizerIban(t.toUpperCase())}
+                      placeholder="TR00 0000 0000 0000 0000 0000 00"
+                      placeholderTextColor="#adaaaa"
+                      autoCapitalize="characters"
+                    />
+                  </View>
+                </View>
+              )}
+            </View>
+
+            {/* ── 6. HAFTALIK ABONELİK ── */}
             <View style={styles.subscriptionBox}>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -857,6 +934,16 @@ const useStyles = (theme: any) => StyleSheet.create({
   subscriptionBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.surfaceContainer, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: `${theme.primary}4D` },
   subBoxTitle: { fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.text },
   subBoxSub: { fontFamily: Fonts.body, fontSize: 10, color: theme.textMuted, marginTop: 2 },
+
+  // Kaptan IBAN Ayarı
+  ibanSettingCard: { backgroundColor: theme.surfaceContainer, borderRadius: 14, borderWidth: 1, borderColor: theme.border, overflow: 'hidden' },
+  ibanSettingHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
+  ibanSettingTitle: { fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.text },
+  ibanSettingSub: { fontFamily: Fonts.body, fontSize: 10, color: theme.textMuted, marginTop: 2 },
+  ibanInputsWrap: { paddingHorizontal: 16, paddingBottom: 16, gap: 10, borderTopWidth: 1, borderTopColor: theme.borderSubtle, paddingTop: 12 },
+  miniInputGroup: { gap: 4 },
+  miniInputLabel: { fontFamily: Fonts.headlineBold, fontSize: 10, color: theme.textMuted, letterSpacing: 0.5 },
+  miniTextInput: { backgroundColor: theme.surface, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontFamily: Fonts.body, fontSize: 13, color: theme.text, borderWidth: 1, borderColor: theme.borderSubtle },
 
   // Kaydet
   createBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: theme.primary, paddingVertical: 16, borderRadius: 14, marginTop: 4 },

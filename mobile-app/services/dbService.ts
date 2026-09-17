@@ -32,6 +32,9 @@ export interface MatchModel {
   joinedPlayersCount: number;
   organizer: string;
   organizerId?: string;
+  organizerIban?: string;
+  organizerIbanName?: string;
+  organizerBankName?: string;
   isSubscription?: boolean;
   isGkFree?: boolean;
   status: 'active' | 'completed' | 'cancelled';
@@ -50,6 +53,8 @@ export interface MatchModel {
       avatar?: string;
       position?: string;
       paid?: boolean;
+      paymentStatus?: 'paid' | 'pending_approval' | 'unpaid' | 'cash_on_pitch' | 'exempt';
+      paymentMethod?: 'iban' | 'cash';
     } | null;
   };
   createdAt?: any;
@@ -334,16 +339,46 @@ export const dbService = {
     }
   },
 
-  updateSlotPayment: async (matchId: string, slotKey: string, paid: boolean) => {
+  updateSlotPayment: async (
+    matchId: string, 
+    slotKey: string, 
+    paid: boolean,
+    paymentStatus?: 'paid' | 'pending_approval' | 'unpaid' | 'cash_on_pitch' | 'exempt',
+    paymentMethod?: 'iban' | 'cash'
+  ) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      const updates: any = {
+        [`slots.${slotKey}.paid`]: paid,
+        updatedAt: serverTimestamp()
+      };
+      if (paymentStatus !== undefined) {
+        updates[`slots.${slotKey}.paymentStatus`] = paymentStatus;
+      }
+      if (paymentMethod !== undefined) {
+        updates[`slots.${slotKey}.paymentMethod`] = paymentMethod;
+      }
+      await updateDoc(matchRef, updates);
+      return true;
+    } catch (error) {
+      console.error("Ödeme durumu güncelleme hatası:", error);
+      throw error;
+    }
+  },
+
+  updateMatchOrganizerIban: async (
+    matchId: string, 
+    ibanData: { organizerIban?: string; organizerIbanName?: string; organizerBankName?: string }
+  ) => {
     try {
       const matchRef = doc(db, 'matches', matchId);
       await updateDoc(matchRef, {
-        [`slots.${slotKey}.paid`]: paid,
+        ...ibanData,
         updatedAt: serverTimestamp()
       });
       return true;
     } catch (error) {
-      console.error("Ödeme durumu güncelleme hatası:", error);
+      console.error("Kaptan IBAN güncelleme hatası:", error);
       throw error;
     }
   },
@@ -457,6 +492,20 @@ export const dbService = {
       return true;
     } catch (error) {
       console.error("Maç katılım şartları güncelleme hatası:", error);
+      throw error;
+    }
+  },
+
+  updateMatchGkFree: async (matchId: string, isGkFree: boolean) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      await updateDoc(matchRef, {
+        isGkFree,
+        updatedAt: serverTimestamp()
+      });
+      return true;
+    } catch (error) {
+      console.error("Kaleci muafiyet ayarı güncelleme hatası:", error);
       throw error;
     }
   },

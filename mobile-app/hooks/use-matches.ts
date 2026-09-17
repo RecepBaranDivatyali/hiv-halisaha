@@ -65,18 +65,24 @@ export function useMatches() {
         fee: newMatchData.fee || 150,
         totalFee: newMatchData.totalFee || 2100,
         isSubscription: !!newMatchData.isSubscription,
+        isGkFree: !!newMatchData.isGkFree,
         organizer: userProfile?.name || 'Siz (Kaptan)',
         organizerId: userProfile?.uid || '',
+        organizerIban: newMatchData.organizerIban || userProfile?.iban || '',
+        organizerIbanName: newMatchData.organizerIbanName || userProfile?.ibanName || userProfile?.name || '',
+        organizerBankName: newMatchData.organizerBankName || userProfile?.bankName || '',
         joinedPlayersCount: 1,
         totalRequiredPlayers: totalPlayers,
         status: 'active',
         slots: {
-          KL_1: {
+          A_FORVET_1: {
             uid: userProfile?.uid || 'host',
             name: userProfile?.name || 'Kaptan (Siz)',
             avatar: userProfile?.avatar || '',
-            position: 'KL',
-            paid: false,
+            position: 'Forvet',
+            paid: true,
+            paymentStatus: 'paid',
+            paymentMethod: 'cash'
           }
         },
         createdAt: new Date().toISOString()

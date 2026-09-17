@@ -33,6 +33,9 @@ export interface UserSession {
   clubName?: string | null;
   role?: 'user' | 'admin';
   bio?: string;
+  iban?: string;
+  ibanName?: string;
+  bankName?: string;
   stats?: UserStats;
 }
 
