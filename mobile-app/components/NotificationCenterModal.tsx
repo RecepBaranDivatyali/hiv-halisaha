@@ -25,7 +25,7 @@ const DEFAULT_NOTIFS: NotificationItem[] = [
   { id: '1', type: 'reminder', title: 'MAÇ GÜNÜ UYARISI', message: 'Beşiktaş Arena maçınıza 2 saat kaldı! Sağanak yağış riski var, yağmurluk almayı unutmayın.', time: '10dk önce', read: false, route: '/match-room' },
   { id: '2', type: 'chat', title: 'YENİ SOHBET MESAJI', message: 'Kaptan_Sarı: "Beyler kırmızı formalarla geliyoruz, unutmayın!"', time: '45dk önce', read: false, route: '/conversations' },
   { id: '3', type: 'alert', title: 'KADRO GÜNCELLEMESİ', message: 'Ege_Def kadrodan ayrıldı. Defans mevkii boşaldı, maça oyuncu çağırabilirsiniz.', time: '2 saat önce', read: true, route: '/match-room' },
-  { id: '4', type: 'match', title: 'ÖDEME ONAYLANDI', message: '150 ₺ kapora ödemeniz 3D Secure ile başarıyla kaydedildi.', time: 'Dün', read: true, route: '/match-room' },
+  { id: '4', type: 'match', title: 'ÖDEME ONAYLANDI', message: '150 ₺ maç ücretiniz Kaptan tarafından FAST ile alındı ve onaylandı.', time: 'Dün', read: true, route: '/match-room' },
 ];
 
 export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = ({ visible, onClose }) => {

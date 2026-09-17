@@ -37,11 +37,11 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       // Oturum açmış kullanıcılar maç ilanı oluşturabilir
       allow create: if isAuthenticated();
-      // Maç güncelleme: Organizatör, Admin veya slot/katılımcı değişiklikleri
+      // Maç güncelleme: Organizatör, Admin veya slot/katılımcı/yedek değişiklikleri
       allow update: if isAuthenticated() && (
         isAdmin() || 
         resource.data.organizerId == request.auth.uid ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['slots', 'joinedPlayersCount', 'updatedAt'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['slots', 'joinedPlayersCount', 'reserves', 'updatedAt'])
       );
       // Maç silme: Yalnızca organizatör veya Admin
       allow delete: if isAdmin() || (
@@ -57,6 +57,7 @@ service cloud.firestore {
       allow update: if isAdmin() || (
         isAuthenticated() && (
           resource.data.leaderId == request.auth.uid ||
+          resource.data.captainId == request.auth.uid ||
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['membersCount', 'members', 'updatedAt'])
         )
       );
@@ -69,14 +70,40 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    // ─── TESİS YORUM & PUANLARI (PITCH REVIEWS) ───
+    match /pitch_reviews/{reviewId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    // ─── MAÇ VE OYUNCU PUANLAMALARI (RATINGS) ───
+    match /ratings/{ratingId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // ─── KULÜP MEYDAN OKUMALARI (CLUB CHALLENGES) ───
+    match /club_challenges/{challengeId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.senderId == request.auth.uid;
+      allow update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
     // ─── SOHBETLER & MESAJLAŞMA (CONVERSATIONS) ───
     match /conversations/{conversationId} {
       allow read: if isAuthenticated() && (
-        request.auth.uid in resource.data.participants || isAdmin()
+        conversationId.matches('match_.*') ||
+        (resource.data.participants != null && request.auth.uid in resource.data.participants) ||
+        isAdmin()
       );
       allow create: if isAuthenticated();
       allow update: if isAuthenticated() && (
-        request.auth.uid in resource.data.participants || isAdmin()
+        conversationId.matches('match_.*') ||
+        (resource.data.participants != null && request.auth.uid in resource.data.participants) ||
+        isAdmin()
       );
       
       // Alt koleksiyon: Mesajlar
