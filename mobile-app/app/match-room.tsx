@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, TextInput, Alert, Linking, Switch, KeyboardAvoidingView, Platform } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, TextInput, Alert, Linking, Switch, KeyboardAvoidingView, Platform, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
@@ -578,6 +578,63 @@ export default function MatchRoomScreen() {
     }
   };
 
+  // WhatsApp & Social Share
+  const handleShareMatch = async () => {
+    try {
+      const remainingCount = Math.max(0, totalPlayersCount - rosterPayments.length);
+      const shareMessage = `⚽ H.İ.V. Halısaha Maç Daveti!\n\n🏟️ Saha: ${matchArena} (${matchCity})\n📅 Tarih: ${matchDateTime}\n👥 Format: ${matchMode} (${remainingCount > 0 ? `${remainingCount} oyuncu aranıyor!` : 'Kadro dolmak üzere!'})\n💰 Ücret: ₺${perPlayerFee} / Kişi\n\nKadroya katılıp mevkini seçmek için hemen maça katıl!`;
+      await Share.share({
+        message: shareMessage,
+        title: `${matchArena} Halısaha Maçı`,
+      });
+    } catch (error) {
+      console.log('Paylaşım hatası:', error);
+    }
+  };
+
+  // Organizer: Cancel / Delete Match
+  const handleCancelMatch = () => {
+    if (!isOrganizer) return;
+    Alert.alert(
+      'Maçı İptal Et',
+      'Bu maçı yayından kaldırmak ve iptal etmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        { 
+          text: 'Maçı İptal Et', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await dbService.deleteMatch(activeMatchId);
+              Alert.alert('İptal Edildi', 'Maçınız başarıyla iptal edildi.');
+              router.replace('/(tabs)/matches');
+            } catch (e) {
+              Alert.alert('Hata', 'Maç iptal edilirken bir sorun oluştu.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Reserve Join Handler
+  const handleJoinReserve = async () => {
+    if (!user?.uid) {
+      Alert.alert('Giriş Yapın', 'Yedek sırasına girmek için lütfen giriş yapın.');
+      return;
+    }
+    try {
+      await dbService.joinMatchReserve(activeMatchId, {
+        uid: user.uid,
+        name: user.name || 'Oyuncu',
+        avatar: user.avatar
+      });
+      Alert.alert('✓ Yedek Sırasındasınız', 'Kadroda boş yer açıldığında veya bir oyuncu ayrıldığında size bildirim gönderilecektir.');
+    } catch (e) {
+      Alert.alert('Hata', 'Yedek sırasına eklenirken bir sorun oluştu.');
+    }
+  };
+
   // Player counts for Team A & Team B
   const matchSlots = activeMatch?.slots || {};
   const teamAPlayers = Object.keys(matchSlots).filter(k => 
@@ -803,20 +860,28 @@ export default function MatchRoomScreen() {
             </TouchableOpacity>
             <Text style={styles.brandTitle}>MAÇ ODASI</Text>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             {isOrganizer && (
               <TouchableOpacity style={styles.finishMatchHeaderBtn} onPress={() => setScoreModalVisible(true)} activeOpacity={0.85}>
-                <MaterialIcons name="sports-score" size={16} color={theme.background} />
-                <Text style={styles.finishMatchHeaderBtnText}>SKOR BİLDİR</Text>
+                <MaterialIcons name="sports-score" size={15} color={theme.background} />
+                <Text style={styles.finishMatchHeaderBtnText}>SKOR</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.storyHeaderBtn} onPress={() => setStoryModalVisible(true)} activeOpacity={0.85}>
-              <MaterialIcons name="camera-alt" size={16} color={theme.background} />
+              <MaterialIcons name="camera-alt" size={15} color={theme.background} />
               <Text style={styles.storyHeaderBtnText}>STORY</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconBtnHover} onPress={openVenueLocation} accessibilityLabel="Konum" accessibilityRole="button">
-              <MaterialIcons name="location-on" size={24} color={theme.primary} />
+            <TouchableOpacity style={styles.iconBtnHover} onPress={handleShareMatch} accessibilityLabel="Kadro Paylaş" accessibilityRole="button">
+              <MaterialIcons name="share" size={20} color={theme.primary} />
             </TouchableOpacity>
+            <TouchableOpacity style={styles.iconBtnHover} onPress={openVenueLocation} accessibilityLabel="Konum" accessibilityRole="button">
+              <MaterialIcons name="location-on" size={20} color={theme.primary} />
+            </TouchableOpacity>
+            {isOrganizer && (
+              <TouchableOpacity style={styles.iconBtnHover} onPress={handleCancelMatch} accessibilityLabel="Maçı İptal Et" accessibilityRole="button">
+                <MaterialIcons name="delete-outline" size={20} color={theme.error} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -967,6 +1032,50 @@ export default function MatchRoomScreen() {
                   <Text style={styles.removeCaptainBtnText}>Değiştir</Text>
                 </TouchableOpacity>
               )}
+            </View>
+          )}
+
+          {/* Hızlı Kadro Paylaşımı & Eksik Oyuncu Çağır Kartı */}
+          <TouchableOpacity 
+            style={styles.shareRosterCard}
+            onPress={handleShareMatch}
+            activeOpacity={0.85}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+              <View style={styles.shareRosterIconBox}>
+                <MaterialIcons name="share" size={18} color={theme.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.shareRosterTitle}>
+                  {rosterPayments.length >= totalPlayersCount 
+                    ? '🏆 KADRO TAMAMLANDI (DOLDU)' 
+                    : `📢 ${totalPlayersCount - rosterPayments.length} OYUNCU EKSİK • ARKADAŞLARINI ÇAĞIR`}
+                </Text>
+                <Text style={styles.shareRosterSub}>
+                  WhatsApp'ta kadro davetini tek tıkla paylaşın
+                </Text>
+              </View>
+            </View>
+            <View style={styles.shareRosterBtnBadge}>
+              <Text style={styles.shareRosterBtnBadgeText}>PAYLAŞ</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Kadro Doluysa ve kullanıcı kadroda değilse: Yedek Sırası Kartı */}
+          {rosterPayments.length >= totalPlayersCount && !userSlot && (
+            <View style={styles.reserveJoinCard}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <MaterialIcons name="hourglass-empty" size={20} color={theme.secondary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.reserveJoinTitle}>KADRO DOLDU • YEDEK SIRASI</Text>
+                  <Text style={styles.reserveJoinSub}>
+                    Bir oyuncu maçtan ayrılırsa ilk size bildirim gönderilir.
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity style={styles.reserveJoinBtn} onPress={handleJoinReserve}>
+                <Text style={styles.reserveJoinBtnText}>YEDEĞE GİR</Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -3004,6 +3113,88 @@ const useStyles = (theme: any) => StyleSheet.create({
     marginTop: 4,
   },
   captainBNotifyBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: theme.background,
+  },
+
+  // Share Roster Card
+  shareRosterCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: `${theme.primary}12`,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: `${theme.primary}33`,
+    marginBottom: 10,
+    gap: 8,
+  },
+  shareRosterIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: `${theme.primary}25`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareRosterTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.primary,
+    letterSpacing: 0.5,
+  },
+  shareRosterSub: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: theme.textMuted,
+    marginTop: 2,
+  },
+  shareRosterBtnBadge: {
+    backgroundColor: theme.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  shareRosterBtnBadgeText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: theme.background,
+  },
+
+  // Reserve Join Card
+  reserveJoinCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: `${theme.secondary}15`,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: `${theme.secondary}44`,
+    marginBottom: 10,
+    gap: 8,
+  },
+  reserveJoinTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.secondary,
+    letterSpacing: 0.5,
+  },
+  reserveJoinSub: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: theme.textMuted,
+    marginTop: 2,
+  },
+  reserveJoinBtn: {
+    backgroundColor: theme.secondary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  reserveJoinBtnText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 10,
     color: theme.background,

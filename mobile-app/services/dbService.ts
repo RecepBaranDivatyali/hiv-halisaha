@@ -17,7 +17,8 @@ import {
   runTransaction,
   writeBatch,
   serverTimestamp,
-  deleteField
+  deleteField,
+  deleteDoc
 } from 'firebase/firestore';
 
 export interface MatchModel {
@@ -259,6 +260,17 @@ export const dbService = {
     } catch (error) {
       console.error("Maç detayı çekme hatası:", error);
       return null;
+    }
+  },
+
+  deleteMatch: async (matchId: string) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      await deleteDoc(matchRef);
+      return true;
+    } catch (error) {
+      console.error("Maç silme hatası:", error);
+      throw error;
     }
   },
 
