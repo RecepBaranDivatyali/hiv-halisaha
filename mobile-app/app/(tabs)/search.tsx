@@ -165,23 +165,35 @@ export default function SearchScreen() {
           ))}
         </View>
 
-        {/* Location Filters */}
+        {/* Location Filters - Compact Layout */}
         <View style={styles.sectionBox}>
           <Text style={styles.sectionTitle}>KONUM FİLTRELERİ</Text>
-          <TouchableOpacity style={styles.dropdownBtn} onPress={() => setCityModalVisible(true)} accessibilityLabel="Şehir Seç" accessibilityRole="button">
-            <View>
-              <Text style={styles.dropdownLabel}>Şehir</Text>
-              <Text style={styles.dropdownValue}>{selectedCity}</Text>
-            </View>
-            <MaterialIcons name="expand-more" size={24} color={theme.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.dropdownBtn} onPress={() => setDistrictModalVisible(true)} accessibilityLabel="İlçe Seç" accessibilityRole="button">
-            <View>
-              <Text style={styles.dropdownLabel}>İlçe</Text>
-              <Text style={styles.dropdownValue}>{selectedDistrict}</Text>
-            </View>
-            <MaterialIcons name="expand-more" size={24} color={theme.primary} />
-          </TouchableOpacity>
+          <View style={styles.locationRow}>
+            <TouchableOpacity 
+              style={[styles.dropdownBtn, { flex: 1 }]} 
+              onPress={() => setCityModalVisible(true)} 
+              accessibilityLabel="Şehir Seç" 
+              accessibilityRole="button"
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dropdownLabel}>Şehir</Text>
+                <Text style={styles.dropdownValue} numberOfLines={1}>{selectedCity}</Text>
+              </View>
+              <MaterialIcons name="expand-more" size={20} color={theme.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.dropdownBtn, { flex: 1 }]} 
+              onPress={() => setDistrictModalVisible(true)} 
+              accessibilityLabel="İlçe Seç" 
+              accessibilityRole="button"
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dropdownLabel}>İlçe</Text>
+                <Text style={styles.dropdownValue} numberOfLines={1}>{selectedDistrict}</Text>
+              </View>
+              <MaterialIcons name="expand-more" size={20} color={theme.primary} />
+            </TouchableOpacity>
+          </View>
 
           {/* Saha Seçici */}
           <TouchableOpacity 
@@ -206,7 +218,7 @@ export default function SearchScreen() {
                   <MaterialIcons name="rate-review" size={18} color={theme.primary} />
                 </TouchableOpacity>
               )}
-              <MaterialIcons name="expand-more" size={24} color={theme.primary} />
+              <MaterialIcons name="expand-more" size={20} color={theme.primary} />
             </View>
           </TouchableOpacity>
         </View>
@@ -500,20 +512,20 @@ const useStyles = (theme: any) => StyleSheet.create({
     letterSpacing: -0.5
   },
   scrollContent: {
-    paddingTop: 24,
-    paddingHorizontal: 24,
-    paddingBottom: 40
+    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 85
   },
   segmentContainer: {
     flexDirection: 'row',
     backgroundColor: theme.surfaceContainerHighest,
     borderRadius: 12,
     padding: 4,
-    marginBottom: 32
+    marginBottom: 16
   },
   segmentBtn: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 10,
     alignItems: 'center',
     borderRadius: 10
   },
@@ -522,7 +534,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   },
   segmentText: {
     fontFamily: Fonts.label,
-    fontSize: 14,
+    fontSize: 13,
     color: theme.textMuted,
     fontWeight: '500'
   },
@@ -531,15 +543,19 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontFamily: Fonts.headlineBold
   },
   sectionBox: {
-    marginBottom: 32,
-    gap: 16
+    marginBottom: 16,
+    gap: 8
+  },
+  locationRow: {
+    flexDirection: 'row',
+    gap: 8,
   },
   sectionTitle: {
     fontFamily: Fonts.headlineBold,
-    fontSize: 12,
+    fontSize: 11,
     color: theme.primary,
     textTransform: 'uppercase',
-    letterSpacing: 2,
+    letterSpacing: 1.5,
     paddingHorizontal: 4
   },
   dropdownBtn: {
@@ -550,11 +566,12 @@ const useStyles = (theme: any) => StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.borderSubtle,
     borderRadius: 12,
-    padding: 16
+    paddingVertical: 10,
+    paddingHorizontal: 12
   },
   dropdownLabel: {
     fontFamily: Fonts.label,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: 'bold',
     color: theme.textMuted,
     textTransform: 'uppercase',
@@ -562,10 +579,10 @@ const useStyles = (theme: any) => StyleSheet.create({
   },
   dropdownValue: {
     fontFamily: Fonts.body,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: theme.text,
-    marginTop: 2
+    marginTop: 1
   },
   posGrid: {
     flexDirection: 'row',
@@ -574,18 +591,18 @@ const useStyles = (theme: any) => StyleSheet.create({
   },
   posBtn: {
     width: '23%',
-    height: 76,
+    height: 60,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderRadius: 12,
-    paddingVertical: 8,
+    paddingVertical: 4,
   },
   posIconText: {
     fontFamily: Fonts.headlineBold,
-    fontSize: 20,
+    fontSize: 18,
     color: theme.text,
-    lineHeight: 24,
+    lineHeight: 22,
     textAlign: 'center',
     includeFontPadding: false,
   },
@@ -600,7 +617,7 @@ const useStyles = (theme: any) => StyleSheet.create({
     textTransform: 'uppercase',
     includeFontPadding: false,
     textAlign: 'center',
-    marginTop: 4,
+    marginTop: 2,
   },
   posLabelTextActive: {
     color: theme.primary,
@@ -608,14 +625,14 @@ const useStyles = (theme: any) => StyleSheet.create({
   levelGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 8,
     justifyContent: 'space-between'
   },
   levelBtn: {
     width: '48%',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
+    paddingVertical: 11,
     backgroundColor: theme.surfaceContainerHighest,
     borderWidth: 1,
     borderColor: theme.borderSubtle,
@@ -623,7 +640,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   },
   levelText: {
     fontFamily: Fonts.headlineBold,
-    fontSize: 14,
+    fontSize: 13,
     color: theme.text,
     textTransform: 'uppercase'
   },
@@ -635,40 +652,40 @@ const useStyles = (theme: any) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: theme.surfaceContainer,
-    padding: 20,
+    padding: 16,
     borderRadius: 12,
-    marginBottom: 48
+    marginBottom: 32
   },
   toggleTitle: {
     fontFamily: Fonts.headlineBold,
-    fontSize: 14,
+    fontSize: 13,
     color: theme.text,
     textTransform: 'uppercase'
   },
   toggleSub: {
     fontFamily: Fonts.body,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '500',
     color: theme.textMuted,
-    marginTop: 4
+    marginTop: 2
   },
   actionContainer: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 16,
     left: 0,
     right: 0,
-    paddingHorizontal: 24
+    paddingHorizontal: 16
   },
   actionBtn: {
     backgroundColor: theme.primary,
-    paddingVertical: 18,
-    borderRadius: 14,
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: theme.primary,
-    shadowOffset: { width: 0, height: 6 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
-    shadowRadius: 16,
+    shadowRadius: 12,
     elevation: 8
   },
   actionBtnText: {

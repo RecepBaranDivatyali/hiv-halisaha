@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { dbService, MatchModel } from '@/services/dbService';
+import { isMatchPast } from '@/services/dateUtils';
 
 const MATCHES_CACHE_KEY = '@hiv_matches_cache';
 
@@ -16,10 +17,11 @@ export function useMatches() {
   const loadMatches = useCallback(async () => {
     try {
       setLoading(true);
-      // 1. Önce önbellekten hızlıca getir
+      // 1. Önce önbellekten hızlıca getir (geçmiş maçları aktiften eleyerek)
       const cached = await AsyncStorage.getItem(MATCHES_CACHE_KEY);
       if (cached) {
-        setMatches(JSON.parse(cached));
+        const parsed = JSON.parse(cached) as MatchItemFull[];
+        setMatches(parsed.filter(m => !isMatchPast(m.dateTime)));
       }
 
       // 2. Firestore'dan güncel aktif ve geçmiş maçları çek
@@ -28,16 +30,37 @@ export function useMatches() {
         dbService.getPastMatches()
       ]);
 
-      if (remoteMatches && remoteMatches.length > 0) {
-        setMatches(remoteMatches as MatchItemFull[]);
-        await AsyncStorage.setItem(MATCHES_CACHE_KEY, JSON.stringify(remoteMatches));
-      } else if (!cached) {
-        setMatches([]);
+      const activeList: MatchItemFull[] = [];
+      const pastFromActive: MatchItemFull[] = [];
+
+      for (const m of ((remoteMatches as MatchItemFull[]) || [])) {
+        if (isMatchPast(m.dateTime) || m.status === 'completed') {
+          pastFromActive.push({ ...m, status: 'completed' });
+        } else {
+          activeList.push(m);
+        }
       }
 
-      if (remotePast) {
-        setPastMatches(remotePast as MatchItemFull[]);
+      // Birleştirilmiş geçmiş maçlar (tekil ve en yeni üstte)
+      const pastMap = new Map<string, MatchItemFull>();
+      for (const p of ((remotePast as MatchItemFull[]) || [])) {
+        pastMap.set(p.id, p);
       }
+      for (const p of pastFromActive) {
+        if (!pastMap.has(p.id)) {
+          pastMap.set(p.id, p);
+        }
+      }
+
+      const allPast = Array.from(pastMap.values()).sort((a, b) => {
+        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();
+        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+
+      setMatches(activeList);
+      setPastMatches(allPast);
+      await AsyncStorage.setItem(MATCHES_CACHE_KEY, JSON.stringify(activeList));
     } catch (e) {
       console.log('Maçları yükleme hatası:', e);
     } finally {

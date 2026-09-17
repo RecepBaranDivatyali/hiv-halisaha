@@ -249,17 +249,19 @@ export default function ClubsScreen() {
                 <Text style={styles.listHeaderTitle}>TÜM KULÜPLER</Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <TouchableOpacity 
-                  onPress={() => {
-                    setClubActionTab('create');
-                    setClubActionVisible(true);
-                  }}
-                  style={styles.headerCreateBtn}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <MaterialIcons name="add" size={16} color={theme.primary} />
-                  <Text style={styles.headerCreateBtnText}>KULÜP KUR</Text>
-                </TouchableOpacity>
+                {Boolean(user?.clubId) && (
+                  <TouchableOpacity 
+                    onPress={() => {
+                      setClubActionTab('create');
+                      setClubActionVisible(true);
+                    }}
+                    style={styles.headerCreateBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <MaterialIcons name="add" size={16} color={theme.primary} />
+                    <Text style={styles.headerCreateBtnText}>KULÜP KUR</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity 
                   onPress={() => {
                     setSelectedClubForChallenge(null);

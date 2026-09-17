@@ -11,6 +11,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/use-auth';
 import { dbService } from '@/services/dbService';
 import Slider from '@react-native-community/slider';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface RosterPlayer {
   id: string;
@@ -112,6 +113,19 @@ export default function RateMatchScreen() {
         comment: activeTags.join(', ')
       });
       
+      if (params.matchId) {
+        try {
+          const raw = await AsyncStorage.getItem('@hiv_rated_matches');
+          const list: string[] = raw ? JSON.parse(raw) : [];
+          if (!list.includes(params.matchId)) {
+            list.push(params.matchId);
+            await AsyncStorage.setItem('@hiv_rated_matches', JSON.stringify(list));
+          }
+        } catch (err) {
+          console.log('Rated storage error:', err);
+        }
+      }
+
       Alert.alert(
         '✓ Değerlendirme Kaydedildi',
         `${selectedPlayer?.name} için puanınız: ${rating.toFixed(1)}/10${isMvp ? ' • MVP adayı eklendi' : ''}`,

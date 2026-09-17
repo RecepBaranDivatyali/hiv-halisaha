@@ -12,6 +12,7 @@ import Animated, { FadeInRight } from 'react-native-reanimated';
 import { NotificationCenterModal } from '@/components/NotificationCenterModal';
 import { Skeleton } from '@/components/Skeleton';
 import { useTheme } from '@/context/ThemeContext';
+import { isMatchPast } from '@/services/dateUtils';
 
 export default function MatchesScreen() {
   const router = useRouter();
@@ -19,6 +20,13 @@ export default function MatchesScreen() {
   const { matches, pastMatches, loading, reloadMatches } = useMatches();
   const { theme } = useTheme();
   const styles = useStyles(theme);
+
+  const actualActiveMatches = matches.filter(m => !isMatchPast(m.dateTime));
+  const actualPastMatches = [
+    ...pastMatches,
+    ...matches.filter(m => isMatchPast(m.dateTime))
+  ].filter((m, i, arr) => arr.findIndex(x => x.id === m.id) === i);
+
   const [activeTab, setActiveTab] = useState<'AKTİF MAÇLARIM' | 'GEÇMİŞ MAÇLAR'>('AKTİF MAÇLARIM');
   const [menuVisible, setMenuVisible] = useState(false);
   const [createModalVisible, setCreateModalVisible] = useState(false);
@@ -131,7 +139,7 @@ export default function MatchesScreen() {
                   </View>
                 </View>
               ))
-            ) : matches.length === 0 ? (
+            ) : actualActiveMatches.length === 0 ? (
               <View style={{ alignItems: 'center', paddingVertical: 60, gap: 16 }}>
                 <MaterialIcons name="sports-soccer" size={64} color={theme.surfaceContainerHighest} />
                 <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 18, color: theme.textMuted, textAlign: 'center' }}>Henüz aktif maç yok</Text>
@@ -143,7 +151,7 @@ export default function MatchesScreen() {
                   <Text style={{ fontFamily: Fonts.headlineBold, color: theme.onPrimary, fontSize: 13 }}>İLK MAÇI OLUŞTUR</Text>
                 </TouchableOpacity>
               </View>
-            ) : matches.map((match, idx) => {
+            ) : actualActiveMatches.map((match, idx) => {
               const isOrganizer = (user?.uid && match.organizerId === user.uid) || match.organizer?.toLowerCase().includes('siz');
               const isCaptainB = Boolean(user?.uid && match.captainBId === user.uid);
               const isJoined = Boolean(user?.uid && match.slots && Object.values(match.slots).some(slot => slot?.uid === user.uid));
@@ -205,13 +213,13 @@ export default function MatchesScreen() {
                   </View>
                 </View>
               ))
-            ) : pastMatches.length === 0 ? (
+            ) : actualPastMatches.length === 0 ? (
               <View style={{ alignItems: 'center', paddingVertical: 60, gap: 16 }}>
                 <MaterialIcons name="history" size={64} color={theme.surfaceContainerHighest} />
                 <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 18, color: theme.textMuted, textAlign: 'center' }}>Henüz geçmiş maç yok</Text>
                 <Text style={{ fontFamily: Fonts.body, fontSize: 13, color: theme.textMuted, textAlign: 'center' }}>Tamamlanan maçlar burada görünecek</Text>
               </View>
-            ) : pastMatches.map((match, idx) => (
+            ) : actualPastMatches.map((match, idx) => (
               <Animated.View key={match.id || idx} entering={FadeInRight.delay(idx * 100).springify()}>
                 <View style={[styles.matchCard, { borderLeftColor: theme.secondary }]}>
                   <View style={[styles.matchStatusBadge, { backgroundColor: `${theme.secondary}22` }]}>

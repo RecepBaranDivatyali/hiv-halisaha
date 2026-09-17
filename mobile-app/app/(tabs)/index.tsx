@@ -16,12 +16,13 @@ import { useAuth } from '@/hooks/use-auth';
 import { Bouncable } from '@/components/Bouncable';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useTheme } from '@/context/ThemeContext';
+import { isMatchPast } from '@/services/dateUtils';
 
 const GUIDE_STORAGE_KEY = '@hiv_guide_viewed';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { matches, reloadMatches } = useMatches();
+  const { matches, pastMatches, reloadMatches } = useMatches();
   const { user } = useAuth();
   const { theme } = useTheme();
   const styles = useStyles(theme);
@@ -33,11 +34,18 @@ export default function HomeScreen() {
   const [guideVisible, setGuideVisible] = useState(false);
   const [hasViewedGuide, setHasViewedGuide] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [ratedMatches, setRatedMatches] = useState<string[]>([]);
 
   useEffect(() => {
     AsyncStorage.getItem(GUIDE_STORAGE_KEY).then(val => {
       if (val === 'true') {
         setHasViewedGuide(true);
+      }
+    }).catch(() => {});
+
+    AsyncStorage.getItem('@hiv_rated_matches').then(val => {
+      if (val) {
+        setRatedMatches(JSON.parse(val));
       }
     }).catch(() => {});
   }, []);
@@ -50,10 +58,22 @@ export default function HomeScreen() {
     }
   };
 
+  const handleDismissReview = async (matchId: string) => {
+    try {
+      const updated = [...ratedMatches, matchId];
+      setRatedMatches(updated);
+      await AsyncStorage.setItem('@hiv_rated_matches', JSON.stringify(updated));
+    } catch (e) {
+      console.log('Dismiss review error:', e);
+    }
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
     try {
       await reloadMatches();
+      const val = await AsyncStorage.getItem('@hiv_rated_matches');
+      if (val) setRatedMatches(JSON.parse(val));
     } catch (e) {
       console.error('Ana sayfa maçları yenileme hatası:', e);
     } finally {
@@ -65,8 +85,33 @@ export default function HomeScreen() {
   const myMatches = matches.filter(m => 
     m.organizer?.toLowerCase().includes('siz') || (user?.uid && m.organizerId === user.uid)
   );
-  // Tüm aktif maçlar (yaklaşan)
-  const upcomingMatches = matches.slice(0, 3);
+
+  // Kullanıcının oynadığı / organize ettiği tüm maçlar
+  const userAllMatches = [
+    ...matches,
+    ...pastMatches
+  ].filter(m => 
+    m.organizer?.toLowerCase().includes('siz') || 
+    (user?.uid && m.organizerId === user.uid) ||
+    (user?.uid && m.slots && Object.values(m.slots).some(s => s?.uid === user.uid))
+  );
+
+  // 1. Bitmiş ama kullanıcı tarafından HENÜZ değerlendirilmemiş maç (Yemeksepeti modeli)
+  const unratedFinishedMatch = userAllMatches.find(m => 
+    isMatchPast(m.dateTime) && !ratedMatches.includes(m.id)
+  );
+
+  // 2. Kullanıcının gerçekten yaklaşan (gelecek) aktif maçı
+  const upcomingUserMatch = userAllMatches.find(m => !isMatchPast(m.dateTime));
+
+  // 3. Genel yaklaşan aktif maç (kullanıcı maçı yoksa vitrin)
+  const upcomingGeneralMatch = matches.find(m => !isMatchPast(m.dateTime));
+
+  // Ana kart (Öncelik: Değerlendirme bekleyen maç -> Yaklaşan kullanıcı maçı -> Yaklaşan herhangi bir maç)
+  const featuredMatch = unratedFinishedMatch || upcomingUserMatch || upcomingGeneralMatch;
+
+  // Tüm aktif yaklaşan maçlar (kesinlikle geçmiş maçları içermez)
+  const upcomingMatches = matches.filter(m => !isMatchPast(m.dateTime)).slice(0, 3);
 
   // Kullanıcı istatistikleri — Firestore'dan çekilen gerçek değerler
   const weeklyGoals = user?.stats?.goals ?? 0;
@@ -158,22 +203,17 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
       >
-        {/* Live Match Countdown Card */}
-        {myMatches.length > 0 ? (
+        {/* Live Match Countdown or Post-Match Review Card */}
+        {featuredMatch && (
           <MatchCountdownCard 
-            matchId={myMatches[0].id} 
-            arena={myMatches[0].arena}
-            dateTime={myMatches[0].dateTime}
-            mode={myMatches[0].mode}
+            key={featuredMatch.id}
+            matchId={featuredMatch.id} 
+            arena={featuredMatch.arena}
+            dateTime={featuredMatch.dateTime}
+            mode={featuredMatch.mode}
+            onDismiss={() => handleDismissReview(featuredMatch.id)}
           />
-        ) : upcomingMatches.length > 0 ? (
-          <MatchCountdownCard 
-            matchId={upcomingMatches[0].id} 
-            arena={upcomingMatches[0].arena}
-            dateTime={upcomingMatches[0].dateTime}
-            mode={upcomingMatches[0].mode}
-          />
-        ) : null}
+        )}
 
         {/* Quick App Guide Banner (Only shown until viewed) */}
         {!hasViewedGuide && (
