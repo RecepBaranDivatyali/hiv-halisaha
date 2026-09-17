@@ -244,11 +244,21 @@ export default function HomeScreen() {
                         <MaterialIcons name="event" size={14} color={theme.primary} />
                         <Text style={styles.matchDateText}>{match.dateTime}</Text>
                       </View>
-                      <View style={[styles.matchBadge, { backgroundColor: match.organizer?.toLowerCase().includes('siz') ? `${theme.primary}20` : `${theme.secondary}20` }]}>
-                        <Text style={[styles.matchBadgeText, { color: match.organizer?.toLowerCase().includes('siz') ? theme.primary : theme.secondary }]}>
-                          {match.organizer?.toLowerCase().includes('siz') ? 'ORGANİZATÖR' : 'KATILIYORUM'}
-                        </Text>
-                      </View>
+                      {(() => {
+                        const isMatchOrg = match.organizer?.toLowerCase().includes('siz') || (user?.uid && match.organizerId === user.uid);
+                        const isMatchCapB = Boolean(user?.uid && match.captainBId === user.uid);
+                        const isUserJoined = Boolean(user?.uid && match.slots && Object.values(match.slots).some(s => s?.uid === user.uid));
+                        const badgeText = isMatchOrg ? '👑 ORGANİZATÖR' : isMatchCapB ? '⭐ B KAPTANI' : isUserJoined ? 'KATILIYORUM' : 'KATILIMA AÇIK';
+                        const badgeColor = isMatchOrg ? theme.primary : isMatchCapB ? theme.secondary : isUserJoined ? theme.secondary : theme.textMuted;
+                        const badgeBg = isMatchOrg ? `${theme.primary}20` : isMatchCapB ? `${theme.secondary}20` : isUserJoined ? `${theme.secondary}20` : `${theme.border}33`;
+                        return (
+                          <View style={[styles.matchBadge, { backgroundColor: badgeBg }]}>
+                            <Text style={[styles.matchBadgeText, { color: badgeColor }]}>
+                              {badgeText}
+                            </Text>
+                          </View>
+                        );
+                      })()}
                     </View>
                   <Text style={styles.upcomingArena} numberOfLines={1}>{match.arena}</Text>
                   <View style={styles.upcomingMeta}>

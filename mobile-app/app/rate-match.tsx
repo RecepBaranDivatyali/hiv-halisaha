@@ -6,6 +6,7 @@ import { Fonts } from '@/constants/theme';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MatchStoryModal } from '@/components/MatchStoryModal';
 import { NotificationCenterModal } from '@/components/NotificationCenterModal';
+import { PitchReviewModal } from '@/components/PitchReviewModal';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/use-auth';
 import { dbService } from '@/services/dbService';
@@ -37,27 +38,32 @@ export default function RateMatchScreen() {
 
   const [roster, setRoster] = useState<RosterPlayer[]>(DEFAULT_PLAYERS);
   const [selectedPlayer, setSelectedPlayer] = useState<RosterPlayer>(DEFAULT_PLAYERS[1]);
+  const [pitchReviewVisible, setPitchReviewVisible] = useState(false);
+  const [matchArena, setMatchArena] = useState<string>('Beşiktaş Arena');
 
   useEffect(() => {
     if (params.matchId) {
       dbService.getMatchById(params.matchId).then((match) => {
-        if (match && match.slots) {
-          const slotPlayers: RosterPlayer[] = Object.entries(match.slots)
-            .filter((entry): entry is [string, NonNullable<typeof entry[1]>] => Boolean(entry[1] && entry[1].name))
-            .map(([slotKey, s], idx) => ({
-              id: s.uid || `player-${idx}`,
-              name: s.name,
-              avatar: s.avatar || DEFAULT_PLAYERS[0].avatar,
-              position: s.position || slotKey,
-              number: `#${idx + 1}`,
-              team: slotKey.startsWith('B_') ? 'B' : 'A',
-            }));
-          if (slotPlayers.length > 0) {
-            setRoster(slotPlayers);
-            const found = slotPlayers.find(p => p.name === params.playerName) || 
-                          slotPlayers.find(p => p.id !== user?.uid) || 
-                          slotPlayers[0];
-            setSelectedPlayer(found);
+        if (match) {
+          if (match.arena) setMatchArena(match.arena);
+          if (match.slots) {
+            const slotPlayers: RosterPlayer[] = Object.entries(match.slots)
+              .filter((entry): entry is [string, NonNullable<typeof entry[1]>] => Boolean(entry[1] && entry[1].name))
+              .map(([slotKey, s], idx) => ({
+                id: s.uid || `player-${idx}`,
+                name: s.name,
+                avatar: s.avatar || DEFAULT_PLAYERS[0].avatar,
+                position: s.position || slotKey,
+                number: `#${idx + 1}`,
+                team: slotKey.startsWith('B_') ? 'B' : 'A',
+              }));
+            if (slotPlayers.length > 0) {
+              setRoster(slotPlayers);
+              const found = slotPlayers.find(p => p.name === params.playerName) || 
+                            slotPlayers.find(p => p.id !== user?.uid) || 
+                            slotPlayers[0];
+              setSelectedPlayer(found);
+            }
           }
         }
       });
@@ -129,6 +135,11 @@ export default function RateMatchScreen() {
         mvpName={isMvp ? selectedPlayer?.name : 'KAPTAN SARI'}
         score={matchScore}
         onClose={() => setStoryVisible(false)}
+      />
+      <PitchReviewModal
+        visible={pitchReviewVisible}
+        pitchName={matchArena}
+        onClose={() => setPitchReviewVisible(false)}
       />
       <NotificationCenterModal visible={notifVisible} onClose={() => setNotifVisible(false)} />
       {/* TopAppBar */}
@@ -311,6 +322,16 @@ export default function RateMatchScreen() {
           <Text style={styles.submitBtnText}>
             {selectedPlayer?.id === user?.uid ? 'KENDİNİZİ PUANLAYAMAZSINIZ' : 'DEĞERLENDİRMEYİ GÖNDER'}
           </Text>
+        </TouchableOpacity>
+
+        {/* Saha / Tesis Puanlama Butonu */}
+        <TouchableOpacity
+          style={styles.pitchReviewBtn}
+          onPress={() => setPitchReviewVisible(true)}
+          activeOpacity={0.85}
+        >
+          <MaterialIcons name="stadium" size={18} color={theme.secondary} />
+          <Text style={styles.pitchReviewBtnText}>SAHAYI / TESİSİ DEĞERLENDİR ({matchArena})</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -593,5 +614,23 @@ const useStyles = (theme: any) => StyleSheet.create({
     color: theme.textMuted,
     textAlign: 'center',
     marginTop: 2,
+  },
+  pitchReviewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: `${theme.secondary}1A`,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: `${theme.secondary}4D`,
+    marginTop: 12,
+  },
+  pitchReviewBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 12,
+    color: theme.secondary,
+    letterSpacing: 0.5,
   },
 });

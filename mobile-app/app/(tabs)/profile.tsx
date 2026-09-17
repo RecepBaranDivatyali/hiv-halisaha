@@ -66,9 +66,19 @@ export default function ProfileScreen() {
           </TouchableOpacity>
           <Text style={styles.brandTitle}>H.İ.V.</Text>
         </View>
-        <TouchableOpacity style={styles.iconBtnHover} onPress={() => setNotifModalVisible(true)} accessibilityLabel="Bildirimler" accessibilityRole="button">
-          <MaterialIcons name="notifications" size={24} color={theme.primary} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <TouchableOpacity 
+            style={styles.iconBtnHover} 
+            onPress={() => router.push('/edit-profile')} 
+            accessibilityLabel="Profili Düzenle" 
+            accessibilityRole="button"
+          >
+            <MaterialIcons name="edit" size={22} color={theme.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconBtnHover} onPress={() => setNotifModalVisible(true)} accessibilityLabel="Bildirimler" accessibilityRole="button">
+            <MaterialIcons name="notifications" size={24} color={theme.primary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView 
@@ -114,6 +124,18 @@ export default function ProfileScreen() {
                 <Text style={styles.tagText}>DOĞRULANMIŞ</Text>
               </View>
             </View>
+
+            {/* Quick Profile & IBAN Edit Button */}
+            <TouchableOpacity 
+              style={styles.editProfilePill}
+              onPress={() => router.push('/edit-profile')}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="edit" size={13} color={theme.primary} />
+              <Text style={styles.editProfilePillText}>
+                {user?.iban ? '✓ IBAN TANIMLI • PROFİLİ DÜZENLE' : '+ KAPTAN IBAN TANIMLA / PROFİL DÜZENLE'}
+              </Text>
+            </TouchableOpacity>
 
             {/* Genel Puan Section */}
             <View style={styles.ratingBox}>
@@ -664,4 +686,21 @@ const useStyles = (theme: any) => StyleSheet.create({
     height: 32,
     borderRadius: 8,
     alignItems: 'center',
-    justifyContent: 'center'}});
+    justifyContent: 'center'},
+  editProfilePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: `${theme.primary}18`,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: `${theme.primary}44`},
+  editProfilePillText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: theme.primary,
+    letterSpacing: 0.5}});
