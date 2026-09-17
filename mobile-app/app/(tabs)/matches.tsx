@@ -145,13 +145,14 @@ export default function MatchesScreen() {
               </View>
             ) : matches.map((match, idx) => {
               const isOrganizer = (user?.uid && match.organizerId === user.uid) || match.organizer?.toLowerCase().includes('siz');
+              const isCaptainB = Boolean(user?.uid && match.captainBId === user.uid);
               const isJoined = Boolean(user?.uid && match.slots && Object.values(match.slots).some(slot => slot?.uid === user.uid));
               
-              const badgeColor = isOrganizer ? theme.primary : isJoined ? theme.secondary : theme.textMuted;
-              const badgeBg = isOrganizer ? `${theme.primary}25` : isJoined ? `${theme.secondary}25` : `${theme.border}33`;
-              const badgeText = isOrganizer ? 'ORGANİZATÖR (SİZ)' : isJoined ? 'KADRODASINIZ' : 'KATILIMA AÇIK';
-              const cardBorder = isOrganizer ? theme.primary : isJoined ? theme.secondary : `${theme.border}66`;
-              const iconColor = isOrganizer ? theme.primary : isJoined ? theme.secondary : theme.textMuted;
+              const badgeColor = isOrganizer ? theme.primary : isCaptainB ? theme.secondary : isJoined ? theme.secondary : theme.textMuted;
+              const badgeBg = isOrganizer ? `${theme.primary}25` : isCaptainB ? `${theme.secondary}25` : isJoined ? `${theme.secondary}25` : `${theme.border}33`;
+              const badgeText = isOrganizer ? '👑 ORGANİZATÖR (SİZ)' : isCaptainB ? '⭐ B KAPTANI (SİZ)' : isJoined ? 'KADRODASINIZ' : 'KATILIMA AÇIK';
+              const cardBorder = isOrganizer ? theme.primary : isCaptainB ? theme.secondary : isJoined ? theme.secondary : `${theme.border}66`;
+              const iconColor = isOrganizer ? theme.primary : isCaptainB ? theme.secondary : isJoined ? theme.secondary : theme.textMuted;
 
               return (
                 <Animated.View key={match.id || idx} entering={FadeInRight.delay(idx * 100).springify()}>

@@ -36,6 +36,11 @@ export interface MatchModel {
   organizerIban?: string;
   organizerIbanName?: string;
   organizerBankName?: string;
+  matchFormatType?: 'single_organizer' | 'two_captains';
+  captainAId?: string;
+  captainAName?: string;
+  captainBId?: string | null;
+  captainBName?: string | null;
   isSubscription?: boolean;
   isGkFree?: boolean;
   status: 'active' | 'completed' | 'cancelled';
@@ -507,6 +512,41 @@ export const dbService = {
       return true;
     } catch (error) {
       console.error("Kaleci muafiyet ayarı güncelleme hatası:", error);
+      throw error;
+    }
+  },
+
+  updateMatchCaptainB: async (matchId: string, captainBId: string | null, captainBName: string | null) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      const updates: any = {
+        updatedAt: serverTimestamp()
+      };
+      if (captainBId) {
+        updates.captainBId = captainBId;
+        updates.captainBName = captainBName || 'B Takımı Kaptanı';
+      } else {
+        updates.captainBId = deleteField();
+        updates.captainBName = deleteField();
+      }
+      await updateDoc(matchRef, updates);
+      return true;
+    } catch (error) {
+      console.error("B Takımı kaptanı güncelleme hatası:", error);
+      throw error;
+    }
+  },
+
+  updateMatchFormatType: async (matchId: string, matchFormatType: 'single_organizer' | 'two_captains') => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      await updateDoc(matchRef, {
+        matchFormatType,
+        updatedAt: serverTimestamp()
+      });
+      return true;
+    } catch (error) {
+      console.error("Maç format tipi güncelleme hatası:", error);
       throw error;
     }
   },

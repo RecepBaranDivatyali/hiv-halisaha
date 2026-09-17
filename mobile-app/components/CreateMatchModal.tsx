@@ -30,6 +30,7 @@ export interface NewMatchData {
   organizerIban?: string;
   organizerIbanName?: string;
   organizerBankName?: string;
+  matchFormatType?: 'single_organizer' | 'two_captains';
 }
 
 interface CreateMatchModalProps {
@@ -159,6 +160,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   // ── Maç Formatı ──────────────────────────────────────────────
   const [selectedMode, setSelectedMode] = useState('7v7');
   const [showAllModes, setShowAllModes] = useState(false);
+  const [matchFormatType, setMatchFormatType] = useState<'single_organizer' | 'two_captains'>('single_organizer');
 
   // ── Ücret ──────────────────────────────────────────────
   const [totalFeeInput, setTotalFeeInput] = useState('2100');
@@ -242,6 +244,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       fee: perPlayerFee,
       isSubscription,
       isGkFree,
+      matchFormatType,
       organizerIban: showIbanInput && organizerIban ? organizerIban.trim() : undefined,
       organizerIbanName: showIbanInput && organizerIbanName ? organizerIbanName.trim() : undefined,
       organizerBankName: showIbanInput && organizerBankName ? organizerBankName.trim() : undefined,
@@ -453,6 +456,52 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                   ))}
                 </View>
               )}
+            </View>
+
+            {/* ── 4.5. ORGANİZASYON & KAPTANLIK MODELİ ── */}
+            <View style={styles.section}>
+              <Text style={styles.label}>ORGANİZASYON VE KAPTANLIK MODELİ</Text>
+              <View style={styles.orgModelContainer}>
+                <TouchableOpacity
+                  style={[styles.orgModelCard, matchFormatType === 'single_organizer' && styles.orgModelCardActive]}
+                  onPress={() => setMatchFormatType('single_organizer')}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.orgModelHeader}>
+                    <MaterialIcons 
+                      name="groups" 
+                      size={20} 
+                      color={matchFormatType === 'single_organizer' ? theme.primary : theme.textMuted} 
+                    />
+                    <Text style={[styles.orgModelTitle, matchFormatType === 'single_organizer' && { color: theme.primary }]}>
+                      👑 Tek Organizatör (Karma Kadro / 14 Kişi)
+                    </Text>
+                  </View>
+                  <Text style={styles.orgModelDesc}>
+                    Tüm oyuncuları ve her iki takımı tek başınıza koordine edersiniz. Karşı takımın ayrı bir kaptanı yoktur, tüm kasa doğrudan sizin sorumluluğunuzdadır.
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.orgModelCard, matchFormatType === 'two_captains' && styles.orgModelCardActive]}
+                  onPress={() => setMatchFormatType('two_captains')}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.orgModelHeader}>
+                    <MaterialIcons 
+                      name="military-tech" 
+                      size={20} 
+                      color={matchFormatType === 'two_captains' ? theme.secondary : theme.textMuted} 
+                    />
+                    <Text style={[styles.orgModelTitle, matchFormatType === 'two_captains' && { color: theme.secondary }]}>
+                      ⚔️ İki Takımlı Maç (Organizatör A vs Rakip B)
+                    </Text>
+                  </View>
+                  <Text style={styles.orgModelDesc}>
+                    A Takımı kaptanı sizsiniz. B Takımı için bir rakip kaptan belirlenebilir veya davet edilebilir. B Takımı payını rakip kaptanla koordine edebilirsiniz.
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* ── 5. TOPLAM ÜCRET ── */}
@@ -1015,4 +1064,12 @@ const useStyles = (theme: any) => StyleSheet.create({
   dateTagText: { fontFamily: Fonts.headlineBold, fontSize: 10 },
   webDateInputBox: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 20, marginTop: 12, marginBottom: 6, backgroundColor: theme.surfaceContainer, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border },
   webDateInputLabel: { fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.text, flex: 1 },
+
+  // Organizasyon Modeli Kartları
+  orgModelContainer: { gap: 10 },
+  orgModelCard: { backgroundColor: theme.surfaceContainer, borderRadius: 12, padding: 14, borderWidth: 1.5, borderColor: theme.borderSubtle },
+  orgModelCardActive: { borderColor: theme.primary, backgroundColor: `${theme.primary}12` },
+  orgModelHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  orgModelTitle: { fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.text },
+  orgModelDesc: { fontFamily: Fonts.body, fontSize: 11, color: theme.textMuted, lineHeight: 16 },
 });

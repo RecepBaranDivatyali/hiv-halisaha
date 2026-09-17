@@ -57,6 +57,10 @@ export default function MatchRoomScreen() {
   };
 
   const isOrganizer = activeMatch?.organizer?.toLowerCase().includes('siz') || (activeMatch?.organizerId && activeMatch?.organizerId === user?.uid);
+  const isCaptainA = isOrganizer || Boolean(activeMatch?.captainAId && activeMatch?.captainAId === user?.uid);
+  const isCaptainB = Boolean(activeMatch?.captainBId && activeMatch?.captainBId === user?.uid);
+  const hasCaptainB = Boolean(activeMatch?.captainBId);
+  const isTwoCaptainsMode = activeMatch?.matchFormatType === 'two_captains' || hasCaptainB;
   const [joinTerms, setJoinTerms] = useState(activeMatch?.joinTerms ?? 0);
   const [userSlot, setUserSlot] = useState<string | null>(null);
   const [activeTeam, setActiveTeam] = useState<'A' | 'B'>('A');
@@ -212,56 +216,131 @@ export default function MatchRoomScreen() {
   const totalCollectedOrPledged = collectedPaidAmount + collectedCashAmount;
   const unpaidAmount = Math.max(0, totalMatchFee - collectedPaidAmount - collectedCashAmount);
 
-  // Captain Quick Payment Toggle
-  const handleCaptainTogglePayment = (slotKey: string, playerName: string, currentStatus: string) => {
+  // Team A & Team B Subtotals for 2-Captain Mode
+  const rosterPaymentsA = rosterPayments.filter(p => p.slotKey.startsWith('A_'));
+  const rosterPaymentsB = rosterPayments.filter(p => p.slotKey.startsWith('B_'));
+
+  const teamAPaid = rosterPaymentsA
+    .filter(p => p.paymentStatus === 'paid' || p.paymentStatus === 'cash_on_pitch')
+    .reduce((sum, p) => sum + p.amount, 0);
+
+  const teamBPaid = rosterPaymentsB
+    .filter(p => p.paymentStatus === 'paid' || p.paymentStatus === 'cash_on_pitch')
+    .reduce((sum, p) => sum + p.amount, 0);
+
+  const teamATotal = Math.round(totalMatchFee / 2);
+  const teamBTotal = totalMatchFee - teamATotal;
+
+  // Assign or remove B Captain
+  const handleAssignCaptainB = (playerUid: string, playerName: string) => {
     if (!isOrganizer) return;
+    const isCurrentlyCaptainB = Boolean(activeMatch?.captainBId && activeMatch.captainBId === playerUid);
+
+    Alert.alert(
+      isCurrentlyCaptainB ? 'B Kaptanlığını Kaldır' : 'B Takımı Kaptanı Ata',
+      isCurrentlyCaptainB 
+        ? `${playerName} oyuncusunun B Takımı Kaptanlığı yetkisini kaldırmak istiyor musunuz?`
+        : `${playerName} oyuncusunu B Takımı Kaptanı (Rakip Kaptan) olarak yetkilendirmek istiyor musunuz?`,
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: isCurrentlyCaptainB ? 'Kaptanlığı Kaldır' : 'Kaptan Olarak Ata',
+          style: isCurrentlyCaptainB ? 'destructive' : 'default',
+          onPress: async () => {
+            if (!activeMatchId) return;
+            try {
+              if (isCurrentlyCaptainB) {
+                await dbService.updateMatchCaptainB(activeMatchId, null, null);
+                await dbService.sendMessage(`match_${activeMatchId}`, {
+                  senderId: user?.uid || 'anon',
+                  senderName: 'Organizatör',
+                  text: `ℹ️ [Kaptan Güncellemesi]: ${playerName} oyuncusunun B Takımı Kaptanlığı kaldırıldı.`
+                });
+                Alert.alert('Güncellendi', `${playerName} artık B Takımı Kaptanı değil.`);
+              } else {
+                await dbService.updateMatchCaptainB(activeMatchId, playerUid, playerName);
+                await dbService.sendMessage(`match_${activeMatchId}`, {
+                  senderId: user?.uid || 'anon',
+                  senderName: 'Organizatör',
+                  text: `⭐ [Kaptan Ataması]: ${playerName} B Takımı Kaptanı (Rakip Kaptan) olarak belirlendi!`
+                });
+                Alert.alert('✓ Kaptan Atandı', `${playerName} B Takımı Kaptanı olarak belirlendi.`);
+              }
+            } catch (e) {
+              Alert.alert('Hata', 'Kaptan yetkisi güncellenirken bir sorun oluştu.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Captain Quick Payment Toggle
+  const handleCaptainTogglePayment = (slotKey: string, playerName: string, currentStatus: string, playerUid?: string) => {
+    const isTargetInTeamB = slotKey.startsWith('B_');
+    const canManageThisPlayer = isOrganizer || (isCaptainB && isTargetInTeamB);
+
+    if (!canManageThisPlayer) return;
+
     if (currentStatus === 'exempt') {
       Alert.alert('Muaf Oyuncu', 'Bu oyuncu kaleci olduğu için maç kuralları gereği ücret muafiyetine sahiptir.');
       return;
     }
 
+    const isSlotCaptainB = Boolean(playerUid && activeMatch?.captainBId === playerUid);
+
+    const buttons: any[] = [
+      {
+        text: '✅ Ödendi Olarak Onayla',
+        onPress: async () => {
+          try {
+            await dbService.updateSlotPayment(activeMatchId, slotKey, true, 'paid');
+            await dbService.sendMessage(`match_${activeMatchId}`, {
+              senderId: user?.uid || 'anon',
+              senderName: isOrganizer ? 'Organizatör' : 'B Kaptanı',
+              text: `✅ [Ödeme Onayı]: ${playerName} oyuncusunun maç ücreti alındı ve "ÖDENDİ" olarak işaretlendi.`
+            });
+          } catch (e) {
+            Alert.alert('Hata', 'Ödeme durumu güncellenemedi.');
+          }
+        }
+      },
+      {
+        text: '💵 Sahada Nakit Olarak İşaretle',
+        onPress: async () => {
+          try {
+            await dbService.updateSlotPayment(activeMatchId, slotKey, false, 'cash_on_pitch', 'cash');
+          } catch (e) {
+            Alert.alert('Hata', 'Ödeme durumu güncellenemedi.');
+          }
+        }
+      },
+      {
+        text: '❌ Ödenmedi Yap',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await dbService.updateSlotPayment(activeMatchId, slotKey, false, 'unpaid');
+          } catch (e) {
+            Alert.alert('Hata', 'Ödeme durumu güncellenemedi.');
+          }
+        }
+      }
+    ];
+
+    if (isOrganizer && isTargetInTeamB && playerUid && playerUid !== user?.uid) {
+      buttons.unshift({
+        text: isSlotCaptainB ? '⭐ B Kaptanlığını Kaldır' : '⭐ B Takımı Kaptanı Yap',
+        onPress: () => handleAssignCaptainB(playerUid, playerName)
+      });
+    }
+
+    buttons.push({ text: 'Vazgeç', style: 'cancel' });
+
     Alert.alert(
-      `Ödeme Durumu: ${playerName}`,
-      'Oyuncunun ödeme durumunu güncelleyin:',
-      [
-        {
-          text: '✅ Ödendi Olarak Onayla',
-          onPress: async () => {
-            try {
-              await dbService.updateSlotPayment(activeMatchId, slotKey, true, 'paid');
-              await dbService.sendMessage(`match_${activeMatchId}`, {
-                senderId: user?.uid || 'anon',
-                senderName: 'Kaptan',
-                text: `✅ [Kaptan Onayı]: ${playerName} oyuncusunun maç ücreti alındı ve "ÖDENDİ" olarak onaylandı.`
-              });
-            } catch (e) {
-              Alert.alert('Hata', 'Ödeme durumu güncellenemedi.');
-            }
-          }
-        },
-        {
-          text: '💵 Sahada Nakit Olarak İşaretle',
-          onPress: async () => {
-            try {
-              await dbService.updateSlotPayment(activeMatchId, slotKey, false, 'cash_on_pitch', 'cash');
-            } catch (e) {
-              Alert.alert('Hata', 'Ödeme durumu güncellenemedi.');
-            }
-          }
-        },
-        {
-          text: '❌ Ödenmedi Yap',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await dbService.updateSlotPayment(activeMatchId, slotKey, false, 'unpaid');
-            } catch (e) {
-              Alert.alert('Hata', 'Ödeme durumu güncellenemedi.');
-            }
-          }
-        },
-        { text: 'Vazgeç', style: 'cancel' }
-      ]
+      `Oyuncu Yönetimi: ${playerName}`,
+      `${isOrganizer ? 'Organizatör' : 'B Kaptanı'} olarak işlem seçin:`,
+      buttons
     );
   };
 
@@ -559,6 +638,27 @@ export default function MatchRoomScreen() {
             <View style={[styles.slotBadge, { backgroundColor: teamColor }]}>
               <Text style={[styles.slotBadgeText, { color: theme.background }]}>{numberStr}</Text>
             </View>
+            {/* Captain / Organizer Crown Badge */}
+            {(() => {
+              const occUid = isMySlot ? user?.uid : occupant?.uid;
+              const isOrg = occUid && (occUid === activeMatch?.organizerId || occUid === activeMatch?.captainAId || (slotKey === 'A_FORVET_1' && activeMatch?.organizerId === occUid));
+              const isCapB = occUid && activeMatch?.captainBId && occUid === activeMatch.captainBId;
+              if (isOrg) {
+                return (
+                  <View style={styles.slotCaptainCrownOrg}>
+                    <Text style={styles.slotCaptainCrownText}>👑</Text>
+                  </View>
+                );
+              }
+              if (isCapB) {
+                return (
+                  <View style={styles.slotCaptainCrownB}>
+                    <Text style={styles.slotCaptainCrownText}>⭐</Text>
+                  </View>
+                );
+              }
+              return null;
+            })()}
           </TouchableOpacity>
         ) : (
           <TouchableOpacity 
@@ -575,8 +675,10 @@ export default function MatchRoomScreen() {
           <TouchableOpacity 
             style={[styles.slotPaymentPill, { backgroundColor: `${badgeColor}22`, borderColor: badgeColor }]}
             onPress={() => {
-              if (isOrganizer) {
-                handleCaptainTogglePayment(slotKey, occupant?.name || user?.name || 'Oyuncu', occupant?.paymentStatus || (isPaid ? 'paid' : 'unpaid'));
+              const occUid = isMySlot ? user?.uid : occupant?.uid;
+              const occName = isMySlot ? user?.name : occupant?.name;
+              if (isOrganizer || (isCaptainB && slotKey.startsWith('B_'))) {
+                handleCaptainTogglePayment(slotKey, occName || 'Oyuncu', occupant?.paymentStatus || (isPaid ? 'paid' : 'unpaid'), occUid);
               } else if (isMySlot && !isPaid && !isSlotExempt) {
                 setDirectPayVisible(true);
               }
@@ -806,9 +908,14 @@ export default function MatchRoomScreen() {
               activeOpacity={0.8}
             >
               <MaterialIcons name="shield" size={18} color={activeTeam === 'A' ? theme.primary : theme.textMuted} />
-              <Text style={[styles.teamTabText, activeTeam === 'A' && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
-                A TAKIMI (EV SAHİBİ)
-              </Text>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={[styles.teamTabText, activeTeam === 'A' && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                  A TAKIMI
+                </Text>
+                <Text style={{ fontFamily: Fonts.label, fontSize: 9, color: activeTeam === 'A' ? theme.primary : theme.textMuted }}>
+                  👑 ORGANİZATÖR
+                </Text>
+              </View>
               <View style={[styles.teamCountBadge, activeTeam === 'A' && { backgroundColor: `${theme.primary}33` }]}>
                 <Text style={[styles.teamCountText, activeTeam === 'A' && { color: theme.primary }]}>{teamACount}/{modePlayersPerTeam}</Text>
               </View>
@@ -820,14 +927,48 @@ export default function MatchRoomScreen() {
               activeOpacity={0.8}
             >
               <MaterialIcons name="shield" size={18} color={activeTeam === 'B' ? theme.secondary : theme.textMuted} />
-              <Text style={[styles.teamTabText, activeTeam === 'B' && { color: theme.secondary, fontFamily: Fonts.headlineBold }]}>
-                B TAKIMI (DEPLASMAN)
-              </Text>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={[styles.teamTabText, activeTeam === 'B' && { color: theme.secondary, fontFamily: Fonts.headlineBold }]}>
+                  B TAKIMI
+                </Text>
+                <Text style={{ fontFamily: Fonts.label, fontSize: 9, color: activeTeam === 'B' ? theme.secondary : theme.textMuted }}>
+                  {activeMatch?.captainBName ? `⭐ ${activeMatch.captainBName}` : (isTwoCaptainsMode ? '⭐ RAKİP KAPTAN' : 'KARMA KADRO')}
+                </Text>
+              </View>
               <View style={[styles.teamCountBadge, activeTeam === 'B' && { backgroundColor: `${theme.secondary}33` }]}>
                 <Text style={[styles.teamCountText, activeTeam === 'B' && { color: theme.secondary }]}>{teamBCount}/{modePlayersPerTeam}</Text>
               </View>
             </TouchableOpacity>
           </View>
+
+          {/* B Takımı Kaptan Bilgi & Atama Kartı */}
+          {activeTeam === 'B' && (
+            <View style={styles.captainBBanner}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                <MaterialIcons name="military-tech" size={22} color={theme.secondary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.captainBBannerTitle}>
+                    {activeMatch?.captainBName 
+                      ? `B TAKIMI KAPTANI: ${activeMatch.captainBName}` 
+                      : (isTwoCaptainsMode ? 'B TAKIMI KAPTANI ATANMADI' : 'KARMA TAKIM (ORGANİZATÖR YÖNETİMİNDE)')}
+                  </Text>
+                  <Text style={styles.captainBBannerSub}>
+                    {activeMatch?.captainBName 
+                      ? (isCaptainB ? '⭐ Siz B Takımı Kaptanısınız. Kendi takımınızın ödemelerini teyit edebilirsiniz.' : 'B Takımının koordinasyonundan sorumludur.')
+                      : (isTwoCaptainsMode ? 'Organizatör olarak sahadaki bir B Takımı oyuncusuna dokunarak kaptan atayabilirsiniz.' : 'Organizatör 14 kişiyi tek elden yönetir.')}
+                  </Text>
+                </View>
+              </View>
+              {isOrganizer && activeMatch?.captainBId && (
+                <TouchableOpacity 
+                  style={styles.removeCaptainBtn}
+                  onPress={() => handleAssignCaptainB(activeMatch.captainBId!, activeMatch.captainBName!)}
+                >
+                  <Text style={styles.removeCaptainBtnText}>Değiştir</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
 
           {/* Field Visualization */}
           <View style={styles.fieldWrap}>
@@ -1141,6 +1282,40 @@ export default function MatchRoomScreen() {
                     %{totalMatchFee > 0 ? Math.min(100, Math.round(((collectedPaidAmount + collectedCashAmount) / totalMatchFee) * 100)) : 0} Güvencede
                   </Text>
                 </View>
+
+                {/* İki Takımlı Maç İse: A Takımı vs B Takımı Kasa Kırılımı */}
+                {isTwoCaptainsMode && (
+                  <View style={styles.teamAccountingRow}>
+                    <View style={styles.teamAccBox}>
+                      <Text style={styles.teamAccTitle}>A TAKIMI (ORGANİZATÖR)</Text>
+                      <Text style={[styles.teamAccFee, { color: theme.primary }]}>₺{teamAPaid} / ₺{teamATotal}</Text>
+                      <Text style={styles.teamAccStatus}>
+                        %{teamATotal > 0 ? Math.min(100, Math.round((teamAPaid / teamATotal) * 100)) : 0} Toplandı
+                      </Text>
+                    </View>
+                    <View style={styles.teamAccDivider} />
+                    <View style={styles.teamAccBox}>
+                      <Text style={styles.teamAccTitle}>B TAKIMI {activeMatch?.captainBName ? `(${activeMatch.captainBName})` : ''}</Text>
+                      <Text style={[styles.teamAccFee, { color: theme.secondary }]}>₺{teamBPaid} / ₺{teamBTotal}</Text>
+                      <Text style={styles.teamAccStatus}>
+                        %{teamBTotal > 0 ? Math.min(100, Math.round((teamBPaid / teamBTotal) * 100)) : 0} Toplandı
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* B Takımı Kaptanı Bildirim / Yönetim Kartı */}
+                {isCaptainB && !isOrganizer && (
+                  <View style={styles.captainBActionCard}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <MaterialIcons name="military-tech" size={20} color={theme.secondary} />
+                      <Text style={styles.captainBActionTitle}>⭐ B TAKIMI KAPTANI YÖNETİMİ</Text>
+                    </View>
+                    <Text style={styles.captainBActionDesc}>
+                      Takımınızın toplam payı ₺{teamBTotal}'dir. Kendi takımınızın ödemelerini aşağıdaki çizelgeden kontrol edebilir ve Organizatör ile paylaşabilirsiniz.
+                    </Text>
+                  </View>
+                )}
               </View>
 
               {/* OYUNCU KENDİ ÖDEME AKSİYONU (Eğer mevkisi varsa ve henüz ödememişse) */}
@@ -1230,6 +1405,9 @@ export default function MatchRoomScreen() {
                 ) : (
                   rosterPayments.map((player) => {
                     const isMe = player.uid === user?.uid;
+                    const isPlayerOrg = player.uid && (player.uid === activeMatch?.organizerId || player.uid === activeMatch?.captainAId || (player.slotKey === 'A_FORVET_1' && player.uid === activeMatch?.organizerId));
+                    const isPlayerCapB = player.uid && activeMatch?.captainBId && player.uid === activeMatch.captainBId;
+
                     let badgeBg = `${theme.error}22`;
                     let badgeBorder = theme.error;
                     let badgeText = 'ÖDENMEDİ';
@@ -1262,28 +1440,35 @@ export default function MatchRoomScreen() {
                       badgeTextColor = '#6e9bff';
                     }
 
+                    const canManageThisPlayer = isOrganizer || (isCaptainB && player.slotKey.startsWith('B_'));
+
                     return (
                       <TouchableOpacity
                         key={player.slotKey}
                         style={[styles.playerPayCard, isMe && { borderColor: `${theme.primary}4D`, borderWidth: 1 }]}
                         onPress={() => {
-                          if (isOrganizer) {
-                            handleCaptainTogglePayment(player.slotKey, player.name, player.paymentStatus);
+                          if (canManageThisPlayer) {
+                            handleCaptainTogglePayment(player.slotKey, player.name, player.paymentStatus, player.uid);
                           } else if (isMe && player.paymentStatus !== 'paid' && player.paymentStatus !== 'exempt') {
                             setDirectPayVisible(true);
                           }
                         }}
-                        activeOpacity={isOrganizer || (isMe && player.paymentStatus !== 'paid') ? 0.7 : 1}
+                        activeOpacity={canManageThisPlayer || (isMe && player.paymentStatus !== 'paid') ? 0.7 : 1}
                       >
                         <Image source={{ uri: player.avatar }} style={styles.playerPayAvatar} />
                         <View style={styles.playerPayInfo}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                             <Text style={styles.playerPayName} numberOfLines={1}>
                               {player.name} {isMe ? '(Siz)' : ''}
                             </Text>
-                            {isOrganizer && player.slotKey.includes('A_FORVET_1') && (
-                              <View style={styles.captainBadge}>
-                                <Text style={styles.captainBadgeText}>KAPTAN</Text>
+                            {isPlayerOrg && (
+                              <View style={styles.organizerBadge}>
+                                <Text style={styles.organizerBadgeText}>👑 ORGANİZATÖR</Text>
+                              </View>
+                            )}
+                            {isPlayerCapB && (
+                              <View style={styles.captainBBadge}>
+                                <Text style={styles.captainBBadgeText}>⭐ B KAPTANI</Text>
                               </View>
                             )}
                           </View>
@@ -1331,12 +1516,26 @@ export default function MatchRoomScreen() {
             ) : (
               rosterPayments.map((player) => {
                 const isCurrent = player.uid === user?.uid;
+                const isPlayerOrg = player.uid && (player.uid === activeMatch?.organizerId || player.uid === activeMatch?.captainAId || (player.slotKey === 'A_FORVET_1' && player.uid === activeMatch?.organizerId));
+                const isPlayerCapB = player.uid && activeMatch?.captainBId && player.uid === activeMatch.captainBId;
                 return (
                   <View key={player.slotKey} style={[styles.playerItem, { borderLeftColor: isCurrent ? theme.primary : 'transparent' }]}>
                     <View style={styles.playerItemLeft}>
                       <Image source={{ uri: player.avatar || user?.avatar }} style={styles.playerAvatar} />
                       <View>
-                        <Text style={styles.playerName}>{player.name} {isCurrent ? '(Siz)' : ''}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <Text style={styles.playerName}>{player.name} {isCurrent ? '(Siz)' : ''}</Text>
+                          {isPlayerOrg && (
+                            <View style={styles.organizerBadge}>
+                              <Text style={styles.organizerBadgeText}>👑 ORGANİZATÖR</Text>
+                            </View>
+                          )}
+                          {isPlayerCapB && (
+                            <View style={styles.captainBBadge}>
+                              <Text style={styles.captainBBadgeText}>⭐ B KAPTANI</Text>
+                            </View>
+                          )}
+                        </View>
                         <Text style={styles.playerRole}>{player.role}</Text>
                       </View>
                     </View>
@@ -2636,5 +2835,177 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontFamily: Fonts.headlineBold,
     fontSize: 10,
     color: theme.text,
+  },
+
+  // Organizer & Captain Badges and Crowns
+  slotCaptainCrownOrg: {
+    position: 'absolute',
+    top: -8,
+    left: -4,
+    backgroundColor: theme.primary,
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    borderWidth: 1.5,
+    borderColor: theme.background,
+  },
+  slotCaptainCrownB: {
+    position: 'absolute',
+    top: -8,
+    left: -4,
+    backgroundColor: theme.secondary,
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    borderWidth: 1.5,
+    borderColor: theme.background,
+  },
+  slotCaptainCrownText: {
+    fontSize: 10,
+  },
+  organizerBadge: {
+    backgroundColor: `${theme.primary}25`,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 0.5,
+    borderColor: theme.primary,
+  },
+  organizerBadgeText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 8,
+    color: theme.primary,
+  },
+  captainBBadge: {
+    backgroundColor: `${theme.secondary}25`,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 0.5,
+    borderColor: theme.secondary,
+  },
+  captainBBadgeText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 8,
+    color: theme.secondary,
+  },
+
+  // Captain B Banner
+  captainBBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.surfaceContainerHighest,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    marginTop: 8,
+    gap: 8,
+  },
+  captainBBannerTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.text,
+  },
+  captainBBannerSub: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: theme.textMuted,
+    marginTop: 2,
+  },
+  removeCaptainBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: `${theme.secondary}22`,
+    borderWidth: 1,
+    borderColor: theme.secondary,
+  },
+  removeCaptainBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: theme.secondary,
+  },
+
+  // Team Accounting Breakdown
+  teamAccountingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.surfaceContainer,
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+  },
+  teamAccBox: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  teamAccTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 9,
+    color: theme.textMuted,
+    letterSpacing: 0.5,
+  },
+  teamAccFee: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 12,
+  },
+  teamAccStatus: {
+    fontFamily: Fonts.body,
+    fontSize: 9,
+    color: theme.textMuted,
+  },
+  teamAccDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: theme.borderSubtle,
+    marginHorizontal: 8,
+  },
+
+  // Captain B Action Card
+  captainBActionCard: {
+    backgroundColor: `${theme.secondary}15`,
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: `${theme.secondary}44`,
+    gap: 6,
+  },
+  captainBActionTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.secondary,
+  },
+  captainBActionDesc: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: theme.text,
+    lineHeight: 14,
+  },
+  captainBNotifyBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: theme.secondary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginTop: 4,
+  },
+  captainBNotifyBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: theme.background,
   },
 });
