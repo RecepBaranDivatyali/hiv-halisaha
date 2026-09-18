@@ -96,19 +96,22 @@ export default function HomeScreen() {
     (user?.uid && m.slots && Object.values(m.slots).some(s => s?.uid === user.uid))
   );
 
-  // 1. Bitmiş ama kullanıcı tarafından HENÜZ değerlendirilmemiş maç (Yemeksepeti modeli)
-  const unratedFinishedMatch = userAllMatches.find(m => 
-    isMatchPast(m.dateTime) && !ratedMatches.includes(m.id)
+  // 1. Bitmiş ama kullanıcı tarafından HENÜZ değerlendirilmemiş maç (Yemeksepeti / Getir modeli)
+  const unratedFinishedMatch = [
+    ...userAllMatches,
+    ...pastMatches
+  ].find(m => 
+    (isMatchPast(m.dateTime) || m.status === 'completed') && !ratedMatches.includes(m.id)
   );
 
   // 2. Kullanıcının gerçekten yaklaşan (gelecek) aktif maçı
-  const upcomingUserMatch = userAllMatches.find(m => !isMatchPast(m.dateTime));
+  const upcomingUserMatch = userAllMatches.find(m => !isMatchPast(m.dateTime) && m.status !== 'completed');
 
   // 3. Genel yaklaşan aktif maç (kullanıcı maçı yoksa vitrin)
-  const upcomingGeneralMatch = matches.find(m => !isMatchPast(m.dateTime));
+  const upcomingGeneralMatch = matches.find(m => !isMatchPast(m.dateTime) && m.status !== 'completed');
 
-  // Ana kart (Öncelik: Değerlendirme bekleyen maç -> Yaklaşan kullanıcı maçı -> Yaklaşan herhangi bir maç)
-  const featuredMatch = unratedFinishedMatch || upcomingUserMatch || upcomingGeneralMatch;
+  // Geri sayım maçı (Yaklaşan kullanıcı maçı veya genel aktif maç)
+  const countdownMatch = upcomingUserMatch || upcomingGeneralMatch;
 
   // Tüm aktif yaklaşan maçlar (kesinlikle geçmiş maçları içermez)
   const upcomingMatches = matches.filter(m => !isMatchPast(m.dateTime)).slice(0, 3);
@@ -203,15 +206,27 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
       >
-        {/* Live Match Countdown or Post-Match Review Card */}
-        {featuredMatch && (
+        {/* Post-Match Review Encouragement Card (Yemeksepeti/Getir Modeli) */}
+        {unratedFinishedMatch && (
           <MatchCountdownCard 
-            key={featuredMatch.id}
-            matchId={featuredMatch.id} 
-            arena={featuredMatch.arena}
-            dateTime={featuredMatch.dateTime}
-            mode={featuredMatch.mode}
-            onDismiss={() => handleDismissReview(featuredMatch.id)}
+            key={`review-${unratedFinishedMatch.id}`}
+            matchId={unratedFinishedMatch.id} 
+            arena={unratedFinishedMatch.arena}
+            dateTime={unratedFinishedMatch.dateTime}
+            mode={unratedFinishedMatch.mode}
+            isCompleted={true}
+            onDismiss={() => handleDismissReview(unratedFinishedMatch.id)}
+          />
+        )}
+
+        {/* Live Match Countdown for Upcoming Active Match */}
+        {countdownMatch && (!unratedFinishedMatch || countdownMatch.id !== unratedFinishedMatch.id) && (
+          <MatchCountdownCard 
+            key={`upcoming-${countdownMatch.id}`}
+            matchId={countdownMatch.id} 
+            arena={countdownMatch.arena}
+            dateTime={countdownMatch.dateTime}
+            mode={countdownMatch.mode}
           />
         )}
 

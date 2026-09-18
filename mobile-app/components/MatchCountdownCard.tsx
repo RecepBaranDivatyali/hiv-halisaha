@@ -12,6 +12,7 @@ interface MatchCountdownCardProps {
   arena?: string;
   dateTime?: string;
   mode?: string;
+  isCompleted?: boolean;
   onDismiss?: () => void;
 }
 
@@ -21,14 +22,26 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
   arena = 'Beşiktaş Arena',
   dateTime = '21:00',
   mode = '7v7',
+  isCompleted = false,
   onDismiss
 }) => {
   const router = useRouter();
   const { theme } = useTheme();
   const styles = useStyles(theme);
-  const [timeLeft, setTimeLeft] = useState({ hours: targetHours, minutes: 0, seconds: 0, isLive: false, isPast: false });
+  const [timeLeft, setTimeLeft] = useState({ 
+    hours: isCompleted ? 0 : targetHours, 
+    minutes: 0, 
+    seconds: 0, 
+    isLive: false, 
+    isPast: Boolean(isCompleted) 
+  });
 
   useEffect(() => {
+    if (isCompleted) {
+      setTimeLeft({ hours: 0, minutes: 0, seconds: 0, isLive: false, isPast: true });
+      return;
+    }
+
     const targetTimestamp = parseTargetTimestamp(dateTime, targetHours);
 
     const updateTimer = () => {
@@ -55,7 +68,7 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
     updateTimer();
     const timer = setInterval(updateTimer, 1000);
     return () => clearInterval(timer);
-  }, [targetHours, dateTime]);
+  }, [targetHours, dateTime, isCompleted]);
 
   const format2Digits = (num: number) => num.toString().padStart(2, '0');
   const displayTime = dateTime.includes(',') ? (dateTime.split(',').pop()?.trim() || dateTime) : dateTime;

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { auth } from '@/services/firebaseConfig';
 import { dbService, MatchModel } from '@/services/dbService';
 import { isMatchPast } from '@/services/dateUtils';
 
@@ -79,6 +80,10 @@ export function useMatches() {
       const modeNum = !isNaN(parsedNum) && parsedNum > 0 ? parsedNum : 7;
       const totalPlayers = modeNum * 2;
 
+      const effectiveUid = userProfile?.uid || auth.currentUser?.uid || 'host';
+      const effectiveName = userProfile?.name || auth.currentUser?.displayName || 'Organizatör (Siz)';
+      const effectiveAvatar = userProfile?.avatar || auth.currentUser?.photoURL || '';
+
       const payload: Omit<MatchModel, 'id'> = {
         arena: newMatchData.arena || 'Halı Saha',
         city: newMatchData.city || 'İstanbul',
@@ -89,25 +94,27 @@ export function useMatches() {
         totalFee: newMatchData.totalFee || 2100,
         isSubscription: !!newMatchData.isSubscription,
         isGkFree: !!newMatchData.isGkFree,
-        organizer: userProfile?.name || 'Siz (Organizatör)',
-        organizerId: userProfile?.uid || '',
+        organizer: effectiveName,
+        organizerId: effectiveUid,
         organizerIban: newMatchData.organizerIban || userProfile?.iban || '',
-        organizerIbanName: newMatchData.organizerIbanName || userProfile?.ibanName || userProfile?.name || '',
+        organizerIbanName: newMatchData.organizerIbanName || userProfile?.ibanName || effectiveName,
         organizerBankName: newMatchData.organizerBankName || userProfile?.bankName || '',
         matchFormatType: newMatchData.matchFormatType || 'single_organizer',
-        captainAId: userProfile?.uid || 'host',
-        captainAName: userProfile?.name || 'Organizatör (Siz)',
+        captainAId: effectiveUid,
+        captainAName: effectiveName,
         captainBId: newMatchData.captainBId || null,
         captainBName: newMatchData.captainBName || null,
         joinedPlayersCount: 1,
         totalRequiredPlayers: totalPlayers,
+        teamAFormation: '2-3-1',
+        teamBFormation: '2-3-1',
         status: 'active',
         slots: {
           A_OS_ORTA: {
-            uid: userProfile?.uid || 'host',
-            name: userProfile?.name || 'Organizatör (Siz)',
-            avatar: userProfile?.avatar || '',
-            position: 'Kaptan',
+            uid: effectiveUid,
+            name: effectiveName,
+            avatar: effectiveAvatar,
+            position: 'Merkez OS',
             paid: true,
             paymentStatus: 'paid',
             paymentMethod: 'cash'

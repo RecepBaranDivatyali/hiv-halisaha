@@ -14,6 +14,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { useMatches } from '@/hooks/use-matches';
 import { useAuth } from '@/hooks/use-auth';
 import { dbService, MatchModel } from '@/services/dbService';
+import { auth } from '@/services/firebaseConfig';
 
 interface PlayerPayment {
   slotKey: string;
@@ -56,9 +57,14 @@ export default function MatchRoomScreen() {
     Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`);
   };
 
-  const isOrganizer = activeMatch?.organizer?.toLowerCase().includes('siz') || (activeMatch?.organizerId && activeMatch?.organizerId === user?.uid);
-  const isCaptainA = isOrganizer || Boolean(activeMatch?.captainAId && activeMatch?.captainAId === user?.uid);
-  const isCaptainB = Boolean(activeMatch?.captainBId && activeMatch?.captainBId === user?.uid);
+  const currentUid = user?.uid || auth.currentUser?.uid;
+  const isOrganizer = Boolean(
+    (currentUid && activeMatch?.organizerId === currentUid) ||
+    (currentUid && activeMatch?.captainAId === currentUid) ||
+    activeMatch?.organizer?.toLowerCase().includes('siz')
+  );
+  const isCaptainA = isOrganizer || Boolean(currentUid && activeMatch?.captainAId === currentUid);
+  const isCaptainB = Boolean(currentUid && activeMatch?.captainBId === currentUid);
   const hasCaptainB = Boolean(activeMatch?.captainBId);
   const isTwoCaptainsMode = activeMatch?.matchFormatType === 'two_captains' || hasCaptainB;
   const [joinTerms, setJoinTerms] = useState(activeMatch?.joinTerms ?? 0);
@@ -68,6 +74,30 @@ export default function MatchRoomScreen() {
   const [directPayVisible, setDirectPayVisible] = useState(false);
   const [pitchReviewVisible, setPitchReviewVisible] = useState(false);
   const [storyModalVisible, setStoryModalVisible] = useState(false);
+  const [formationModalVisible, setFormationModalVisible] = useState(false);
+
+  // Tactical Formations (2-3-1, 3-2-1, 2-2-2, 3-1-2)
+  const currentTeamFormation = activeTeam === 'A'
+    ? (activeMatch?.teamAFormation || '2-3-1')
+    : (activeMatch?.teamBFormation || '2-3-1');
+  const canManageCurrentFormation = (activeTeam === 'A' && (isOrganizer || isCaptainA)) ||
+                                   (activeTeam === 'B' && (isCaptainB || isOrganizer));
+
+  const handleSelectFormation = async (newFormation: string) => {
+    setFormationModalVisible(false);
+    if (!activeMatchId) return;
+    try {
+      await dbService.updateTeamFormation(activeMatchId, activeTeam, newFormation);
+      await dbService.sendMessage(`match_${activeMatchId}`, {
+        senderId: currentUid || 'anon',
+        senderName: activeTeam === 'A' ? (activeMatch?.captainAName || 'A Kaptanı') : (activeMatch?.captainBName || 'B Kaptanı'),
+        text: `📋 [Diziliş]: ${activeTeam} Takımı formasyonunu ${newFormation} olarak güncelledi.`
+      });
+      Alert.alert('✓ Diziliş Güncellendi', `${activeTeam} Takımı formasyonu ${newFormation} olarak ayarlandı.`);
+    } catch (e) {
+      Alert.alert('Hata', 'Diziliş formasyonu güncellenemedi.');
+    }
+  };
 
   // My Team ('A' | 'B' | null)
   const myTeam: 'A' | 'B' | null = userSlot?.startsWith('B_') ? 'B' : (userSlot ? 'A' : null);
@@ -87,7 +117,7 @@ export default function MatchRoomScreen() {
     try {
       await dbService.toggleTeamRosterPrivacy(activeMatchId, activeTeam, nextVal);
       await dbService.sendMessage(`match_${activeMatchId}`, {
-        senderId: user?.uid || 'anon',
+        senderId: currentUid || 'anon',
         senderName: activeTeam === 'A' ? (activeMatch?.captainAName || 'A Kaptanı') : (activeMatch?.captainBName || 'B Kaptanı'),
         text: nextVal 
           ? `🔒 [Taktik Gizliliği]: ${activeTeam} Takımı kadro ve taktiğini rakip takımdan gizledi!`
@@ -159,13 +189,19 @@ export default function MatchRoomScreen() {
 
   // Sync userSlot from Firestore match slots
   React.useEffect(() => {
-    if (activeMatch?.slots && user?.uid) {
-      let foundSlot = Object.keys(activeMatch.slots).find(
-        (key) => activeMatch.slots?.[key]?.uid === user.uid
-      );
-      if (foundSlot === 'A_FORVET_1') {
-        foundSlot = 'A_OS_ORTA';
+    const effUid = user?.uid || auth.currentUser?.uid;
+    if (activeMatch?.slots) {
+      let foundSlot = effUid 
+        ? Object.keys(activeMatch.slots).find((key) => activeMatch.slots?.[key]?.uid === effUid)
+        : null;
+
+      // If user is organizer and no slot matched by UID yet, check organizer's slot
+      if (!foundSlot && isOrganizer) {
+        if (activeMatch.slots['A_OS_ORTA']) foundSlot = 'A_OS_ORTA';
+        else if (activeMatch.slots['OS_ORTA']) foundSlot = 'A_OS_ORTA';
+        else if (activeMatch.slots['A_FORVET']) foundSlot = 'A_FORVET';
       }
+
       if (foundSlot) {
         setUserSlot(foundSlot);
         if (!hasInitialTeamSet.current) {
@@ -175,10 +211,12 @@ export default function MatchRoomScreen() {
       } else {
         setUserSlot(null);
       }
-    } else if (!user?.uid) {
+    } else if (isOrganizer && !userSlot) {
+      setUserSlot('A_OS_ORTA');
+    } else {
       setUserSlot(null);
     }
-  }, [activeMatch?.slots, user?.uid]);
+  }, [activeMatch?.slots, user?.uid, isOrganizer]);
 
   const [isGkFree, setIsGkFree] = useState(activeMatch?.isGkFree ?? false);
 
@@ -495,12 +533,14 @@ export default function MatchRoomScreen() {
   };
 
   const executeLeaveSlot = async (slotKey: string, slotLabel: string, penaltyPercent: number) => {
+    const effUid = user?.uid || auth.currentUser?.uid;
+    const targetMatchId = params.matchId || fallbackMatch?.id;
     setUserSlot(null);
-    if (params.matchId) {
+    if (targetMatchId && targetMatchId !== 'demo-match') {
       try {
-        await dbService.leaveMatchSlot(params.matchId, slotKey, user?.uid);
-        if (penaltyPercent > 0 && user?.uid) {
-          const newScore = await dbService.updateUserReliability(user.uid, penaltyPercent);
+        await dbService.leaveMatchSlot(targetMatchId, slotKey, effUid);
+        if (penaltyPercent > 0 && effUid) {
+          const newScore = await dbService.updateUserReliability(effUid, penaltyPercent);
           Alert.alert(
             'Mevkiden Ayrıldınız',
             `${slotLabel} mevkisinden ayrıldınız.\n\n⚠️ Geç iptal nedeniyle Güvenilirlik Puanınız %${penaltyPercent} düşürüldü. (Yeni Puanınız: %${newScore})`
@@ -519,12 +559,17 @@ export default function MatchRoomScreen() {
   };
 
   const handleSelectSlot = async (slotKey: string, slotLabel: string) => {
-    if (!user?.uid) {
+    const effUid = user?.uid || auth.currentUser?.uid;
+    if (!effUid) {
       Alert.alert('Giriş Yapın', 'Kadroya katılmak veya mevkiden ayrılmak için lütfen önce giriş yapın.');
       return;
     }
 
-    if (userSlot === slotKey) {
+    const targetMatchId = params.matchId || fallbackMatch?.id;
+    const isCurrentlyMySlot = userSlot === slotKey || 
+      (Boolean(effUid) && activeMatch?.slots?.[slotKey]?.uid === effUid);
+
+    if (isCurrentlyMySlot) {
       // User is attempting to leave the slot -> apply tiered penalty!
       const hoursLeft = calculateHoursUntilMatch(matchDateTime);
       if (hoursLeft <= 2) {
@@ -581,22 +626,22 @@ export default function MatchRoomScreen() {
 
     // Check if slot is occupied by someone else
     const existingOccupant = activeMatch?.slots?.[slotKey];
-    if (existingOccupant && existingOccupant.uid !== user?.uid) {
+    if (existingOccupant && existingOccupant.uid && existingOccupant.uid !== effUid) {
       Alert.alert('Mevki Dolu', `Bu mevki ${existingOccupant.name} tarafından doldurulmuştur.`);
       return;
     }
 
     const oldSlot = userSlot;
     setUserSlot(slotKey);
-    if (params.matchId) {
+    if (targetMatchId && targetMatchId !== 'demo-match') {
       try {
-        if (oldSlot) {
-          await dbService.leaveMatchSlot(params.matchId, oldSlot, user?.uid);
+        if (oldSlot && oldSlot !== slotKey) {
+          await dbService.leaveMatchSlot(targetMatchId, oldSlot, effUid);
         }
-        await dbService.joinMatchSlot(params.matchId, slotKey, {
-          uid: user?.uid || 'anon',
-          name: user?.name || 'Oyuncu',
-          avatar: user?.avatar,
+        await dbService.joinMatchSlot(targetMatchId, slotKey, {
+          uid: effUid,
+          name: user?.name || auth.currentUser?.displayName || 'Oyuncu',
+          avatar: user?.avatar || auth.currentUser?.photoURL || '',
           position: slotLabel
         });
         Alert.alert('Kadroya Girildi', `${slotLabel} mevkiine geçtiniz.`);
@@ -723,16 +768,18 @@ export default function MatchRoomScreen() {
     const legacyKey = keySuffix;
     let occupant = activeMatch?.slots?.[slotKey] || (activeTeam === 'A' ? activeMatch?.slots?.[legacyKey] : null);
 
-    // Backwards compatibility for organizer or older matches:
-    if (!occupant && activeTeam === 'A') {
-      if (keySuffix === 'FORVET' && activeMatch?.slots?.['A_FORVET_1']) {
-        occupant = activeMatch.slots['A_FORVET_1'];
-      } else if (keySuffix === 'OS_ORTA') {
-        occupant = activeMatch?.slots?.['A_OS_ORTA'] || activeMatch?.slots?.['KAPTAN'] || activeMatch?.slots?.['OS_ORTA'] || activeMatch?.slots?.['A_FORVET_1'];
+    // Fallbacks for key aliases & backwards compatibility:
+    if (!occupant) {
+      if (activeTeam === 'A' && keySuffix === 'OS_ORTA') {
+        occupant = activeMatch?.slots?.['A_OS_ORTA'] || activeMatch?.slots?.['KAPTAN'] || activeMatch?.slots?.['OS_ORTA'];
+      } else if (keySuffix === 'FORVET_SOL' && activeMatch?.slots?.[`${activeTeam}_FORVET`]) {
+        occupant = activeMatch.slots[`${activeTeam}_FORVET`];
+      } else if (keySuffix === 'FORVET' && activeMatch?.slots?.[`${activeTeam}_FORVET_SOL`]) {
+        occupant = activeMatch.slots[`${activeTeam}_FORVET_SOL`];
       }
     }
     const isOccupied = !!occupant;
-    const isMySlot = isSelectedByMe || (occupant && occupant.uid === user?.uid);
+    const isMySlot = isSelectedByMe || (occupant && occupant.uid === currentUid) || (isOrganizer && slotKey === 'A_OS_ORTA' && !occupant);
     const teamColor = activeTeam === 'A' ? theme.primary : theme.secondary;
 
     const avatarUrl = isMySlot
@@ -779,8 +826,12 @@ export default function MatchRoomScreen() {
             </View>
             {/* Captain / Organizer Crown Badge */}
             {(() => {
-              const occUid = isMySlot ? user?.uid : occupant?.uid;
-              const isOrg = occUid && (occUid === activeMatch?.organizerId || occUid === activeMatch?.captainAId || (slotKey === 'A_FORVET_1' && activeMatch?.organizerId === occUid));
+              const occUid = isMySlot ? currentUid : occupant?.uid;
+              const isOrg = occUid && (
+                occUid === activeMatch?.organizerId || 
+                occUid === activeMatch?.captainAId || 
+                (isOrganizer && (isMySlot || occupant?.name?.includes('Siz') || occupant?.name?.includes('Organizatör')))
+              );
               const isCapB = occUid && activeMatch?.captainBId && occUid === activeMatch.captainBId;
               if (isOrg) {
                 return (
@@ -933,6 +984,59 @@ export default function MatchRoomScreen() {
           visible={storyModalVisible}
           onClose={() => setStoryModalVisible(false)}
         />
+
+        {/* Tactical Formation Selection Modal */}
+        <Modal 
+          visible={formationModalVisible} 
+          transparent 
+          animationType="fade" 
+          onRequestClose={() => setFormationModalVisible(false)}
+        >
+          <View style={styles.formationModalOverlay}>
+            <TouchableOpacity 
+              style={StyleSheet.absoluteFillObject} 
+              activeOpacity={1} 
+              onPress={() => setFormationModalVisible(false)} 
+            />
+            <View style={styles.formationModalContent}>
+              <View style={styles.formationModalHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <MaterialIcons name="grid-on" size={20} color={activeTeam === 'A' ? theme.primary : theme.secondary} />
+                  <Text style={styles.formationModalTitle}>{activeTeam} TAKIMI DİZİLİŞİNİ SEÇ</Text>
+                </View>
+                <TouchableOpacity onPress={() => setFormationModalVisible(false)} style={styles.closeBtn}>
+                  <MaterialIcons name="close" size={18} color={theme.text} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.formationList}>
+                {[
+                  { id: '2-3-1', title: '2 - 3 - 1 (Klasik & Dengeli)', desc: '1 Forvet • 3 Orta Saha (Sol OS, Merkez OS, Sağ OS) • 2 Defans • 1 Kaleci' },
+                  { id: '3-2-1', title: '3 - 2 - 1 (Savunma & Kontra)', desc: '1 Forvet • 2 Orta Saha (Sol OS, Sağ OS) • 3 Defans (Sol Def, Stoper, Sağ Def) • 1 Kaleci' },
+                  { id: '2-2-2', title: '2 - 2 - 2 (Ofansif & Çift Forvet)', desc: '2 Forvet (Sol, Sağ) • 2 Orta Saha (Sol OS, Sağ OS) • 2 Defans • 1 Kaleci' },
+                  { id: '3-1-2', title: '3 - 1 - 2 (Baskı & Çift Forvet)', desc: '2 Forvet (Sol, Sağ) • 1 Merkez OS • 3 Defans (Sol Def, Stoper, Sağ Def) • 1 Kaleci' },
+                ].map((f) => {
+                  const isSelected = currentTeamFormation === f.id;
+                  const activeColor = activeTeam === 'A' ? theme.primary : theme.secondary;
+                  return (
+                    <TouchableOpacity
+                      key={f.id}
+                      style={[styles.formationOptionCard, isSelected && { borderColor: activeColor, backgroundColor: `${activeColor}15` }]}
+                      onPress={() => handleSelectFormation(f.id)}
+                      activeOpacity={0.8}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <Text style={[styles.formationOptionTitle, isSelected && { color: activeColor }]}>{f.title}</Text>
+                        {isSelected && <MaterialIcons name="check-circle" size={18} color={activeColor} />}
+                      </View>
+                      <Text style={styles.formationOptionDesc}>{f.desc}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         {/* TopAppBar */}
         <View style={styles.header}>
@@ -1088,6 +1192,34 @@ export default function MatchRoomScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Tactical Formation Selector Bar */}
+          <View style={styles.formationBar}>
+            <View style={styles.formationBarLeft}>
+              <MaterialIcons name="grid-on" size={16} color={activeTeam === 'A' ? theme.primary : theme.secondary} />
+              <Text style={styles.formationBarLabel}>DİZİLİŞ:</Text>
+              <View style={[styles.formationPill, { backgroundColor: activeTeam === 'A' ? `${theme.primary}22` : `${theme.secondary}22` }]}>
+                <Text style={[styles.formationPillText, { color: activeTeam === 'A' ? theme.primary : theme.secondary }]}>
+                  {currentTeamFormation}
+                </Text>
+              </View>
+            </View>
+
+            {canManageCurrentFormation ? (
+              <TouchableOpacity 
+                style={[styles.changeFormationBtn, { borderColor: activeTeam === 'A' ? `${theme.primary}66` : `${theme.secondary}66` }]}
+                onPress={() => setFormationModalVisible(true)}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="tune" size={14} color={activeTeam === 'A' ? theme.primary : theme.secondary} />
+                <Text style={[styles.changeFormationBtnText, { color: activeTeam === 'A' ? theme.primary : theme.secondary }]}>
+                  Dizilişi Değiştir
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.formationBarSubHint}>Kaptan tarafından belirlenir</Text>
+            )}
+          </View>
+
           {/* Captain Roster Privacy Control */}
           {canManageActiveTeamPrivacy && (
             <TouchableOpacity 
@@ -1225,28 +1357,108 @@ export default function MatchRoomScreen() {
                 </View>
               ) : (
                 <View style={styles.formationGrid}>
-                  {/* Forward */}
-                  <View style={styles.slotRow}>
-                     {renderSlotItem('FORVET', 'Forvet', '9')}
-                  </View>
-                  
-                  {/* Midfielders */}
-                  <View style={[styles.slotRow, { justifyContent: 'space-between', paddingHorizontal: 32 }]}>
-                     {renderSlotItem('OS_SOL', 'Sol OS', '8')}
-                     {renderSlotItem('OS_ORTA', activeTeam === 'A' ? 'Kaptan' : 'Orta Saha', '10')}
-                     {renderSlotItem('OS_SAG', 'Sağ OS', '7')}
-                  </View>
+                  {currentTeamFormation === '3-2-1' ? (
+                    <>
+                      {/* Forward (1) */}
+                      <View style={styles.slotRow}>
+                        {renderSlotItem('FORVET', 'Forvet', '9')}
+                      </View>
 
-                  {/* Defenders */}
-                  <View style={[styles.slotRow, { justifyContent: 'space-around', paddingHorizontal: 48 }]}>
-                     {renderSlotItem('DEF_SOL', 'Sol Def', '3')}
-                     {renderSlotItem('DEF_SAG', 'Sağ Def', '4')}
-                  </View>
+                      {/* Midfield (2) */}
+                      <View style={[styles.slotRow, { justifyContent: 'space-around', paddingHorizontal: 48 }]}>
+                        {renderSlotItem('OS_SOL', 'Sol OS', '8')}
+                        {renderSlotItem('OS_SAG', 'Sağ OS', '7')}
+                      </View>
 
-                  {/* GK */}
-                  <View style={styles.slotRow}>
-                     {renderSlotItem('KALECI', 'Kaleci', '1')}
-                  </View>
+                      {/* Defenders (3) */}
+                      <View style={[styles.slotRow, { justifyContent: 'space-between', paddingHorizontal: 20 }]}>
+                        {renderSlotItem('DEF_SOL', 'Sol Def', '3')}
+                        {renderSlotItem('DEF_STP', 'Stoper', '5')}
+                        {renderSlotItem('DEF_SAG', 'Sağ Def', '4')}
+                      </View>
+
+                      {/* GK (1) */}
+                      <View style={styles.slotRow}>
+                        {renderSlotItem('KALECI', 'Kaleci', '1')}
+                      </View>
+                    </>
+                  ) : currentTeamFormation === '2-2-2' ? (
+                    <>
+                      {/* Forwards (2) */}
+                      <View style={[styles.slotRow, { justifyContent: 'space-around', paddingHorizontal: 48 }]}>
+                        {renderSlotItem('FORVET_SOL', 'Sol Forvet', '9')}
+                        {renderSlotItem('FORVET_SAG', 'Sağ Forvet', '11')}
+                      </View>
+
+                      {/* Midfield (2) */}
+                      <View style={[styles.slotRow, { justifyContent: 'space-around', paddingHorizontal: 48 }]}>
+                        {renderSlotItem('OS_SOL', 'Sol OS', '8')}
+                        {renderSlotItem('OS_SAG', 'Sağ OS', '7')}
+                      </View>
+
+                      {/* Defenders (2) */}
+                      <View style={[styles.slotRow, { justifyContent: 'space-around', paddingHorizontal: 48 }]}>
+                        {renderSlotItem('DEF_SOL', 'Sol Def', '3')}
+                        {renderSlotItem('DEF_SAG', 'Sağ Def', '4')}
+                      </View>
+
+                      {/* GK (1) */}
+                      <View style={styles.slotRow}>
+                        {renderSlotItem('KALECI', 'Kaleci', '1')}
+                      </View>
+                    </>
+                  ) : currentTeamFormation === '3-1-2' ? (
+                    <>
+                      {/* Forwards (2) */}
+                      <View style={[styles.slotRow, { justifyContent: 'space-around', paddingHorizontal: 48 }]}>
+                        {renderSlotItem('FORVET_SOL', 'Sol Forvet', '9')}
+                        {renderSlotItem('FORVET_SAG', 'Sağ Forvet', '11')}
+                      </View>
+
+                      {/* Midfield (1) */}
+                      <View style={styles.slotRow}>
+                        {renderSlotItem('OS_ORTA', 'Merkez OS', '10')}
+                      </View>
+
+                      {/* Defenders (3) */}
+                      <View style={[styles.slotRow, { justifyContent: 'space-between', paddingHorizontal: 20 }]}>
+                        {renderSlotItem('DEF_SOL', 'Sol Def', '3')}
+                        {renderSlotItem('DEF_STP', 'Stoper', '5')}
+                        {renderSlotItem('DEF_SAG', 'Sağ Def', '4')}
+                      </View>
+
+                      {/* GK (1) */}
+                      <View style={styles.slotRow}>
+                        {renderSlotItem('KALECI', 'Kaleci', '1')}
+                      </View>
+                    </>
+                  ) : (
+                    /* Default 2-3-1 */
+                    <>
+                      {/* Forward (1) */}
+                      <View style={styles.slotRow}>
+                        {renderSlotItem('FORVET', 'Forvet', '9')}
+                      </View>
+                      
+                      {/* Midfielders (3) */}
+                      <View style={[styles.slotRow, { justifyContent: 'space-between', paddingHorizontal: 24 }]}>
+                        {renderSlotItem('OS_SOL', 'Sol OS', '8')}
+                        {renderSlotItem('OS_ORTA', 'Merkez OS', '10')}
+                        {renderSlotItem('OS_SAG', 'Sağ OS', '7')}
+                      </View>
+
+                      {/* Defenders (2) */}
+                      <View style={[styles.slotRow, { justifyContent: 'space-around', paddingHorizontal: 48 }]}>
+                        {renderSlotItem('DEF_SOL', 'Sol Def', '3')}
+                        {renderSlotItem('DEF_SAG', 'Sağ Def', '4')}
+                      </View>
+
+                      {/* GK (1) */}
+                      <View style={styles.slotRow}>
+                        {renderSlotItem('KALECI', 'Kaleci', '1')}
+                      </View>
+                    </>
+                  )}
                 </View>
               )}
             </View>
@@ -1283,8 +1495,12 @@ export default function MatchRoomScreen() {
 
             {/* Action button: Join or Leave Reserve Queue */}
             {(() => {
-              const isAlreadyInMainSlot = Boolean(userSlot);
-              const isAlreadyInReserve = Boolean(user?.uid && activeMatch?.reserves?.some(r => r.uid === user.uid));
+              const isAlreadyInMainSlot = Boolean(
+                userSlot || 
+                (currentUid && activeMatch?.slots && Object.values(activeMatch.slots).some(s => s?.uid === currentUid)) ||
+                (isOrganizer && (activeMatch?.slots?.['A_OS_ORTA'] || activeMatch?.slots?.['OS_ORTA'] || !userSlot))
+              );
+              const isAlreadyInReserve = Boolean(currentUid && activeMatch?.reserves?.some(r => r.uid === currentUid));
               const isRosterFull = rosterPayments.length >= totalPlayersCount;
 
               if (isAlreadyInMainSlot) {
@@ -1817,19 +2033,8 @@ export default function MatchRoomScreen() {
 
         {/* Dual Channel Match & Team Chat */}
         <View style={styles.sectionContainer}>
-          {/* Chat Channel Selector Tabs */}
+          {/* Chat Channel Selector Tabs (Left: Takım Sohbeti, Right: Genel Sohbet) */}
           <View style={styles.chatTabsHeader}>
-            <TouchableOpacity
-              style={[styles.chatTabBtn, chatChannel === 'general' && styles.chatTabBtnActiveGeneral]}
-              onPress={() => setChatChannel('general')}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons name="public" size={16} color={chatChannel === 'general' ? theme.primary : theme.textMuted} />
-              <Text style={[styles.chatTabText, chatChannel === 'general' && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
-                GENEL SOHBET ({totalPlayersCount} KİŞİ)
-              </Text>
-            </TouchableOpacity>
-
             <TouchableOpacity
               style={[styles.chatTabBtn, chatChannel === 'team' && styles.chatTabBtnActiveTeam]}
               onPress={() => setChatChannel('team')}
@@ -1838,6 +2043,17 @@ export default function MatchRoomScreen() {
               <MaterialIcons name="shield" size={16} color={chatChannel === 'team' ? theme.secondary : theme.textMuted} />
               <Text style={[styles.chatTabText, chatChannel === 'team' && { color: theme.secondary, fontFamily: Fonts.headlineBold }]}>
                 {myTeam ? `${myTeam} TAKIMI (${modePlayersPerTeam} KİŞİ)` : 'TAKIM SOHBETİ'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.chatTabBtn, chatChannel === 'general' && styles.chatTabBtnActiveGeneral]}
+              onPress={() => setChatChannel('general')}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="public" size={16} color={chatChannel === 'general' ? theme.primary : theme.textMuted} />
+              <Text style={[styles.chatTabText, chatChannel === 'general' && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                GENEL SOHBET ({totalPlayersCount} KİŞİ)
               </Text>
             </TouchableOpacity>
           </View>
@@ -3616,5 +3832,109 @@ const useStyles = (theme: any) => StyleSheet.create({
     textAlign: 'center',
     lineHeight: 16,
     maxWidth: 280,
+  },
+  formationBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: theme.surfaceContainerHighest,
+    borderRadius: 12,
+    marginVertical: 10,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+  },
+  formationBarLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  formationBarLabel: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 12,
+    color: theme.textMuted,
+    letterSpacing: 0.5,
+  },
+  formationPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  formationPillText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 12,
+    letterSpacing: 0.5,
+  },
+  changeFormationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  changeFormationBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+  },
+  formationBarSubHint: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: theme.textMuted,
+  },
+  formationModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.78)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  formationModalContent: {
+    width: '100%',
+    maxWidth: 440,
+    backgroundColor: theme.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    overflow: 'hidden',
+  },
+  formationModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.borderSubtle,
+  },
+  formationModalTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 14,
+    color: theme.text,
+    letterSpacing: 0.5,
+  },
+  formationList: {
+    padding: 16,
+    gap: 10,
+  },
+  formationOptionCard: {
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: theme.surfaceContainerHighest,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+  },
+  formationOptionTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 13,
+    color: theme.text,
+  },
+  formationOptionDesc: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: theme.textMuted,
+    lineHeight: 15,
   },
 });

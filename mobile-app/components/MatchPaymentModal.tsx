@@ -143,14 +143,20 @@ export const MatchPaymentModal: React.FC<MatchPaymentModalProps> = ({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
+        <TouchableOpacity 
+          style={StyleSheet.absoluteFillObject} 
+          activeOpacity={1} 
+          onPress={onClose} 
+          accessibilityLabel="Dışarı dokunarak kapat" 
+        />
         <View style={styles.modalContent}>
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerTitleRow}>
-              <MaterialIcons name="sports-soccer" size={24} color={theme.primary} />
-              <View>
-                <Text style={styles.headerTitle}>MAÇ ÜCRETİ & ÖDEME</Text>
-                <Text style={styles.headerSub}>KAPTANA FAST YA DA SAHADA NAKİT</Text>
+              <MaterialIcons name="sports-soccer" size={22} color={theme.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.headerTitle} numberOfLines={1}>MAÇ ÜCRETİ & ÖDEME</Text>
+                <Text style={styles.headerSub} numberOfLines={1}>KAPTANA FAST YA DA SAHADA NAKİT</Text>
               </View>
             </View>
             <TouchableOpacity style={styles.closeBtn} onPress={onClose} accessibilityLabel="Kapat" accessibilityRole="button">
@@ -158,7 +164,7 @@ export const MatchPaymentModal: React.FC<MatchPaymentModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+          <ScrollView style={styles.scrollView} contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} bounces={true}>
             {/* Amount Summary */}
             <View style={[styles.summaryCard, isExempt && styles.summaryCardExempt]}>
               <Text style={styles.summaryLabel}>
@@ -289,51 +295,67 @@ export const MatchPaymentModal: React.FC<MatchPaymentModalProps> = ({
 const useStyles = (theme: any) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.78)',
+    justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
+    alignItems: 'center',
+    padding: Platform.OS === 'web' ? 20 : 0,
   },
   modalContent: {
+    width: '100%',
+    maxWidth: 480,
     backgroundColor: theme.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '90%',
-    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+    borderBottomLeftRadius: Platform.OS === 'web' ? 24 : 0,
+    borderBottomRightRadius: Platform.OS === 'web' ? 24 : 0,
+    maxHeight: '88%',
+    flexShrink: 1,
     borderWidth: 1,
     borderColor: theme.borderSubtle,
+    overflow: 'hidden',
+    flexDirection: 'column',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: theme.borderSubtle,
   },
   headerTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
+    flex: 1,
+    marginRight: 8,
   },
   headerTitle: {
     fontFamily: Fonts.headlineBold,
-    fontSize: 16,
+    fontSize: 15,
     color: theme.text,
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   headerSub: {
     fontFamily: Fonts.body,
     fontSize: 10,
     color: theme.primary,
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
   },
   closeBtn: {
     padding: 6,
     borderRadius: 20,
     backgroundColor: theme.surfaceContainerHighest,
   },
+  scrollView: {
+    flex: 1,
+  },
   body: {
-    padding: 20,
-    gap: 18,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 28,
+    gap: 14,
   },
   summaryCard: {
     backgroundColor: `${theme.primary}12`,

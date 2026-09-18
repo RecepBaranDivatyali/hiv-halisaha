@@ -46,6 +46,8 @@ export interface MatchModel {
   isGkFree?: boolean;
   teamAHidden?: boolean;
   teamBHidden?: boolean;
+  teamAFormation?: string;
+  teamBFormation?: string;
   status: 'active' | 'completed' | 'cancelled';
   score?: string;
   joinTerms?: number;
@@ -372,6 +374,21 @@ export const dbService = {
       return true;
     } catch (error) {
       console.error("Kadro gizlilik güncelleme hatası:", error);
+      throw error;
+    }
+  },
+
+  updateTeamFormation: async (matchId: string, team: 'A' | 'B', formation: string) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      const field = team === 'A' ? 'teamAFormation' : 'teamBFormation';
+      await updateDoc(matchRef, {
+        [field]: formation,
+        updatedAt: serverTimestamp()
+      });
+      return true;
+    } catch (error) {
+      console.error("Diziliş formasyon güncelleme hatası:", error);
       throw error;
     }
   },
