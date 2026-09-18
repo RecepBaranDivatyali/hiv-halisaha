@@ -17,6 +17,19 @@ export interface PitchDatabaseItem {
 export const PITCH_DATABASE: PitchDatabaseItem[] = [
   // Ankara Pitches
   {
+    id: 'ank-odtu',
+    city: 'Ankara',
+    district: 'Çankaya',
+    name: 'ODTÜ Halı Saha',
+    rating: 4.9,
+    isPopular: true,
+    subFields: [
+      { id: 'f-odtu-1', name: '1. Saha (Stadyum Yanı)', surface: 'Suni Çim' },
+      { id: 'f-odtu-2', name: '2. Açık Halı Saha (Yurtlar)', surface: 'Suni Çim' },
+      { id: 'f-odtu-3', name: '3. Kapalı Halı Saha', surface: 'Kapalı Saha' },
+    ],
+  },
+  {
     id: 'ank-1',
     city: 'Ankara',
     district: 'Dikmen',
@@ -39,6 +52,30 @@ export const PITCH_DATABASE: PitchDatabaseItem[] = [
     subFields: [
       { id: 'f-4', name: 'A Sahası', surface: 'Suni Çim' },
       { id: 'f-5', name: 'B Sahası', surface: 'Kapalı Saha' },
+    ],
+  },
+  {
+    id: 'ank-anittepe',
+    city: 'Ankara',
+    district: 'Çankaya',
+    name: 'Anıttepe Spor Tesisleri',
+    rating: 4.8,
+    isPopular: true,
+    subFields: [
+      { id: 'f-anit-1', name: '1. Ana Saha', surface: 'Suni Çim' },
+      { id: 'f-anit-2', name: '2. Kapalı Saha', surface: 'Kapalı Saha' },
+    ],
+  },
+  {
+    id: 'ank-hacettepe',
+    city: 'Ankara',
+    district: 'Çankaya',
+    name: 'Hacettepe Beytepe Halı Saha',
+    rating: 4.8,
+    isPopular: true,
+    subFields: [
+      { id: 'f-hac-1', name: '1. Beytepe Sahası', surface: 'Suni Çim' },
+      { id: 'f-hac-2', name: '2. Kapalı Saha', surface: 'Kapalı Saha' },
     ],
   },
   {
@@ -102,6 +139,18 @@ export const PITCH_DATABASE: PitchDatabaseItem[] = [
     ],
   },
   {
+    id: 'ist-kalamis',
+    city: 'İstanbul',
+    district: 'Kadıköy',
+    name: 'Kalamış Halı Saha',
+    rating: 4.9,
+    isPopular: true,
+    subFields: [
+      { id: 'f-kal-1', name: 'Deniz Tarafı Sahası', surface: 'Suni Çim' },
+      { id: 'f-kal-2', name: 'İç Saha', surface: 'Kapalı Saha' },
+    ],
+  },
+  {
     id: 'ist-3',
     city: 'İstanbul',
     district: 'Maslak',
@@ -123,6 +172,31 @@ export const PITCH_DATABASE: PitchDatabaseItem[] = [
     isPopular: true,
     subFields: [
       { id: 'f-17', name: 'Tek Saha', surface: 'Suni Çim' },
+    ],
+  },
+
+  // İzmir Pitches
+  {
+    id: 'izm-1',
+    city: 'İzmir',
+    district: 'Bornova',
+    name: 'Bornova Park Halı Saha',
+    rating: 4.8,
+    isPopular: true,
+    subFields: [
+      { id: 'f-izm-1', name: '1. Saha', surface: 'Suni Çim' },
+      { id: 'f-izm-2', name: '2. Saha', surface: 'Kapalı Saha' },
+    ],
+  },
+  {
+    id: 'izm-2',
+    city: 'İzmir',
+    district: 'Konak',
+    name: 'Alsancak Spor Tesisleri',
+    rating: 4.7,
+    isPopular: true,
+    subFields: [
+      { id: 'f-izm-3', name: 'Ana Saha', surface: 'Suni Çim' },
     ],
   },
 ];

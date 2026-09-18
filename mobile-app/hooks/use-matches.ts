@@ -103,11 +103,11 @@ export function useMatches() {
         totalRequiredPlayers: totalPlayers,
         status: 'active',
         slots: {
-          A_FORVET_1: {
+          A_OS_ORTA: {
             uid: userProfile?.uid || 'host',
             name: userProfile?.name || 'Organizatör (Siz)',
             avatar: userProfile?.avatar || '',
-            position: 'Forvet',
+            position: 'Kaptan',
             paid: true,
             paymentStatus: 'paid',
             paymentMethod: 'cash'

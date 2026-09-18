@@ -64,9 +64,45 @@ export default function MatchRoomScreen() {
   const [joinTerms, setJoinTerms] = useState(activeMatch?.joinTerms ?? 0);
   const [userSlot, setUserSlot] = useState<string | null>(null);
   const [activeTeam, setActiveTeam] = useState<'A' | 'B'>('A');
+  const hasInitialTeamSet = React.useRef(false);
   const [directPayVisible, setDirectPayVisible] = useState(false);
   const [pitchReviewVisible, setPitchReviewVisible] = useState(false);
   const [storyModalVisible, setStoryModalVisible] = useState(false);
+
+  // My Team ('A' | 'B' | null)
+  const myTeam: 'A' | 'B' | null = userSlot?.startsWith('B_') ? 'B' : (userSlot ? 'A' : null);
+
+  // Tactical Roster Privacy
+  const isTeamAHidden = Boolean(activeMatch?.teamAHidden);
+  const isTeamBHidden = Boolean(activeMatch?.teamBHidden);
+  const isTeamAHiddenForMe = isTeamAHidden && !(isOrganizer || isCaptainA || myTeam === 'A');
+  const isTeamBHiddenForMe = isTeamBHidden && !(isCaptainB || myTeam === 'B' || (isOrganizer && !hasCaptainB));
+  const canManageActiveTeamPrivacy = (activeTeam === 'A' && (isOrganizer || isCaptainA)) ||
+                                     (activeTeam === 'B' && (isCaptainB || isOrganizer));
+  const isActiveTeamHidden = activeTeam === 'A' ? isTeamAHidden : isTeamBHidden;
+
+  const handleToggleCurrentTeamPrivacy = async () => {
+    if (!canManageActiveTeamPrivacy || !activeMatchId) return;
+    const nextVal = !isActiveTeamHidden;
+    try {
+      await dbService.toggleTeamRosterPrivacy(activeMatchId, activeTeam, nextVal);
+      await dbService.sendMessage(`match_${activeMatchId}`, {
+        senderId: user?.uid || 'anon',
+        senderName: activeTeam === 'A' ? (activeMatch?.captainAName || 'A Kaptanı') : (activeMatch?.captainBName || 'B Kaptanı'),
+        text: nextVal 
+          ? `🔒 [Taktik Gizliliği]: ${activeTeam} Takımı kadro ve taktiğini rakip takımdan gizledi!`
+          : `👁️ [Taktik Gizliliği]: ${activeTeam} Takımı kadrosunu ve taktiğini herkese açtı.`
+      });
+      Alert.alert(
+        nextVal ? '🔒 Kadro Gizlendi' : '👁️ Kadro Açıldı',
+        nextVal 
+          ? `${activeTeam} Takımı kadrosu ve dizilimi rakip takımdan gizlendi. Sadece kendi takımınız görebilir.`
+          : `${activeTeam} Takımı kadrosu artık tüm oyuncular tarafından görülebilir.`
+      );
+    } catch (e) {
+      Alert.alert('Hata', 'Kadro gizlilik durumu güncellenemedi.');
+    }
+  };
   
   // Score modal state for captain
   const [scoreModalVisible, setScoreModalVisible] = useState(false);
@@ -116,24 +152,6 @@ export default function MatchRoomScreen() {
     fetchPitchScore();
   }, [fetchPitchScore]);
 
-  // Firestore live chat subscription
-  React.useEffect(() => {
-    const unsubChat = dbService.subscribeMessages(`match_${activeMatchId}`, (msgs) => {
-      if (msgs && msgs.length > 0) {
-        setChatMessages(msgs.map(m => ({
-          id: m.id || Math.random().toString(),
-          name: m.senderName,
-          text: m.text,
-          color: m.senderId === user?.uid ? theme.secondary : theme.primary,
-          isSelf: m.senderId === user?.uid
-        })));
-      }
-    });
-    return () => {
-      if (unsubChat) unsubChat();
-    };
-  }, [activeMatchId, user?.uid, theme.primary, theme.secondary]);
-
   // Sync with real match data
   React.useEffect(() => {
     if (matchTotalFee) setTotalMatchFee(matchTotalFee);
@@ -142,17 +160,23 @@ export default function MatchRoomScreen() {
   // Sync userSlot from Firestore match slots
   React.useEffect(() => {
     if (activeMatch?.slots && user?.uid) {
-      const foundSlot = Object.keys(activeMatch.slots).find(
+      let foundSlot = Object.keys(activeMatch.slots).find(
         (key) => activeMatch.slots?.[key]?.uid === user.uid
       );
+      if (foundSlot === 'A_FORVET_1') {
+        foundSlot = 'A_OS_ORTA';
+      }
       if (foundSlot) {
         setUserSlot(foundSlot);
-        if (foundSlot.startsWith('B_')) {
-          setActiveTeam('B');
-        } else {
-          setActiveTeam('A');
+        if (!hasInitialTeamSet.current) {
+          setActiveTeam(foundSlot.startsWith('B_') ? 'B' : 'A');
+          hasInitialTeamSet.current = true;
         }
+      } else {
+        setUserSlot(null);
       }
+    } else if (!user?.uid) {
+      setUserSlot(null);
     }
   }, [activeMatch?.slots, user?.uid]);
 
@@ -372,17 +396,63 @@ export default function MatchRoomScreen() {
     }
   };
 
-  // Chat State
+  // Dual Chat State (General 14-player & Team 7-player)
+  const [chatChannel, setChatChannel] = useState<'general' | 'team'>('general');
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<{id: string; name: string; text: string; color: string; isSelf: boolean}[]>([]);
+  const [teamChatMessages, setTeamChatMessages] = useState<{id: string; name: string; text: string; color: string; isSelf: boolean}[]>([]);
+
+  // Firestore live general chat subscription
+  React.useEffect(() => {
+    if (!activeMatchId) return;
+    const unsubChat = dbService.subscribeMessages(`match_${activeMatchId}`, (msgs) => {
+      if (msgs) {
+        setChatMessages(msgs.map(m => ({
+          id: m.id || Math.random().toString(),
+          name: m.senderName,
+          text: m.text,
+          color: m.senderId === user?.uid ? theme.secondary : theme.primary,
+          isSelf: m.senderId === user?.uid
+        })));
+      }
+    });
+    return () => {
+      if (unsubChat) unsubChat();
+    };
+  }, [activeMatchId, user?.uid, theme.primary, theme.secondary]);
+
+  // Firestore live team tactical chat subscription (private to Team A or Team B)
+  React.useEffect(() => {
+    if (!myTeam || !activeMatchId) {
+      setTeamChatMessages([]);
+      return;
+    }
+    const unsubTeamChat = dbService.subscribeMessages(`match_${activeMatchId}_team_${myTeam}`, (msgs) => {
+      if (msgs) {
+        setTeamChatMessages(msgs.map(m => ({
+          id: m.id || Math.random().toString(),
+          name: m.senderName,
+          text: m.text,
+          color: m.senderId === user?.uid ? theme.secondary : theme.primary,
+          isSelf: m.senderId === user?.uid
+        })));
+      }
+    });
+    return () => {
+      if (unsubTeamChat) unsubTeamChat();
+    };
+  }, [activeMatchId, myTeam, user?.uid, theme.primary, theme.secondary]);
 
   const handleSendChat = async () => {
     if (!chatInput.trim()) return;
     const text = chatInput.trim();
     setChatInput('');
 
+    const isTeam = chatChannel === 'team' && myTeam;
+    const targetRoomId = isTeam ? `match_${activeMatchId}_team_${myTeam}` : `match_${activeMatchId}`;
+
     try {
-      await dbService.sendMessage(`match_${activeMatchId}`, {
+      await dbService.sendMessage(targetRoomId, {
         senderId: user?.uid || 'anon',
         senderName: user?.name || 'Ben',
         senderAvatar: user?.avatar,
@@ -390,7 +460,6 @@ export default function MatchRoomScreen() {
       });
     } catch (e) {
       console.log('Mesaj gönderme hatası:', e);
-      // Fallback local update
       const newMsg = {
         id: Date.now().toString(),
         name: user?.name || 'Ben',
@@ -398,7 +467,11 @@ export default function MatchRoomScreen() {
         color: theme.secondary,
         isSelf: true
       };
-      setChatMessages((prev) => [...prev, newMsg]);
+      if (isTeam) {
+        setTeamChatMessages((prev) => [...prev, newMsg]);
+      } else {
+        setChatMessages((prev) => [...prev, newMsg]);
+      }
     }
   };
 
@@ -648,7 +721,16 @@ export default function MatchRoomScreen() {
     const slotKey = `${activeTeam}_${keySuffix}`;
     const isSelectedByMe = userSlot === slotKey;
     const legacyKey = keySuffix;
-    const occupant = activeMatch?.slots?.[slotKey] || (activeTeam === 'A' ? activeMatch?.slots?.[legacyKey] : null);
+    let occupant = activeMatch?.slots?.[slotKey] || (activeTeam === 'A' ? activeMatch?.slots?.[legacyKey] : null);
+
+    // Backwards compatibility for organizer or older matches:
+    if (!occupant && activeTeam === 'A') {
+      if (keySuffix === 'FORVET' && activeMatch?.slots?.['A_FORVET_1']) {
+        occupant = activeMatch.slots['A_FORVET_1'];
+      } else if (keySuffix === 'OS_ORTA') {
+        occupant = activeMatch?.slots?.['A_OS_ORTA'] || activeMatch?.slots?.['KAPTAN'] || activeMatch?.slots?.['OS_ORTA'] || activeMatch?.slots?.['A_FORVET_1'];
+      }
+    }
     const isOccupied = !!occupant;
     const isMySlot = isSelectedByMe || (occupant && occupant.uid === user?.uid);
     const teamColor = activeTeam === 'A' ? theme.primary : theme.secondary;
@@ -1006,6 +1088,31 @@ export default function MatchRoomScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Captain Roster Privacy Control */}
+          {canManageActiveTeamPrivacy && (
+            <TouchableOpacity 
+              style={[styles.rosterPrivacyToggleBtn, isActiveTeamHidden && styles.rosterPrivacyToggleBtnActive]}
+              onPress={handleToggleCurrentTeamPrivacy}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons 
+                name={isActiveTeamHidden ? "lock" : "lock-open"} 
+                size={16} 
+                color={isActiveTeamHidden ? (activeTeam === 'A' ? theme.primary : theme.secondary) : theme.textMuted} 
+              />
+              <Text style={[styles.rosterPrivacyToggleText, isActiveTeamHidden && { color: activeTeam === 'A' ? theme.primary : theme.secondary }]}>
+                {isActiveTeamHidden 
+                  ? `${activeTeam} Takımı Kadrosu Rakibe Gizli (Korumalı) 🔒` 
+                  : `${activeTeam} Takımı Kadrosunu Rakibe Gizle 👁️`}
+              </Text>
+              <View style={[styles.miniPrivacyPill, { backgroundColor: isActiveTeamHidden ? (activeTeam === 'A' ? `${theme.primary}33` : `${theme.secondary}33`) : theme.surfaceContainerHighest }]}>
+                <Text style={[styles.miniPrivacyPillText, { color: isActiveTeamHidden ? (activeTeam === 'A' ? theme.primary : theme.secondary) : theme.textMuted }]}>
+                  {isActiveTeamHidden ? 'GİZLİ' : 'AÇIK'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
+
           {/* B Takımı Kaptan Bilgi & Atama Kartı */}
           {activeTeam === 'B' && (
             <View style={styles.captainBBanner}>
@@ -1088,39 +1195,60 @@ export default function MatchRoomScreen() {
                 <View style={styles.pitchCenterCircle} />
               </View>
 
-              {/* Kale Dönmeli btn */}
-              <TouchableOpacity style={styles.kaleBtn}>
+              {/* Kale Dönmeli / Takım Değiştirme butonu */}
+              <TouchableOpacity 
+                style={styles.kaleBtn}
+                onPress={() => setActiveTeam(prev => prev === 'A' ? 'B' : 'A')}
+                activeOpacity={0.8}
+              >
                 <MaterialIcons name="sync-alt" size={12} color={activeTeam === 'A' ? theme.primary : theme.secondary} />
                 <Text style={[styles.kaleBtnText, { color: activeTeam === 'A' ? theme.primary : theme.secondary }]}>
-                  {activeTeam === 'A' ? 'A TAKIMI KADROSU' : 'B TAKIMI KADROSU'}
+                  {activeTeam === 'A' ? 'A TAKIMI (B\'YE GEÇ ➔)' : 'B TAKIMI (A\'YA GEÇ ➔)'}
                 </Text>
               </TouchableOpacity>
 
-              {/* Slots */}
-              <View style={styles.formationGrid}>
-                {/* Forward */}
-                <View style={styles.slotRow}>
-                   {renderSlotItem('FORVET', 'Forvet', '9')}
+              {/* Secret Tactical Shroud OR Formation Grid */}
+              {((activeTeam === 'A' && isTeamAHiddenForMe) || (activeTeam === 'B' && isTeamBHiddenForMe)) ? (
+                <View style={styles.hiddenTacticOverlay}>
+                  <View style={[styles.hiddenTacticIconCircle, { borderColor: activeTeam === 'A' ? theme.primary : theme.secondary }]}>
+                    <MaterialIcons name="security" size={42} color={activeTeam === 'A' ? theme.primary : theme.secondary} />
+                  </View>
+                  <Text style={styles.hiddenTacticTitle}>🔒 TAKTİK VE KADRO GİZLİ</Text>
+                  <Text style={styles.hiddenTacticSub}>
+                    {activeTeam === 'A' ? 'A Takımı Kaptanı' : 'B Takımı Kaptanı'} maç saatine kadar kadrosunu ve dizilimini rakip takımdan gizledi.
+                  </Text>
+                  <View style={[styles.hiddenTacticCountBadge, { backgroundColor: activeTeam === 'A' ? `${theme.primary}26` : `${theme.secondary}26` }]}>
+                    <Text style={[styles.hiddenTacticCountText, { color: activeTeam === 'A' ? theme.primary : theme.secondary }]}>
+                      {activeTeam === 'A' ? `${teamACount}/${modePlayersPerTeam} OYUNCU KATILDI` : `${teamBCount}/${modePlayersPerTeam} OYUNCU KATILDI`}
+                    </Text>
+                  </View>
                 </View>
-                
-                {/* Midfielders */}
-                <View style={[styles.slotRow, { justifyContent: 'space-between', paddingHorizontal: 32 }]}>
-                   {renderSlotItem('OS_SOL', 'Sol OS', '8')}
-                   {renderSlotItem('OS_ORTA', activeTeam === 'A' ? 'Kaptan' : 'Orta Saha', '10')}
-                   {renderSlotItem('OS_SAG', 'Sağ OS', '7')}
-                </View>
+              ) : (
+                <View style={styles.formationGrid}>
+                  {/* Forward */}
+                  <View style={styles.slotRow}>
+                     {renderSlotItem('FORVET', 'Forvet', '9')}
+                  </View>
+                  
+                  {/* Midfielders */}
+                  <View style={[styles.slotRow, { justifyContent: 'space-between', paddingHorizontal: 32 }]}>
+                     {renderSlotItem('OS_SOL', 'Sol OS', '8')}
+                     {renderSlotItem('OS_ORTA', activeTeam === 'A' ? 'Kaptan' : 'Orta Saha', '10')}
+                     {renderSlotItem('OS_SAG', 'Sağ OS', '7')}
+                  </View>
 
-                {/* Defenders */}
-                <View style={[styles.slotRow, { justifyContent: 'space-around', paddingHorizontal: 48 }]}>
-                   {renderSlotItem('DEF_SOL', 'Sol Def', '3')}
-                   {renderSlotItem('DEF_SAG', 'Sağ Def', '4')}
-                </View>
+                  {/* Defenders */}
+                  <View style={[styles.slotRow, { justifyContent: 'space-around', paddingHorizontal: 48 }]}>
+                     {renderSlotItem('DEF_SOL', 'Sol Def', '3')}
+                     {renderSlotItem('DEF_SAG', 'Sağ Def', '4')}
+                  </View>
 
-                {/* GK */}
-                <View style={styles.slotRow}>
-                   {renderSlotItem('KALECI', 'Kaleci', '1')}
+                  {/* GK */}
+                  <View style={styles.slotRow}>
+                     {renderSlotItem('KALECI', 'Kaleci', '1')}
+                  </View>
                 </View>
-              </View>
+              )}
             </View>
           </View>
 
@@ -1157,6 +1285,7 @@ export default function MatchRoomScreen() {
             {(() => {
               const isAlreadyInMainSlot = Boolean(userSlot);
               const isAlreadyInReserve = Boolean(user?.uid && activeMatch?.reserves?.some(r => r.uid === user.uid));
+              const isRosterFull = rosterPayments.length >= totalPlayersCount;
 
               if (isAlreadyInMainSlot) {
                 return null;
@@ -1179,6 +1308,17 @@ export default function MatchRoomScreen() {
                     <MaterialIcons name="person-remove" size={16} color={theme.error} />
                     <Text style={styles.leaveReserveBtnText}>Yedek Sırasından Çık</Text>
                   </TouchableOpacity>
+                );
+              }
+
+              if (!isRosterFull) {
+                return (
+                  <View style={styles.openSlotsNotice}>
+                    <MaterialIcons name="info-outline" size={16} color={theme.primary} />
+                    <Text style={styles.openSlotsNoticeText}>
+                      Kadroda henüz {totalPlayersCount - rosterPayments.length} kişilik boş yer var! Sahadaki boş bir mevkiye (+) dokunarak doğrudan asil kadroya dahil olabilirsiniz.
+                    </Text>
+                  </View>
                 );
               }
 
@@ -1249,16 +1389,18 @@ export default function MatchRoomScreen() {
 
           {showPaymentDetails && (
             <View style={styles.paymentBody}>
-              {/* Kaleci Ücret Muafiyeti Toggle */}
-              <View style={styles.gkFreeToggleBox}>
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <MaterialIcons name="sports-handball" size={18} color={theme.primary} />
-                    <Text style={styles.gkFreeTitle}>KALECİDEN ÜCRET ALINMASIN (ÜCRETSİZ)</Text>
+              {/* Kaleci Ücret Muafiyeti Toggle - Compact & Editable */}
+              <View style={styles.gkFreeCompactRow}>
+                <View style={styles.gkFreeLeft}>
+                  <MaterialIcons name="sports-handball" size={18} color={theme.primary} />
+                  <View>
+                    <Text style={styles.gkFreeCompactTitle}>Kalecilerden Ücret Alınmasın</Text>
+                    <Text style={styles.gkFreeCompactSub}>
+                      {isGkFree 
+                        ? `Muaf • ₺${perPlayerFee}/kişi (${activePayersCount} saha oyuncusu)` 
+                        : `Herkes Eşit • ₺${perPlayerFee}/kişi (14 oyuncu)`}
+                    </Text>
                   </View>
-                  <Text style={styles.gkFreeSub}>
-                    {isGkFree ? `Kaleciler muaf tutuldu. Ücret ${activePayersCount} saha oyuncusuna bölündü.` : `Kaleciler dahil tüm ${totalPlayersCount} oyuncu ücreti eşit paylaşır.`}
-                  </Text>
                 </View>
                 {isOrganizer ? (
                   <Switch
@@ -1268,6 +1410,13 @@ export default function MatchRoomScreen() {
                       if (activeMatchId) {
                         try {
                           await dbService.updateMatchGkFree(activeMatchId, val);
+                          await dbService.sendMessage(`match_${activeMatchId}`, {
+                            senderId: user?.uid || 'anon',
+                            senderName: 'Organizatör',
+                            text: val 
+                              ? `🧤 [Kaleci Ayarı]: Organizatör bu maçta kalecileri ücretten muaf tuttu. Yeni kişi başı ücret: ₺${Math.round(totalMatchFee / Math.max(1, totalPlayersCount - 2))}`
+                              : `🧤 [Kaleci Ayarı]: Kaleci ücret muafiyeti kaldırıldı. Ücret tüm kadroya eşit bölündü (₺${Math.round(totalMatchFee / totalPlayersCount)}/kişi).`
+                          });
                         } catch (e) {
                           console.error('Kaleci muafiyet güncelleme hatası:', e);
                         }
@@ -1277,9 +1426,9 @@ export default function MatchRoomScreen() {
                     thumbColor={isGkFree ? theme.text : theme.textMuted}
                   />
                 ) : (
-                  <View style={[styles.activeSubBadge, { backgroundColor: isGkFree ? `${theme.primary}26` : theme.surfaceContainerHighest }]}>
-                    <Text style={[styles.activeSubBadgeText, { color: isGkFree ? theme.primary : theme.textMuted }]}>
-                      {isGkFree ? 'AKTİF' : 'KAPALI'}
+                  <View style={[styles.miniGkBadge, { backgroundColor: isGkFree ? `${theme.primary}26` : theme.surfaceContainerHighest }]}>
+                    <Text style={[styles.miniGkBadgeText, { color: isGkFree ? theme.primary : theme.textMuted }]}>
+                      {isGkFree ? 'ÜCRETSİZ' : 'STANDART'}
                     </Text>
                   </View>
                 )}
@@ -1666,41 +1815,99 @@ export default function MatchRoomScreen() {
           </View>
         </View>
 
-        {/* Chat */}
+        {/* Dual Channel Match & Team Chat */}
         <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionHeaderLeft}>
-              <MaterialIcons name="chat" size={18} color={theme.secondary} />
-              <Text style={styles.sectionTitle}>MAÇ SOHBETİ</Text>
-            </View>
-            <View style={styles.liveIndicator} />
+          {/* Chat Channel Selector Tabs */}
+          <View style={styles.chatTabsHeader}>
+            <TouchableOpacity
+              style={[styles.chatTabBtn, chatChannel === 'general' && styles.chatTabBtnActiveGeneral]}
+              onPress={() => setChatChannel('general')}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="public" size={16} color={chatChannel === 'general' ? theme.primary : theme.textMuted} />
+              <Text style={[styles.chatTabText, chatChannel === 'general' && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                GENEL SOHBET ({totalPlayersCount} KİŞİ)
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.chatTabBtn, chatChannel === 'team' && styles.chatTabBtnActiveTeam]}
+              onPress={() => setChatChannel('team')}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="shield" size={16} color={chatChannel === 'team' ? theme.secondary : theme.textMuted} />
+              <Text style={[styles.chatTabText, chatChannel === 'team' && { color: theme.secondary, fontFamily: Fonts.headlineBold }]}>
+                {myTeam ? `${myTeam} TAKIMI (${modePlayersPerTeam} KİŞİ)` : 'TAKIM SOHBETİ'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Subheader hint */}
+          <View style={styles.chatChannelHintBar}>
+            <MaterialIcons 
+              name={chatChannel === 'general' ? "public" : "security"} 
+              size={13} 
+              color={chatChannel === 'general' ? theme.primary : theme.secondary} 
+            />
+            <Text style={styles.chatChannelHintText}>
+              {chatChannel === 'general' 
+                ? '🌐 Bu odadaki mesajları her iki takımın tüm oyuncuları görebilir.' 
+                : (myTeam 
+                    ? `🛡️ Gizli Taktik Odası: Sadece ${myTeam} Takımı oyuncuları görür. Karşı takım göremez!` 
+                    : '🔒 Takım taktik odası için yukarıdaki sahadan bir mevki seçmelisiniz.')}
+            </Text>
           </View>
 
           <View style={styles.chatBox}>
-            <ScrollView style={styles.chatList} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-              {chatMessages.map((msg) => (
-                <View key={msg.id} style={[msg.isSelf ? styles.chatMsgSelf : styles.chatMsgOther, { marginBottom: 12 }]}>
-                  <Text style={[styles.chatName, { color: msg.color, textAlign: msg.isSelf ? 'right' : 'left' }]}>{msg.name}</Text>
-                  <View style={msg.isSelf ? styles.chatBubbleSelf : styles.chatBubbleOther}>
-                    <Text style={styles.chatText}>{msg.text}</Text>
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
+            {chatChannel === 'team' && !myTeam ? (
+              <View style={styles.teamChatLockedBox}>
+                <MaterialIcons name="lock" size={32} color={theme.textMuted} />
+                <Text style={styles.teamChatLockedTitle}>Takım Taktik Odası Kilitli</Text>
+                <Text style={styles.teamChatLockedSub}>
+                  Karşı takımdan gizli özel taktik sohbeti kullanabilmek için yukarıdaki sahadan A veya B takımında bir mevki seçin.
+                </Text>
+              </View>
+            ) : (
+              <>
+                <ScrollView style={styles.chatList} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                  {(chatChannel === 'team' ? teamChatMessages : chatMessages).length === 0 ? (
+                    <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                      <Text style={{ fontFamily: Fonts.body, fontSize: 12, color: theme.textMuted }}>
+                        {chatChannel === 'team' 
+                          ? `🛡️ ${myTeam} Takımı taktik odasında henüz mesaj yok. İlk taktik mesajını yazın!` 
+                          : 'Henüz mesaj yok. İlk mesajı siz yazın!'}
+                      </Text>
+                    </View>
+                  ) : (
+                    (chatChannel === 'team' ? teamChatMessages : chatMessages).map((msg) => (
+                      <View key={msg.id} style={[msg.isSelf ? styles.chatMsgSelf : styles.chatMsgOther, { marginBottom: 12 }]}>
+                        <Text style={[styles.chatName, { color: msg.color, textAlign: msg.isSelf ? 'right' : 'left' }]}>{msg.name}</Text>
+                        <View style={msg.isSelf ? styles.chatBubbleSelf : styles.chatBubbleOther}>
+                          <Text style={styles.chatText}>{msg.text}</Text>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </ScrollView>
 
-            <View style={styles.chatInputWrap}>
-              <TextInput 
-                style={styles.chatInput}
-                placeholder="Mesaj yazın..."
-                placeholderTextColor={theme.textMuted}
-                value={chatInput}
-                onChangeText={setChatInput}
-                onSubmitEditing={handleSendChat}
-              />
-              <TouchableOpacity style={styles.chatSendBtn} onPress={handleSendChat}>
-                <MaterialIcons name="send" size={16} color={theme.background} />
-              </TouchableOpacity>
-            </View>
+                <View style={styles.chatInputWrap}>
+                  <TextInput 
+                    style={styles.chatInput}
+                    placeholder={chatChannel === 'team' ? `${myTeam} Takımına özel taktik mesajı yazın...` : "Maç odasına genel mesaj yazın..."}
+                    placeholderTextColor={theme.textMuted}
+                    value={chatInput}
+                    onChangeText={setChatInput}
+                    onSubmitEditing={handleSendChat}
+                  />
+                  <TouchableOpacity 
+                    style={[styles.chatSendBtn, chatChannel === 'team' && { backgroundColor: theme.secondary }]} 
+                    onPress={handleSendChat}
+                  >
+                    <MaterialIcons name="send" size={16} color={theme.background} />
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </View>
         </View>
 
@@ -1855,7 +2062,7 @@ const useStyles = (theme: any) => StyleSheet.create({
     padding: 16},
   fieldBox: {
     backgroundColor: theme.surface,
-    aspectRatio: 4/3,
+    minHeight: 480,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: `${theme.primary}33`,
@@ -1888,27 +2095,28 @@ const useStyles = (theme: any) => StyleSheet.create({
     transform: [{ translateX: -50 }, { translateY: -50 }]},
   kaleBtn: {
     position: 'absolute',
-    top: 24,
-    right: 24,
+    top: 14,
+    right: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: theme.borderSubtle,
+    gap: 6,
+    backgroundColor: theme.surfaceContainerHighest,
     borderWidth: 1,
     borderColor: `${theme.primary}4D`,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 20,
-    zIndex: 10},
+    borderRadius: 16,
+    zIndex: 20},
   kaleBtnText: {
     fontFamily: Fonts.headlineBold,
-    fontSize: 10,
+    fontSize: 9,
     color: theme.primary,
     textTransform: 'uppercase',
     letterSpacing: -0.5},
   formationGrid: {
     ...StyleSheet.absoluteFillObject,
-    padding: 32,
+    paddingVertical: 20,
+    paddingHorizontal: 12,
     justifyContent: 'space-between'},
   slotRow: {
     flexDirection: 'row',
@@ -3198,5 +3406,215 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontFamily: Fonts.headlineBold,
     fontSize: 10,
     color: theme.background,
+  },
+
+  // Tactical Roster Privacy
+  rosterPrivacyToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.surfaceContainerHigh,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    gap: 8,
+  },
+  rosterPrivacyToggleBtnActive: {
+    borderColor: theme.secondary,
+    backgroundColor: `${theme.secondary}12`,
+  },
+  rosterPrivacyToggleText: {
+    flex: 1,
+    fontFamily: Fonts.headline,
+    fontSize: 11,
+    color: theme.textMuted,
+  },
+  miniPrivacyPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  miniPrivacyPillText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 9,
+    letterSpacing: 0.5,
+  },
+
+  // Hidden Tactical Shroud on Pitch
+  hiddenTacticOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: `${theme.surface}F2`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    zIndex: 15,
+  },
+  hiddenTacticIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.surfaceContainerHighest,
+    marginBottom: 12,
+  },
+  hiddenTacticTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 15,
+    color: theme.text,
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  hiddenTacticSub: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: theme.textMuted,
+    textAlign: 'center',
+    lineHeight: 16,
+    maxWidth: 260,
+    marginBottom: 12,
+  },
+  hiddenTacticCountBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  hiddenTacticCountText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    letterSpacing: 0.5,
+  },
+
+  // Open slots notice in reserve section
+  openSlotsNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: `${theme.primary}15`,
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: `${theme.primary}33`,
+    marginTop: 4,
+  },
+  openSlotsNoticeText: {
+    flex: 1,
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: theme.text,
+    lineHeight: 14,
+  },
+
+  // Compact GK Free Row
+  gkFreeCompactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.surfaceContainerHigh,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: `${theme.primary}33`,
+  },
+  gkFreeLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  gkFreeCompactTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.text,
+  },
+  gkFreeCompactSub: {
+    fontFamily: Fonts.body,
+    fontSize: 9,
+    color: theme.textMuted,
+    marginTop: 1,
+  },
+  miniGkBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  miniGkBadgeText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 9,
+    letterSpacing: 0.5,
+  },
+
+  // Dual Chat Styles
+  chatTabsHeader: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: theme.borderSubtle,
+  },
+  chatTabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    backgroundColor: theme.surfaceContainerHighest,
+  },
+  chatTabBtnActiveGeneral: {
+    backgroundColor: `${theme.primary}18`,
+    borderBottomWidth: 2,
+    borderBottomColor: theme.primary,
+  },
+  chatTabBtnActiveTeam: {
+    backgroundColor: `${theme.secondary}18`,
+    borderBottomWidth: 2,
+    borderBottomColor: theme.secondary,
+  },
+  chatTabText: {
+    fontFamily: Fonts.headline,
+    fontSize: 10,
+    color: theme.textMuted,
+    letterSpacing: 0.5,
+  },
+  chatChannelHintBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    backgroundColor: theme.surfaceContainer,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.borderSubtle,
+  },
+  chatChannelHintText: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: theme.textMuted,
+  },
+  teamChatLockedBox: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    gap: 8,
+  },
+  teamChatLockedTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 13,
+    color: theme.text,
+  },
+  teamChatLockedSub: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: theme.textMuted,
+    textAlign: 'center',
+    lineHeight: 16,
+    maxWidth: 280,
   },
 });

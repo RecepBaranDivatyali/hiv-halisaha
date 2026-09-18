@@ -44,6 +44,8 @@ export interface MatchModel {
   captainBName?: string | null;
   isSubscription?: boolean;
   isGkFree?: boolean;
+  teamAHidden?: boolean;
+  teamBHidden?: boolean;
   status: 'active' | 'completed' | 'cancelled';
   score?: string;
   joinTerms?: number;
@@ -296,21 +298,80 @@ export const dbService = {
           throw new Error("Maç bulunamadı!");
         }
         const data = matchDoc.data();
-        if (data.slots && data.slots[slotKey]) {
+        if (data.slots && data.slots[slotKey] && data.slots[slotKey].uid && data.slots[slotKey].uid !== player.uid) {
           throw new Error("Mevki zaten dolu!");
         }
-        transaction.update(matchRef, {
+
+        const updates: Record<string, any> = {
           [`slots.${slotKey}`]: {
             ...player,
-            paid: false,
+            paid: data.slots?.[slotKey]?.paid ?? false,
+            paymentStatus: data.slots?.[slotKey]?.paymentStatus ?? 'unpaid',
             joinedAt: serverTimestamp()
-          },
-          joinedPlayersCount: increment(1)
-        });
+          }
+        };
+
+        // Eğer kullanıcı maçta daha önce başka bir mevkideyse, eski mevkisini otomatik temizle
+        let countDelta = 1;
+        if (data.slots) {
+          Object.entries(data.slots).forEach(([k, s]: [string, any]) => {
+            if (s && s.uid === player.uid) {
+              if (k !== slotKey) {
+                updates[`slots.${k}`] = deleteField();
+                countDelta = 0; // Mevki değiştirdi, toplam kişi sayısı artmaz
+              } else {
+                countDelta = 0; // Zaten bu mevkide
+              }
+            }
+          });
+        }
+
+        // Yedek listesindeyse, asil kadroya geçtiği için yedekten kaldır
+        if (data.reserves && Array.isArray(data.reserves)) {
+          const filtered = data.reserves.filter((r: any) => r.uid !== player.uid);
+          if (filtered.length !== data.reserves.length) {
+            updates.reserves = filtered;
+          }
+        }
+
+        if (countDelta !== 0) {
+          updates.joinedPlayersCount = increment(countDelta);
+        }
+
+        transaction.update(matchRef, updates);
       });
       return true;
     } catch (error) {
       console.error("Mevkiye katılma hatası:", error);
+      throw error;
+    }
+  },
+
+  updateMatchGkFree: async (matchId: string, isGkFree: boolean) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      await updateDoc(matchRef, {
+        isGkFree,
+        updatedAt: serverTimestamp()
+      });
+      return true;
+    } catch (error) {
+      console.error("Kaleci muafiyet güncelleme hatası:", error);
+      throw error;
+    }
+  },
+
+  toggleTeamRosterPrivacy: async (matchId: string, team: 'A' | 'B', isHidden: boolean) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      const field = team === 'A' ? 'teamAHidden' : 'teamBHidden';
+      await updateDoc(matchRef, {
+        [field]: isHidden,
+        updatedAt: serverTimestamp()
+      });
+      return true;
+    } catch (error) {
+      console.error("Kadro gizlilik güncelleme hatası:", error);
       throw error;
     }
   },
@@ -510,20 +571,6 @@ export const dbService = {
       return true;
     } catch (error) {
       console.error("Maç katılım şartları güncelleme hatası:", error);
-      throw error;
-    }
-  },
-
-  updateMatchGkFree: async (matchId: string, isGkFree: boolean) => {
-    try {
-      const matchRef = doc(db, 'matches', matchId);
-      await updateDoc(matchRef, {
-        isGkFree,
-        updatedAt: serverTimestamp()
-      });
-      return true;
-    } catch (error) {
-      console.error("Kaleci muafiyet ayarı güncelleme hatası:", error);
       throw error;
     }
   },
