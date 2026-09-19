@@ -6,6 +6,7 @@ import { Fonts } from '@/constants/theme';
 import { useRouter, usePathname } from 'expo-router';
 import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/context/ThemeContext';
+import { usePwaInstall } from '@/hooks/use-pwa-install';
 
 interface SideMenuProps {
   visible: boolean;
@@ -20,6 +21,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
   const router = useRouter();
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  const { isInstalled, promptInstall } = usePwaInstall();
 
   const slideAnim = React.useRef(new Animated.Value(-280)).current;
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
@@ -74,10 +76,15 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
     { label: 'BİLDİRİMLER', icon: 'notifications', action: 'notifications' },
     { label: 'AYARLAR', icon: 'settings', route: '/settings', active: pathname?.includes('settings') },
     ...(user?.role === 'admin' ? [{ label: 'YÖNETİCİ PANELİ', icon: 'admin-panel-settings', action: 'admin' }] : []),
+    ...(!isInstalled ? [{ label: 'UYGULAMAYI YÜKLE', icon: 'get-app', action: 'install' }] : []),
     { label: 'NASIL KULLANILIR?', icon: 'help', action: 'guide' },
   ];
 
   const handleNavigate = (item: MenuItem) => {
+    if (item.action === 'install') {
+      promptInstall();
+      return;
+    }
     if (item.action === 'notifications') {
       onClose();
       if (onOpenNotifications) {

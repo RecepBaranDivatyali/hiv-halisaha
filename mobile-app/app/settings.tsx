@@ -8,6 +8,7 @@ import { Fonts, THEMES, ThemeType } from '@/constants/theme';
 import { Bouncable } from '@/components/Bouncable';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/use-auth';
+import { usePwaInstall } from '@/hooks/use-pwa-install';
 import { authService, getTurkishAuthErrorMessage } from '@/services/authService';
 import Constants from 'expo-constants';
 
@@ -17,6 +18,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { theme, currentTheme, setTheme } = useTheme();
   const { logout } = useAuth();
+  const { isInstalled, promptInstall } = usePwaInstall();
   const styles = useStyles(theme);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
@@ -170,6 +172,16 @@ export default function SettingsScreen() {
             ))}
           </View>
         </ScrollView>
+
+        <Text style={styles.sectionTitle}>UYGULAMA</Text>
+        <View style={styles.sectionCard}>
+          {renderSettingRow(
+            isInstalled ? 'check-circle' : 'get-app',
+            isInstalled ? 'Uygulama Yüklendi' : 'Uygulamayı Cihaza Yükle',
+            isInstalled ? 'Cihazınızda bağımsız uygulama olarak yüklü' : 'Ana ekrana ekleyip tam ekran deneyimi yaşayın',
+            !isInstalled ? () => promptInstall() : undefined
+          )}
+        </View>
 
         <Text style={styles.sectionTitle}>DİĞER</Text>
         <View style={styles.sectionCard}>
