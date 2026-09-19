@@ -206,20 +206,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
       >
-        {/* Post-Match Review Encouragement Card (Yemeksepeti/Getir Modeli) */}
-        {unratedFinishedMatch && (
-          <MatchCountdownCard 
-            key={`review-${unratedFinishedMatch.id}`}
-            matchId={unratedFinishedMatch.id} 
-            arena={unratedFinishedMatch.arena}
-            dateTime={unratedFinishedMatch.dateTime}
-            mode={unratedFinishedMatch.mode}
-            isCompleted={true}
-            onDismiss={() => handleDismissReview(unratedFinishedMatch.id)}
-          />
-        )}
-
-        {/* Live Match Countdown for Upcoming Active Match */}
+        {/* 1. Live Match Countdown for Upcoming Active Match (Aktif maç her zaman en üstte) */}
         {countdownMatch && (!unratedFinishedMatch || countdownMatch.id !== unratedFinishedMatch.id) && (
           <MatchCountdownCard 
             key={`upcoming-${countdownMatch.id}`}
@@ -228,6 +215,49 @@ export default function HomeScreen() {
             dateTime={countdownMatch.dateTime}
             mode={countdownMatch.mode}
           />
+        )}
+
+        {/* 2. Tek Satırlık Kompakt Maç Değerlendirme Teşviki (Aktif maçın altında) */}
+        {unratedFinishedMatch && (
+          <View style={styles.compactReviewBanner}>
+            <TouchableOpacity 
+              style={styles.compactReviewBannerLeft}
+              activeOpacity={0.8}
+              onPress={() => router.push(unratedFinishedMatch.id ? { pathname: '/rate-match', params: { matchId: unratedFinishedMatch.id } } : '/rate-match')}
+            >
+              <View style={styles.compactReviewIconBadge}>
+                <MaterialIcons name="grade" size={16} color="#FFD700" />
+              </View>
+              <View style={styles.compactReviewTextGroup}>
+                <Text style={styles.compactReviewTitle} numberOfLines={1}>
+                  Maç nasıldı?
+                </Text>
+                <Text style={styles.compactReviewArena} numberOfLines={1}>
+                  {unratedFinishedMatch.arena}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <View style={styles.compactReviewRight}>
+              <TouchableOpacity 
+                style={styles.compactReviewBtn}
+                activeOpacity={0.85}
+                onPress={() => router.push(unratedFinishedMatch.id ? { pathname: '/rate-match', params: { matchId: unratedFinishedMatch.id } } : '/rate-match')}
+              >
+                <MaterialIcons name="star" size={12} color={theme.background} />
+                <Text style={styles.compactReviewBtnText}>DEĞERLENDİR</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.compactReviewDismissBtn}
+                onPress={() => handleDismissReview(unratedFinishedMatch.id)}
+                hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                accessibilityLabel="Kapat"
+              >
+                <MaterialIcons name="close" size={16} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
+          </View>
         )}
 
         {/* Quick App Guide Banner (Only shown until viewed) */}
@@ -552,4 +582,74 @@ const useStyles = (theme: any) => StyleSheet.create({
   impactFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   impactScoreText: { fontFamily: Fonts.body, fontSize: 10, color: theme.textMuted },
   impactLeagueText: { fontFamily: Fonts.headlineBold, fontSize: 10, color: theme.primary, letterSpacing: 1 },
+
+  compactReviewBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.surfaceContainer,
+    borderWidth: 1,
+    borderColor: `${theme.primary}40`,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.primary,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    gap: 8,
+  },
+  compactReviewBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  compactReviewIconBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: `${theme.primary}20`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compactReviewTextGroup: {
+    flex: 1,
+  },
+  compactReviewTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 12,
+    color: theme.text,
+    lineHeight: 15,
+  },
+  compactReviewArena: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: theme.textMuted,
+    lineHeight: 13,
+  },
+  compactReviewRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  compactReviewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: theme.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  compactReviewBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: theme.background,
+    letterSpacing: 0.3,
+  },
+  compactReviewDismissBtn: {
+    padding: 4,
+    borderRadius: 12,
+    backgroundColor: theme.surfaceContainerHighest,
+  },
 });
