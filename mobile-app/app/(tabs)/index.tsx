@@ -115,8 +115,10 @@ export default function HomeScreen() {
   // Geri sayım maçı (Yaklaşan kullanıcı maçı veya genel aktif maç)
   const countdownMatch = upcomingUserMatch || upcomingGeneralMatch;
 
-  // Tüm aktif yaklaşan maçlar (kesinlikle geçmiş maçları içermez)
-  const upcomingMatches = matches.filter(m => !isMatchPast(m.dateTime)).slice(0, 3);
+  // Diğer yaklaşan maçlar (Üstteki geri sayım maçı hariç tutularak çiftleme önlenir)
+  const otherUpcomingMatches = matches.filter(m => 
+    !isMatchPast(m.dateTime) && (!countdownMatch || m.id !== countdownMatch.id)
+  ).slice(0, 5);
 
   // Kullanıcı istatistikleri — Firestore'dan çekilen gerçek değerler
   const weeklyGoals = user?.stats?.goals ?? 0;
@@ -355,62 +357,94 @@ export default function HomeScreen() {
           </Bouncable>
         )}
 
-        <View style={styles.sectionHeaderBox}>
-          <Text style={styles.sectionTitle}>YAKLAŞAN MAÇLAR</Text>
-          <TouchableOpacity style={styles.seeAllBtn} onPress={() => router.push('/(tabs)/matches')}>
-            <Text style={styles.seeAllText}>TÜMÜ</Text>
-          </TouchableOpacity>
-        </View>
+        {/* ── DİĞER YAKLAŞAN MAÇLAR (Üstteki geri sayım maçı haricindeki diğer maçlar) ── */}
+        {otherUpcomingMatches.length > 0 && (
+          <>
+            <View style={styles.sectionHeaderBox}>
+              <Text style={styles.sectionTitle}>
+                {upcomingUserMatch ? 'DİĞER YAKLAŞAN MAÇLAR' : 'KATILABİLECEĞİN MAÇLAR'}
+              </Text>
+              <TouchableOpacity style={styles.seeAllBtn} onPress={() => router.push('/(tabs)/matches')}>
+                <Text style={styles.seeAllText}>TÜMÜ</Text>
+              </TouchableOpacity>
+            </View>
 
-        {upcomingMatches.length === 0 ? (
-          <View style={styles.emptyMatchCard}>
-            <MaterialIcons name="sports-soccer" size={36} color={theme.surfaceContainerHighest} />
-            <Text style={styles.emptyMatchText}>Henüz aktif maçın yok</Text>
-            <TouchableOpacity style={styles.emptyMatchBtn} onPress={() => setCreateMatchVisible(true)}>
-              <Text style={styles.emptyMatchBtnText}>İlk Maçı Oluştur</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.matchesScroll}>
-            {upcomingMatches.map((match, index) => (
-              <Animated.View key={match.id} entering={FadeInDown.delay(index * 100).springify()}>
-                <Bouncable
-                  style={styles.upcomingMatchCard}
-                  onPress={() => router.push({ pathname: '/match-room', params: { matchId: match.id } })}
-                >
-                    <View style={styles.matchCardTop}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.matchesScroll}>
+              {otherUpcomingMatches.map((match, index) => {
+                const isMatchOrg = match.organizer?.toLowerCase().includes('siz') || (user?.uid && match.organizerId === user.uid);
+                const isMatchCapB = Boolean(user?.uid && match.captainBId === user.uid);
+                const isUserJoined = Boolean(user?.uid && match.slots && Object.values(match.slots).some(s => s?.uid === user.uid));
+                const badgeText = isMatchOrg ? '👑 ORGANİZATÖR' : isMatchCapB ? '⭐ B KAPTANI' : isUserJoined ? 'KATILIYORUM' : 'KATILIMA AÇIK';
+                const badgeColor = isMatchOrg ? theme.primary : isMatchCapB ? theme.secondary : isUserJoined ? theme.secondary : theme.textMuted;
+                const badgeBg = isMatchOrg ? `${theme.primary}20` : isMatchCapB ? `${theme.secondary}20` : isUserJoined ? `${theme.secondary}20` : `${theme.border}33`;
+
+                return (
+                  <Animated.View key={match.id} entering={FadeInDown.delay(index * 100).springify()}>
+                    <Bouncable
+                      style={styles.upcomingMatchCard}
+                      onPress={() => router.push({ pathname: '/match-room', params: { matchId: match.id } })}
+                    >
+                      {/* Üst Satır: Rozetler */}
+                      <View style={styles.matchCardTop}>
+                        <View style={[styles.matchBadge, { backgroundColor: badgeBg }]}>
+                          <Text style={[styles.matchBadgeText, { color: badgeColor }]}>
+                            {badgeText}
+                          </Text>
+                        </View>
+                        {match.hasReservation ? (
+                          <View style={styles.resMiniBadge}>
+                            <MaterialIcons name="verified" size={11} color="#22c55e" />
+                            <Text style={styles.resMiniBadgeText}>Sahası Hazır</Text>
+                          </View>
+                        ) : match.isPitchFlexible ? (
+                          <View style={styles.flexMiniBadge}>
+                            <MaterialIcons name="location-searching" size={11} color="#f59e0b" />
+                            <Text style={styles.flexMiniBadgeText}>Saha Aranıyor</Text>
+                          </View>
+                        ) : null}
+                      </View>
+
+                      {/* Halısaha Adı (2 satıra kadar tam gösterilir) */}
+                      <Text style={styles.upcomingArena} numberOfLines={2}>
+                        {match.arena}
+                      </Text>
+
+                      {/* Maç Tarihi & Saati */}
                       <View style={styles.matchDateTime}>
                         <MaterialIcons name="event" size={14} color={theme.primary} />
                         <Text style={styles.matchDateText}>{match.dateTime}</Text>
                       </View>
-                      {(() => {
-                        const isMatchOrg = match.organizer?.toLowerCase().includes('siz') || (user?.uid && match.organizerId === user.uid);
-                        const isMatchCapB = Boolean(user?.uid && match.captainBId === user.uid);
-                        const isUserJoined = Boolean(user?.uid && match.slots && Object.values(match.slots).some(s => s?.uid === user.uid));
-                        const badgeText = isMatchOrg ? '👑 ORGANİZATÖR' : isMatchCapB ? '⭐ B KAPTANI' : isUserJoined ? 'KATILIYORUM' : 'KATILIMA AÇIK';
-                        const badgeColor = isMatchOrg ? theme.primary : isMatchCapB ? theme.secondary : isUserJoined ? theme.secondary : theme.textMuted;
-                        const badgeBg = isMatchOrg ? `${theme.primary}20` : isMatchCapB ? `${theme.secondary}20` : isUserJoined ? `${theme.secondary}20` : `${theme.border}33`;
-                        return (
-                          <View style={[styles.matchBadge, { backgroundColor: badgeBg }]}>
-                            <Text style={[styles.matchBadgeText, { color: badgeColor }]}>
-                              {badgeText}
-                            </Text>
-                          </View>
-                        );
-                      })()}
-                    </View>
-                  <Text style={styles.upcomingArena} numberOfLines={1}>{match.arena}</Text>
-                  <View style={styles.upcomingMeta}>
-                    <Text style={styles.upcomingMetaText}>{match.mode}</Text>
-                    <Text style={styles.upcomingMetaDot}>•</Text>
-                    <Text style={styles.upcomingMetaText}>{match.fee} ₺/kişi</Text>
-                    <Text style={styles.upcomingMetaDot}>•</Text>
-                    <Text style={styles.upcomingMetaText}>{match.joinedPlayersCount}/{match.totalRequiredPlayers} Oyuncu</Text>
-                  </View>
-                </Bouncable>
-              </Animated.View>
-            ))}
-          </ScrollView>
+
+                      {/* Meta Bilgileri */}
+                      <View style={styles.upcomingMeta}>
+                        <Text style={styles.upcomingMetaText}>{match.mode}</Text>
+                        <Text style={styles.upcomingMetaDot}>•</Text>
+                        <Text style={styles.upcomingMetaText}>{match.fee} ₺/kişi</Text>
+                        <Text style={styles.upcomingMetaDot}>•</Text>
+                        <Text style={styles.upcomingMetaText}>{match.joinedPlayersCount}/{match.totalRequiredPlayers} Oyuncu</Text>
+                      </View>
+                    </Bouncable>
+                  </Animated.View>
+                );
+              })}
+            </ScrollView>
+          </>
+        )}
+
+        {/* Hiçbir maç yoksa (ne üstte geri sayım ne de açık maç) */}
+        {!countdownMatch && otherUpcomingMatches.length === 0 && (
+          <>
+            <View style={styles.sectionHeaderBox}>
+              <Text style={styles.sectionTitle}>YAKLAŞAN MAÇLAR</Text>
+            </View>
+            <View style={styles.emptyMatchCard}>
+              <MaterialIcons name="sports-soccer" size={36} color={theme.surfaceContainerHighest} />
+              <Text style={styles.emptyMatchText}>Henüz aktif maçın yok</Text>
+              <TouchableOpacity style={styles.emptyMatchBtn} onPress={() => setCreateMatchVisible(true)}>
+                <Text style={styles.emptyMatchBtnText}>İlk Maçı Oluştur</Text>
+              </TouchableOpacity>
+            </View>
+          </>
         )}
 
         <View style={styles.sectionHeaderBox}>
@@ -610,15 +644,15 @@ const useStyles = (theme: any) => StyleSheet.create({
   statVal: { fontFamily: Fonts.headlineBold, fontSize: 20, color: theme.text },
   statLabel: { fontFamily: Fonts.headlineBold, fontSize: 10, color: theme.textMuted },
   upcomingMatchCard: {
-    width: 280,
+    width: 320,
     backgroundColor: theme.surface,
-    borderRadius: 12,
-    padding: 18,
+    borderRadius: 14,
+    padding: 16,
     borderWidth: 1,
     borderColor: theme.borderSubtle,
     gap: 8,
   },
-  upcomingArena: { fontFamily: Fonts.headlineBold, fontSize: 18, color: theme.text },
+  upcomingArena: { fontFamily: Fonts.headlineBold, fontSize: 16, color: theme.text, lineHeight: 22 },
   upcomingMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   upcomingMetaText: { fontFamily: Fonts.body, fontSize: 11, color: theme.textMuted },
   upcomingMetaDot: { fontFamily: Fonts.body, fontSize: 11, color: theme.border },
@@ -626,11 +660,39 @@ const useStyles = (theme: any) => StyleSheet.create({
   impactCard: { backgroundColor: theme.surface, padding: 24, borderRadius: 12, borderWidth: 1, borderColor: theme.borderSubtle, marginBottom: 20 },
   impactEmptyBox: { alignItems: 'center', gap: 10, paddingVertical: 12 },
   impactEmptyText: { fontFamily: Fonts.body, fontSize: 13, color: theme.textMuted, textAlign: 'center', lineHeight: 20 },
-  matchCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  matchDateTime: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  matchCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  matchDateTime: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   matchDateText: { fontFamily: Fonts.bodySemiBold, fontSize: 12, color: theme.text },
   matchBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   matchBadgeText: { fontFamily: Fonts.headlineBold, fontSize: 10 },
+  resMiniBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  resMiniBadgeText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 9,
+    color: '#22c55e',
+  },
+  flexMiniBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  flexMiniBadgeText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 9,
+    color: '#f59e0b',
+  },
   progressBarBg: { height: 8, backgroundColor: theme.surfaceContainerHighest, borderRadius: 4, marginBottom: 16, overflow: 'hidden', marginTop: 16 },
   progressBarFill: { height: '100%', backgroundColor: theme.secondary, borderRadius: 4 },
   impactFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
