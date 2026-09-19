@@ -12,6 +12,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { Skeleton } from '@/components/Skeleton';
 import { useAuth } from '@/hooks/use-auth';
 import { dbService, ClubModel } from '@/services/dbService';
+import { AppGuideModal } from '@/components/AppGuideModal';
 
 export default function ClubsScreen() {
   const { theme } = useTheme();
@@ -22,6 +23,7 @@ export default function ClubsScreen() {
   const [challengeModalVisible, setChallengeModalVisible] = useState(false);
   const [selectedClubForChallenge, setSelectedClubForChallenge] = useState<ClubModel | null>(null);
   const [notifVisible, setNotifVisible] = useState(false);
+  const [guideVisible, setGuideVisible] = useState(false);
   const [clubActionVisible, setClubActionVisible] = useState(false);
   const [clubActionTab, setClubActionTab] = useState<'create' | 'join'>('create');
   const [isLoading, setIsLoading] = useState(true);
@@ -100,7 +102,9 @@ export default function ClubsScreen() {
         visible={menuVisible} 
         onClose={() => setMenuVisible(false)} 
         onOpenNotifications={() => setNotifVisible(true)} 
+        onOpenGuide={() => setGuideVisible(true)}
       />
+      <AppGuideModal visible={guideVisible} onClose={() => setGuideVisible(false)} />
       <ChallengeModal 
         visible={challengeModalVisible} 
         onClose={() => {

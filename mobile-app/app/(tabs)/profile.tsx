@@ -11,6 +11,7 @@ import { BadgeDetailModal, BadgeData } from '@/components/BadgeDetailModal';
 import { NotificationCenterModal } from '@/components/NotificationCenterModal';
 import { useMatches } from '@/hooks/use-matches';
 import { useTheme } from '@/context/ThemeContext';
+import { AppGuideModal } from '@/components/AppGuideModal';
 
 export default function ProfileScreen() {
   const { theme } = useTheme();
@@ -22,6 +23,7 @@ export default function ProfileScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<BadgeData | null>(null);
   const [notifModalVisible, setNotifModalVisible] = useState(false);
+  const [guideVisible, setGuideVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = async () => {
@@ -55,7 +57,9 @@ export default function ProfileScreen() {
         visible={menuVisible} 
         onClose={() => setMenuVisible(false)} 
         onOpenNotifications={() => setNotifModalVisible(true)} 
+        onOpenGuide={() => setGuideVisible(true)}
       />
+      <AppGuideModal visible={guideVisible} onClose={() => setGuideVisible(false)} />
       <BadgeDetailModal badge={selectedBadge} visible={!!selectedBadge} onClose={() => setSelectedBadge(null)} />
       <NotificationCenterModal visible={notifModalVisible} onClose={() => setNotifModalVisible(false)} />
       {/* TopAppBar */}

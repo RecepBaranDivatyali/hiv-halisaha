@@ -13,6 +13,7 @@ import { NotificationCenterModal } from '@/components/NotificationCenterModal';
 import { Skeleton } from '@/components/Skeleton';
 import { useTheme } from '@/context/ThemeContext';
 import { isMatchPast } from '@/services/dateUtils';
+import { AppGuideModal } from '@/components/AppGuideModal';
 
 export default function MatchesScreen() {
   const router = useRouter();
@@ -31,6 +32,7 @@ export default function MatchesScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [notifModalVisible, setNotifModalVisible] = useState(false);
+  const [guideVisible, setGuideVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = async () => {
@@ -50,7 +52,9 @@ export default function MatchesScreen() {
         visible={menuVisible} 
         onClose={() => setMenuVisible(false)} 
         onOpenNotifications={() => setNotifModalVisible(true)} 
+        onOpenGuide={() => setGuideVisible(true)}
       />
+      <AppGuideModal visible={guideVisible} onClose={() => setGuideVisible(false)} />
       <NotificationCenterModal visible={notifModalVisible} onClose={() => setNotifModalVisible(false)} />
       <CreateMatchModal 
         visible={createModalVisible} 

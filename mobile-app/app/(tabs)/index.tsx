@@ -34,14 +34,14 @@ export default function HomeScreen() {
   const [matchSeekingVisible, setMatchSeekingVisible] = useState(false);
   const [notifModalVisible, setNotifModalVisible] = useState(false);
   const [guideVisible, setGuideVisible] = useState(false);
-  const [hasViewedGuide, setHasViewedGuide] = useState(false);
+  const [isGuideDismissed, setIsGuideDismissed] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [ratedMatches, setRatedMatches] = useState<string[]>([]);
 
   useEffect(() => {
     AsyncStorage.getItem(GUIDE_STORAGE_KEY).then(val => {
       if (val === 'true') {
-        setHasViewedGuide(true);
+        setIsGuideDismissed(true);
       }
     }).catch(() => {});
 
@@ -54,9 +54,14 @@ export default function HomeScreen() {
 
   const handleOpenGuide = () => {
     setGuideVisible(true);
-    if (!hasViewedGuide) {
-      setHasViewedGuide(true);
-      AsyncStorage.setItem(GUIDE_STORAGE_KEY, 'true').catch(() => {});
+  };
+
+  const handleDismissGuide = async () => {
+    try {
+      setIsGuideDismissed(true);
+      await AsyncStorage.setItem(GUIDE_STORAGE_KEY, 'true');
+    } catch (e) {
+      console.log('Dismiss guide error:', e);
     }
   };
 
@@ -174,18 +179,16 @@ export default function HomeScreen() {
         </TouchableOpacity>
         <Text style={styles.brandText}>H.İ.V.</Text>
         <View style={styles.headerRight}>
-          {hasViewedGuide && (
-            <TouchableOpacity 
-              style={styles.iconBtn} 
-              onPress={handleOpenGuide}
-              activeOpacity={0.7}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              accessibilityLabel="Kullanım Rehberi"
-              accessibilityRole="button"
-            >
-              <MaterialIcons name="help-outline" size={24} color={theme.primary} />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity 
+            style={styles.iconBtn} 
+            onPress={handleOpenGuide}
+            activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityLabel="Kullanım Rehberi"
+            accessibilityRole="button"
+          >
+            <MaterialIcons name="help-outline" size={24} color={theme.primary} />
+          </TouchableOpacity>
           <TouchableOpacity 
             style={styles.iconBtn} 
             onPress={() => router.push('/conversations')}
@@ -268,15 +271,39 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* Quick App Guide Banner (Only shown until viewed) */}
-        {!hasViewedGuide && (
-          <TouchableOpacity style={styles.guideBanner} activeOpacity={0.85} onPress={handleOpenGuide}>
-            <View style={styles.guideBannerLeft}>
-              <MaterialIcons name="help-outline" size={20} color={theme.primary} />
-              <Text style={styles.guideBannerText}>H.İ.V. NASIL KULLANILIR? (REHBER)</Text>
-            </View>
-            <MaterialIcons name="chevron-right" size={20} color={theme.primary} />
-          </TouchableOpacity>
+        {/* H.İ.V. NASIL KULLANILIR? REHBER KARTI */}
+        {!isGuideDismissed && (
+          <View style={styles.guideBannerCard}>
+            <TouchableOpacity 
+              style={styles.guideBannerLeft} 
+              activeOpacity={0.85} 
+              onPress={handleOpenGuide}
+            >
+              <View style={styles.guideBannerIconBox}>
+                <MaterialIcons name="menu-book" size={20} color={theme.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.guideBannerTitle}>H.İ.V. NASIL KULLANILIR?</Text>
+                  <View style={styles.guideBannerBadge}>
+                    <Text style={styles.guideBannerBadgeText}>REHBER</Text>
+                  </View>
+                </View>
+                <Text style={styles.guideBannerSub} numberOfLines={1}>
+                  Maç oluşturma, rezervasyon, mevkiler ve ödeme rehberi
+                </Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={18} color={theme.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.guideBannerDismissBtn}
+              onPress={handleDismissGuide}
+              hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+              accessibilityLabel="Rehberi Gizle"
+            >
+              <MaterialIcons name="close" size={16} color={theme.textMuted} />
+            </TouchableOpacity>
+          </View>
         )}
 
         {/* HIZLI İŞLEMLER */}
@@ -589,27 +616,68 @@ const useStyles = (theme: any) => StyleSheet.create({
   quickActionBox: { flex: 1, backgroundColor: theme.surface, paddingVertical: 20, borderRadius: 12, alignItems: 'center', gap: 12, borderWidth: 1, borderColor: theme.borderSubtle },
   quickActionText: { fontFamily: Fonts.headlineBold, fontSize: 10, color: theme.secondary, letterSpacing: 0.5 },
 
-  guideBanner: {
+  guideBannerCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: `${theme.primary}15`,
-    marginTop: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
+    backgroundColor: theme.surfaceContainer,
+    marginTop: 14,
+    marginBottom: 8,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: `${theme.primary}40`,
+    borderColor: `${theme.primary}35`,
+    overflow: 'hidden',
+    paddingVertical: 10,
+    paddingLeft: 12,
+    paddingRight: 6,
   },
   guideBannerLeft: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
   },
-  guideBannerText: {
+  guideBannerIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: `${theme.primary}18`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: `${theme.primary}30`,
+  },
+  guideBannerTitle: {
     fontFamily: Fonts.headlineBold,
     fontSize: 12,
     color: theme.primary,
+    letterSpacing: 0.5,
+  },
+  guideBannerBadge: {
+    backgroundColor: `${theme.primary}25`,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  guideBannerBadgeText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 8,
+    color: theme.primary,
+    letterSpacing: 0.5,
+  },
+  guideBannerSub: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: theme.textMuted,
+    marginTop: 2,
+  },
+  guideBannerDismissBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
   },
 
   emptyMatchCard: { backgroundColor: theme.surface, borderRadius: 12, padding: 32, alignItems: 'center', gap: 12, marginBottom: 24, borderWidth: 1, borderColor: theme.borderSubtle },
