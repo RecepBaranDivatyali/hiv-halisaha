@@ -34,7 +34,7 @@ export default function RateMatchScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const styles = useStyles(theme);
-  const params = useLocalSearchParams<{ matchId?: string; playerName?: string; playerAvatar?: string; matchScore?: string }>();
+  const params = useLocalSearchParams<{ matchId?: string; playerName?: string; playerAvatar?: string; matchScore?: string; isOrganizer?: string }>();
   const [scoreA, setScoreA] = useState(7);
   const [scoreB, setScoreB] = useState(5);
   const [evaluatedPlayers, setEvaluatedPlayers] = useState<Record<string, number>>({});
@@ -43,6 +43,18 @@ export default function RateMatchScreen() {
   const [selectedPlayer, setSelectedPlayer] = useState<RosterPlayer>(DEFAULT_PLAYERS[1]);
   const [pitchReviewVisible, setPitchReviewVisible] = useState(false);
   const [matchArena, setMatchArena] = useState<string>('Beşiktaş Arena');
+  const [matchData, setMatchData] = useState<any>(null);
+  const [formaGoluTeam, setFormaGoluTeam] = useState<'A' | 'B' | null>(null);
+
+  const isOrganizer = Boolean(
+    params.isOrganizer === 'true' || 
+    (matchData?.organizerId && user?.uid && matchData.organizerId === user.uid)
+  );
+  const isCaptain = Boolean(
+    (matchData?.captainAId && user?.uid && matchData.captainAId === user.uid) ||
+    (matchData?.captainBId && user?.uid && matchData.captainBId === user.uid)
+  );
+  const canEditScore = Boolean(isOrganizer || isCaptain || (!matchData && !params.matchId));
 
   useEffect(() => {
     if (params.matchScore && params.matchScore.includes('-')) {
@@ -64,6 +76,10 @@ export default function RateMatchScreen() {
 
       dbService.getMatchById(params.matchId).then((match) => {
         if (match) {
+          setMatchData(match);
+          if (match.formaGoluTeam) {
+            setFormaGoluTeam(match.formaGoluTeam);
+          }
           if (match.arena) setMatchArena(match.arena);
           if (match.score && match.score.includes('-')) {
             const parts = match.score.split('-').map(s => parseInt(s.trim(), 10));
@@ -132,18 +148,41 @@ export default function RateMatchScreen() {
   ];
 
   const handleScoreChange = (team: 'A' | 'B', delta: number) => {
+    if (!canEditScore) {
+      Alert.alert('Yetki Gerekli', 'Maç skorunu sadece organizatör veya takım kaptanları güncelleyebilir.');
+      return;
+    }
+    let nextA = scoreA;
+    let nextB = scoreB;
     if (team === 'A') {
-      const next = Math.max(0, scoreA + delta);
-      setScoreA(next);
-      if (params.matchId) {
-        dbService.updateMatch(params.matchId, { score: `${next} - ${scoreB}`, status: 'completed' }).catch(() => {});
-      }
+      nextA = Math.max(0, scoreA + delta);
+      setScoreA(nextA);
     } else {
-      const next = Math.max(0, scoreB + delta);
-      setScoreB(next);
-      if (params.matchId) {
-        dbService.updateMatch(params.matchId, { score: `${scoreA} - ${next}`, status: 'completed' }).catch(() => {});
-      }
+      nextB = Math.max(0, scoreB + delta);
+      setScoreB(nextB);
+    }
+    if (params.matchId) {
+      dbService.updateMatch(params.matchId, { 
+        score: `${nextA} - ${nextB}`, 
+        formaGoluTeam,
+        status: 'completed' 
+      }).catch(() => {});
+    }
+  };
+
+  const handleFormaGoluSelect = (team: 'A' | 'B') => {
+    if (!canEditScore) {
+      Alert.alert('Yetki Gerekli', 'Forma golü bilgisini sadece organizatör veya takım kaptanları belirleyebilir.');
+      return;
+    }
+    const nextVal = formaGoluTeam === team ? null : team;
+    setFormaGoluTeam(nextVal);
+    if (params.matchId) {
+      dbService.updateMatch(params.matchId, { 
+        formaGoluTeam: nextVal,
+        score: `${scoreA} - ${scoreB}`,
+        status: 'completed' 
+      }).catch(() => {});
     }
   };
 
@@ -175,7 +214,13 @@ export default function RateMatchScreen() {
       
       if (params.matchId) {
         try {
-          await dbService.updateMatch(params.matchId, { score: finalScoreStr, status: 'completed' });
+          if (canEditScore) {
+            await dbService.updateMatch(params.matchId, { 
+              score: finalScoreStr, 
+              formaGoluTeam,
+              status: 'completed' 
+            });
+          }
           const raw = await AsyncStorage.getItem('@hiv_rated_matches');
           const list: string[] = raw ? JSON.parse(raw) : [];
           if (!list.includes(params.matchId)) {
@@ -245,8 +290,10 @@ export default function RateMatchScreen() {
               <MaterialIcons name="sports-score" size={20} color={theme.primary} />
               <Text style={styles.scoreSectionTitle}>MAÇ SKORU</Text>
             </View>
-            <View style={styles.scoreStatusPill}>
-              <Text style={styles.scoreStatusPillText}>BİTEN MAÇ</Text>
+            <View style={[styles.scoreStatusPill, !canEditScore && { backgroundColor: `${theme.secondary}20` }]}>
+              <Text style={[styles.scoreStatusPillText, !canEditScore && { color: theme.secondary }]}>
+                {canEditScore ? '👑 DÜZENLENEBİLİR' : '🔒 SALT OKUNUR'}
+              </Text>
             </View>
           </View>
           
@@ -254,23 +301,29 @@ export default function RateMatchScreen() {
             {/* Team A */}
             <View style={styles.teamScoreBox}>
               <Text style={styles.teamNameLabel} numberOfLines={1}>A TAKIMI</Text>
-              <View style={styles.stepperContainer}>
-                <TouchableOpacity 
-                  style={styles.stepBtn} 
-                  onPress={() => handleScoreChange('A', -1)} 
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <MaterialIcons name="remove" size={16} color={theme.text} />
-                </TouchableOpacity>
-                <Text style={styles.scoreBigNum}>{scoreA}</Text>
-                <TouchableOpacity 
-                  style={styles.stepBtn} 
-                  onPress={() => handleScoreChange('A', 1)} 
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <MaterialIcons name="add" size={16} color={theme.text} />
-                </TouchableOpacity>
-              </View>
+              {canEditScore ? (
+                <View style={styles.stepperContainer}>
+                  <TouchableOpacity 
+                    style={styles.stepBtn} 
+                    onPress={() => handleScoreChange('A', -1)} 
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <MaterialIcons name="remove" size={16} color={theme.text} />
+                  </TouchableOpacity>
+                  <Text style={styles.scoreBigNum}>{scoreA}</Text>
+                  <TouchableOpacity 
+                    style={styles.stepBtn} 
+                    onPress={() => handleScoreChange('A', 1)} 
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <MaterialIcons name="add" size={16} color={theme.text} />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.readOnlyScoreBox}>
+                  <Text style={styles.scoreBigNum}>{scoreA}</Text>
+                </View>
+              )}
             </View>
 
             <View style={styles.scoreDividerBox}>
@@ -280,24 +333,124 @@ export default function RateMatchScreen() {
             {/* Team B */}
             <View style={styles.teamScoreBox}>
               <Text style={styles.teamNameLabel} numberOfLines={1}>B TAKIMI</Text>
-              <View style={styles.stepperContainer}>
-                <TouchableOpacity 
-                  style={styles.stepBtn} 
-                  onPress={() => handleScoreChange('B', -1)} 
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <MaterialIcons name="remove" size={16} color={theme.text} />
-                </TouchableOpacity>
-                <Text style={styles.scoreBigNum}>{scoreB}</Text>
-                <TouchableOpacity 
-                  style={styles.stepBtn} 
-                  onPress={() => handleScoreChange('B', 1)} 
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <MaterialIcons name="add" size={16} color={theme.text} />
-                </TouchableOpacity>
-              </View>
+              {canEditScore ? (
+                <View style={styles.stepperContainer}>
+                  <TouchableOpacity 
+                    style={styles.stepBtn} 
+                    onPress={() => handleScoreChange('B', -1)} 
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <MaterialIcons name="remove" size={16} color={theme.text} />
+                  </TouchableOpacity>
+                  <Text style={styles.scoreBigNum}>{scoreB}</Text>
+                  <TouchableOpacity 
+                    style={styles.stepBtn} 
+                    onPress={() => handleScoreChange('B', 1)} 
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <MaterialIcons name="add" size={16} color={theme.text} />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.readOnlyScoreBox}>
+                  <Text style={styles.scoreBigNum}>{scoreB}</Text>
+                </View>
+              )}
             </View>
+          </View>
+
+          {!canEditScore && (
+            <Text style={styles.readOnlyNoticeText}>
+              🔒 Skoru sadece maç organizatörü ve takım kaptanları düzenleyebilir.
+            </Text>
+          )}
+
+          {/* 🎽 Forma Golü (İlk Gol) & Beraberlik Kuralı Bölümü */}
+          <View style={styles.formaGoluBox}>
+            <View style={styles.formaGoluHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <MaterialIcons name="checkroom" size={16} color={theme.primary} />
+                <Text style={styles.formaGoluTitle}>FORMA GOLÜ (İLK GOL)</Text>
+              </View>
+              <Text style={styles.formaGoluSub}>Beraberlikte ilk golü atan galip sayılır</Text>
+            </View>
+
+            <View style={styles.formaGoluActionsRow}>
+              <TouchableOpacity
+                style={[
+                  styles.formaGoluChoiceBtn,
+                  formaGoluTeam === 'A' && styles.formaGoluChoiceBtnActiveA,
+                  !canEditScore && { opacity: formaGoluTeam === 'A' ? 1 : 0.4 }
+                ]}
+                onPress={() => handleFormaGoluSelect('A')}
+                disabled={!canEditScore}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons 
+                  name={formaGoluTeam === 'A' ? "check-circle" : "sports-soccer"} 
+                  size={14} 
+                  color={formaGoluTeam === 'A' ? theme.background : theme.primary} 
+                />
+                <Text style={[styles.formaGoluChoiceText, formaGoluTeam === 'A' && styles.formaGoluChoiceTextActive]}>
+                  A TAKIMI
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.formaGoluChoiceBtn,
+                  formaGoluTeam === 'B' && styles.formaGoluChoiceBtnActiveB,
+                  !canEditScore && { opacity: formaGoluTeam === 'B' ? 1 : 0.4 }
+                ]}
+                onPress={() => handleFormaGoluSelect('B')}
+                disabled={!canEditScore}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons 
+                  name={formaGoluTeam === 'B' ? "check-circle" : "sports-soccer"} 
+                  size={14} 
+                  color={formaGoluTeam === 'B' ? theme.background : theme.secondary} 
+                />
+                <Text style={[styles.formaGoluChoiceText, formaGoluTeam === 'B' && styles.formaGoluChoiceTextActive]}>
+                  B TAKIMI
+                </Text>
+              </TouchableOpacity>
+
+              {canEditScore && formaGoluTeam && (
+                <TouchableOpacity
+                  style={styles.formaGoluClearBtn}
+                  onPress={() => handleFormaGoluSelect(formaGoluTeam)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <MaterialIcons name="close" size={14} color={theme.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Live Tiebreaker Indicator */}
+            {scoreA === scoreB && (scoreA > 0 || scoreB > 0) ? (
+              formaGoluTeam ? (
+                <View style={styles.tiebreakerBanner}>
+                  <MaterialIcons name="emoji-events" size={16} color="#22c55e" />
+                  <Text style={styles.tiebreakerBannerText}>
+                    🏆 Beraberlik Bozuldu: {formaGoluTeam === 'A' ? 'A Takımı' : 'B Takımı'} Kazandı (Forma Golü)
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.tiebreakerHintBanner}>
+                  <MaterialIcons name="info-outline" size={14} color={theme.textMuted} />
+                  <Text style={styles.tiebreakerHintText}>
+                    Maç berabere! İlk golü atan takımı seçerek galibi belirleyin.
+                  </Text>
+                </View>
+              )
+            ) : formaGoluTeam ? (
+              <View style={styles.formaGoluStatusNote}>
+                <Text style={styles.formaGoluStatusNoteText}>
+                  🎽 Forma golünü {formaGoluTeam === 'A' ? 'A Takımı' : 'B Takımı'} attı ({formaGoluTeam === 'A' ? 'B Takımı yelek giydi' : 'A Takımı yelek giydi'})
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -796,6 +949,130 @@ const useStyles = (theme: any) => StyleSheet.create({
   scoreDividerDash: {
     fontFamily: Fonts.headlineBold,
     fontSize: 28,
+    color: theme.textMuted,
+  },
+  readOnlyScoreBox: {
+    backgroundColor: theme.surfaceContainer,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    paddingHorizontal: 24,
+    paddingVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  readOnlyNoticeText: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: theme.textMuted,
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  formaGoluBox: {
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: theme.borderSubtle,
+    gap: 10,
+  },
+  formaGoluHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  formaGoluTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.primary,
+    letterSpacing: 0.5,
+  },
+  formaGoluSub: {
+    fontFamily: Fonts.body,
+    fontSize: 9,
+    color: theme.textMuted,
+  },
+  formaGoluActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  formaGoluChoiceBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: theme.surfaceContainerHighest,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+  },
+  formaGoluChoiceBtnActiveA: {
+    backgroundColor: theme.primary,
+    borderColor: theme.primary,
+  },
+  formaGoluChoiceBtnActiveB: {
+    backgroundColor: theme.secondary,
+    borderColor: theme.secondary,
+  },
+  formaGoluChoiceText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.text,
+  },
+  formaGoluChoiceTextActive: {
+    color: theme.background,
+  },
+  formaGoluClearBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.surfaceContainerHighest,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tiebreakerBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    borderWidth: 1,
+    borderColor: '#22c55e',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  tiebreakerBannerText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: '#22c55e',
+    flex: 1,
+  },
+  tiebreakerHintBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: theme.surfaceContainerHighest,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  tiebreakerHintText: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: theme.textMuted,
+    flex: 1,
+  },
+  formaGoluStatusNote: {
+    backgroundColor: theme.surfaceContainerHighest,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  formaGoluStatusNoteText: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
     color: theme.textMuted,
   },
 

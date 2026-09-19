@@ -56,6 +56,7 @@ export interface MatchModel {
   preferredTimeSlot?: string; // İstenen veya hedeflenen saat
   status: 'active' | 'completed' | 'cancelled';
   score?: string;
+  formaGoluTeam?: 'A' | 'B' | null; // Forma (yelek) golünü atan takım; berabere biterse galip sayılır
   joinTerms?: number;
   reserves?: {
     uid: string;

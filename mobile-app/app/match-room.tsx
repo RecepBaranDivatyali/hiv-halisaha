@@ -683,7 +683,14 @@ export default function MatchRoomScreen() {
         [
           { 
             text: 'Oyuncuları Puanla', 
-            onPress: () => router.push({ pathname: '/rate-match', params: { matchId: activeMatchId, matchScore: finalScore } }) 
+            onPress: () => router.push({ 
+              pathname: '/rate-match', 
+              params: { 
+                matchId: activeMatchId, 
+                matchScore: finalScore,
+                isOrganizer: isOrganizer ? 'true' : 'false'
+              } 
+            }) 
           },
           { text: 'Tamam', onPress: () => router.back() }
         ]
@@ -779,7 +786,7 @@ export default function MatchRoomScreen() {
       }
     }
     const isOccupied = !!occupant;
-    const isMySlot = isSelectedByMe || (occupant && occupant.uid === currentUid) || (isOrganizer && slotKey === 'A_OS_ORTA' && !occupant);
+    const isMySlot = isSelectedByMe || Boolean(occupant && occupant.uid === currentUid);
     const teamColor = activeTeam === 'A' ? theme.primary : theme.secondary;
 
     const avatarUrl = isMySlot
@@ -1311,10 +1318,33 @@ export default function MatchRoomScreen() {
           {/* Field Visualization */}
           <View style={styles.fieldWrap}>
             <View style={styles.fieldBox}>
-              <View style={styles.pitchLinesArea}>
+              <View style={styles.pitchLinesArea} pointerEvents="none">
+                {/* Outer Pitch Border */}
                 <View style={styles.pitchBorder} />
+                
+                {/* Horizontal Center Line (Orta Saha Çizgisi) */}
                 <View style={styles.pitchCenterLine} />
+                {/* Center Circle & Center Spot */}
                 <View style={styles.pitchCenterCircle} />
+                <View style={styles.pitchCenterSpot} />
+
+                {/* Top Penalty Area & Goal (Hücum Sahası) */}
+                <View style={styles.pitchPenaltyAreaTop} />
+                <View style={styles.pitchGoalAreaTop} />
+                <View style={styles.pitchPenaltySpotTop} />
+                <View style={styles.pitchGoalTop} />
+
+                {/* Bottom Penalty Area & Goal (Kaleci / Savunma Sahası) */}
+                <View style={styles.pitchPenaltyAreaBottom} />
+                <View style={styles.pitchGoalAreaBottom} />
+                <View style={styles.pitchPenaltySpotBottom} />
+                <View style={styles.pitchGoalBottom} />
+
+                {/* 4 Corner Arcs */}
+                <View style={styles.pitchCornerTopLeft} />
+                <View style={styles.pitchCornerTopRight} />
+                <View style={styles.pitchCornerBottomLeft} />
+                <View style={styles.pitchCornerBottomRight} />
               </View>
 
               {/* Kale Dönmeli / Takım Değiştirme butonu */}
@@ -1583,11 +1613,11 @@ export default function MatchRoomScreen() {
             onPress={() => setShowPaymentDetails(!showPaymentDetails)}
             activeOpacity={0.8}
           >
-            <View style={styles.sectionHeaderLeft}>
+            <View style={[styles.sectionHeaderLeft, { flex: 1, marginRight: 8 }]}>
               <MaterialIcons name="account-balance-wallet" size={20} color={theme.primary} />
-              <View>
-                <Text style={styles.sectionTitle}>HALISAHAYA ÜCRETİ & KAPTAN TAKİBİ</Text>
-                <Text style={styles.paymentSubTitle}>Kişi Başı: ₺{perPlayerFee} • Toplam: ₺{totalMatchFee}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionTitle} numberOfLines={1}>HALI SAHA ÜCRETİ & KASA TAKİBİ</Text>
+                <Text style={styles.paymentSubTitle} numberOfLines={1}>Kişi Başı: ₺{perPlayerFee} • Toplam: ₺{totalMatchFee}</Text>
               </View>
             </View>
             <MaterialIcons name={showPaymentDetails ? "expand-less" : "expand-more"} size={24} color={theme.primary} />
@@ -1711,22 +1741,30 @@ export default function MatchRoomScreen() {
               <View style={styles.accountingCard}>
                 <View style={styles.accountingStatsRow}>
                   <View style={styles.accountingCol}>
-                    <Text style={[styles.accColLabel, { color: theme.primary }]}>ÖDENDİ</Text>
+                    <View style={styles.accColLabelContainer}>
+                      <Text style={[styles.accColLabel, { color: theme.primary }]} numberOfLines={1}>ÖDENDİ</Text>
+                    </View>
                     <Text style={[styles.accColVal, { color: theme.primary }]}>₺{collectedPaidAmount}</Text>
                   </View>
                   <View style={styles.accountingDivider} />
                   <View style={styles.accountingCol}>
-                    <Text style={[styles.accColLabel, { color: '#6e9bff' }]}>SAHADA NAKİT</Text>
+                    <View style={styles.accColLabelContainer}>
+                      <Text style={[styles.accColLabel, { color: '#6e9bff' }]} numberOfLines={1}>NAKİT</Text>
+                    </View>
                     <Text style={[styles.accColVal, { color: '#6e9bff' }]}>₺{collectedCashAmount}</Text>
                   </View>
                   <View style={styles.accountingDivider} />
                   <View style={styles.accountingCol}>
-                    <Text style={[styles.accColLabel, { color: '#ffb703' }]}>ONAY BEKLEYEN</Text>
+                    <View style={styles.accColLabelContainer}>
+                      <Text style={[styles.accColLabel, { color: '#ffb703' }]} numberOfLines={1}>BEKLEYEN</Text>
+                    </View>
                     <Text style={[styles.accColVal, { color: '#ffb703' }]}>₺{pendingApprovalAmount}</Text>
                   </View>
                   <View style={styles.accountingDivider} />
                   <View style={styles.accountingCol}>
-                    <Text style={[styles.accColLabel, { color: theme.error }]}>KALAN</Text>
+                    <View style={styles.accColLabelContainer}>
+                      <Text style={[styles.accColLabel, { color: theme.error }]} numberOfLines={1}>KALAN</Text>
+                    </View>
                     <Text style={[styles.accColVal, { color: theme.error }]}>₺{unpaidAmount}</Text>
                   </View>
                 </View>
@@ -1984,11 +2022,11 @@ export default function MatchRoomScreen() {
                 const isPlayerCapB = player.uid && activeMatch?.captainBId && player.uid === activeMatch.captainBId;
                 return (
                   <View key={player.slotKey} style={[styles.playerItem, { borderLeftColor: isCurrent ? theme.primary : 'transparent' }]}>
-                    <View style={styles.playerItemLeft}>
+                    <View style={[styles.playerItemLeft, { flex: 1, marginRight: 8 }]}>
                       <Image source={{ uri: player.avatar || user?.avatar }} style={styles.playerAvatar} />
-                      <View>
+                      <View style={{ flex: 1 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          <Text style={styles.playerName}>{player.name} {isCurrent ? '(Siz)' : ''}</Text>
+                          <Text style={styles.playerName} numberOfLines={1}>{player.name} {isCurrent ? '(Siz)' : ''}</Text>
                           {isPlayerOrg && (
                             <View style={styles.organizerBadge}>
                               <Text style={styles.organizerBadgeText}>👑 ORGANİZATÖR</Text>
@@ -2004,7 +2042,10 @@ export default function MatchRoomScreen() {
                       </View>
                     </View>
                     {isCurrent ? (
-                      <TouchableOpacity onPress={() => userSlot && handleSelectSlot(userSlot, player.role)}>
+                      <TouchableOpacity 
+                        onPress={() => userSlot && handleSelectSlot(userSlot, player.role)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
                         <MaterialIcons name="logout" size={20} color={theme.error} />
                       </TouchableOpacity>
                     ) : (
@@ -2265,85 +2306,245 @@ const useStyles = (theme: any) => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1},
   fieldWrap: {
-    padding: 16},
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
   fieldBox: {
-    backgroundColor: theme.surface,
-    minHeight: 480,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: `${theme.primary}33`,
+    backgroundColor: '#0a1f12',
+    height: 440,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: `${theme.primary}50`,
     position: 'relative',
-    overflow: 'hidden'},
+    overflow: 'hidden',
+  },
   pitchLinesArea: {
     ...StyleSheet.absoluteFillObject,
-    padding: 16},
+    padding: 14,
+  },
   pitchBorder: {
     flex: 1,
     borderWidth: 2,
-    borderColor: `${theme.primary}15`},
+    borderColor: 'rgba(34, 197, 94, 0.28)',
+    borderRadius: 4,
+  },
   pitchCenterLine: {
     position: 'absolute',
-    top: 16,
-    bottom: 16,
-    left: '50%',
-    width: 2,
-    backgroundColor: `${theme.primary}15`,
-    transform: [{ translateX: -1 }]},
+    top: '50%',
+    left: 14,
+    right: 14,
+    height: 2,
+    backgroundColor: 'rgba(34, 197, 94, 0.28)',
+    transform: [{ translateY: -1 }],
+  },
   pitchCenterCircle: {
     position: 'absolute',
     top: '50%',
     left: '50%',
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     borderWidth: 2,
-    borderColor: `${theme.primary}15`,
-    transform: [{ translateX: -50 }, { translateY: -50 }]},
-  kaleBtn: {
+    borderColor: 'rgba(34, 197, 94, 0.28)',
+    transform: [{ translateX: -42 }, { translateY: -42 }],
+  },
+  pitchCenterSpot: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(34, 197, 94, 0.45)',
+    transform: [{ translateX: -3 }, { translateY: -3 }],
+  },
+  pitchPenaltyAreaBottom: {
+    position: 'absolute',
+    bottom: 14,
+    left: '20%',
+    right: '20%',
+    height: 70,
+    borderTopWidth: 2,
+    borderLeftWidth: 2,
+    borderRightWidth: 2,
+    borderColor: 'rgba(34, 197, 94, 0.28)',
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 4,
+  },
+  pitchGoalAreaBottom: {
+    position: 'absolute',
+    bottom: 14,
+    left: '35%',
+    right: '35%',
+    height: 28,
+    borderTopWidth: 2,
+    borderLeftWidth: 2,
+    borderRightWidth: 2,
+    borderColor: 'rgba(34, 197, 94, 0.22)',
+  },
+  pitchPenaltySpotBottom: {
+    position: 'absolute',
+    bottom: 58,
+    left: '50%',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(34, 197, 94, 0.4)',
+    transform: [{ translateX: -3 }],
+  },
+  pitchGoalBottom: {
+    position: 'absolute',
+    bottom: 8,
+    left: '38%',
+    right: '38%',
+    height: 6,
+    borderTopWidth: 2,
+    borderLeftWidth: 2,
+    borderRightWidth: 2,
+    borderColor: 'rgba(34, 197, 94, 0.4)',
+  },
+  pitchPenaltyAreaTop: {
+    position: 'absolute',
+    top: 14,
+    left: '20%',
+    right: '20%',
+    height: 55,
+    borderBottomWidth: 2,
+    borderLeftWidth: 2,
+    borderRightWidth: 2,
+    borderColor: 'rgba(34, 197, 94, 0.28)',
+    borderBottomLeftRadius: 4,
+    borderBottomRightRadius: 4,
+  },
+  pitchGoalAreaTop: {
+    position: 'absolute',
+    top: 14,
+    left: '35%',
+    right: '35%',
+    height: 22,
+    borderBottomWidth: 2,
+    borderLeftWidth: 2,
+    borderRightWidth: 2,
+    borderColor: 'rgba(34, 197, 94, 0.22)',
+  },
+  pitchPenaltySpotTop: {
+    position: 'absolute',
+    top: 48,
+    left: '50%',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(34, 197, 94, 0.4)',
+    transform: [{ translateX: -3 }],
+  },
+  pitchGoalTop: {
+    position: 'absolute',
+    top: 8,
+    left: '38%',
+    right: '38%',
+    height: 6,
+    borderBottomWidth: 2,
+    borderLeftWidth: 2,
+    borderRightWidth: 2,
+    borderColor: 'rgba(34, 197, 94, 0.4)',
+  },
+  pitchCornerTopLeft: {
+    position: 'absolute',
+    top: 14,
+    left: 14,
+    width: 18,
+    height: 18,
+    borderBottomRightRadius: 18,
+    borderRightWidth: 2,
+    borderBottomWidth: 2,
+    borderColor: 'rgba(34, 197, 94, 0.28)',
+  },
+  pitchCornerTopRight: {
     position: 'absolute',
     top: 14,
     right: 14,
+    width: 18,
+    height: 18,
+    borderBottomLeftRadius: 18,
+    borderLeftWidth: 2,
+    borderBottomWidth: 2,
+    borderColor: 'rgba(34, 197, 94, 0.28)',
+  },
+  pitchCornerBottomLeft: {
+    position: 'absolute',
+    bottom: 14,
+    left: 14,
+    width: 18,
+    height: 18,
+    borderTopRightRadius: 18,
+    borderRightWidth: 2,
+    borderTopWidth: 2,
+    borderColor: 'rgba(34, 197, 94, 0.28)',
+  },
+  pitchCornerBottomRight: {
+    position: 'absolute',
+    bottom: 14,
+    right: 14,
+    width: 18,
+    height: 18,
+    borderTopLeftRadius: 18,
+    borderLeftWidth: 2,
+    borderTopWidth: 2,
+    borderColor: 'rgba(34, 197, 94, 0.28)',
+  },
+  kaleBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     backgroundColor: theme.surfaceContainerHighest,
     borderWidth: 1,
     borderColor: `${theme.primary}4D`,
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-    zIndex: 20},
+    paddingVertical: 5,
+    borderRadius: 14,
+    zIndex: 20,
+  },
   kaleBtnText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 9,
     color: theme.primary,
     textTransform: 'uppercase',
-    letterSpacing: -0.5},
+    letterSpacing: -0.5,
+  },
   formationGrid: {
     ...StyleSheet.absoluteFillObject,
-    paddingVertical: 20,
-    paddingHorizontal: 12,
-    justifyContent: 'space-between'},
+    paddingTop: 36,
+    paddingBottom: 14,
+    paddingHorizontal: 8,
+    justifyContent: 'space-between',
+  },
   slotRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    alignItems: 'center'},
+    alignItems: 'center',
+  },
   slotContainer: {
-    alignItems: 'center'},
+    alignItems: 'center',
+    minWidth: 68,
+  },
   emptySlot: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     borderWidth: 2,
     borderStyle: 'dashed',
     borderColor: `${theme.primary}66`,
-    backgroundColor: `${theme.surfaceContainerHighest}80`,
+    backgroundColor: 'rgba(10, 31, 18, 0.75)',
     alignItems: 'center',
-    justifyContent: 'center'},
+    justifyContent: 'center',
+  },
   occupiedSlot: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     borderWidth: 2,
     borderColor: theme.primary,
     backgroundColor: `${theme.primary}33`,
@@ -2353,31 +2554,38 @@ const useStyles = (theme: any) => StyleSheet.create({
     shadowColor: theme.primary,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.3,
-    shadowRadius: 15},
+    shadowRadius: 10,
+  },
   slotAvatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26},
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
   slotBadge: {
     position: 'absolute',
-    bottom: -4,
-    right: -4,
+    bottom: -3,
+    right: -3,
     backgroundColor: theme.primary,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     alignItems: 'center',
-    justifyContent: 'center'},
+    justifyContent: 'center',
+  },
   slotBadgeText: {
     fontFamily: Fonts.headlineBold,
-    fontSize: 10,
-    color: theme.onPrimary},
+    fontSize: 9,
+    color: theme.onPrimary,
+  },
   slotLabel: {
-    fontFamily: Fonts.label,
-    fontSize: 10,
-    color: theme.textMuted,
+    fontFamily: Fonts.headlineBold,
+    fontSize: 9,
+    color: theme.text,
     textTransform: 'uppercase',
-    marginTop: 4},
+    marginTop: 2,
+    maxWidth: 76,
+    textAlign: 'center',
+  },
   termsBox: {
     backgroundColor: theme.surface,
     padding: 24,
@@ -2580,18 +2788,22 @@ const useStyles = (theme: any) => StyleSheet.create({
   playerItemLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12},
+    gap: 12,
+    flex: 1,
+  },
   playerAvatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: theme.border},
+    borderColor: theme.border,
+  },
   playerName: {
     fontFamily: Fonts.headlineBold,
-    fontSize: 14,
+    fontSize: 13,
     color: theme.text,
-    letterSpacing: -0.5},
+    letterSpacing: -0.3,
+  },
   playerRole: {
     fontFamily: Fonts.label,
     fontSize: 10,
@@ -2923,9 +3135,9 @@ const useStyles = (theme: any) => StyleSheet.create({
     gap: 10,
   },
   reserveHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 4,
   },
   reserveHeaderLeft: {
     flexDirection: 'row',
@@ -2940,8 +3152,9 @@ const useStyles = (theme: any) => StyleSheet.create({
   },
   reserveSubHint: {
     fontFamily: Fonts.body,
-    fontSize: 9,
+    fontSize: 10,
     color: theme.textMuted,
+    lineHeight: 14,
   },
   reserveList: {
     gap: 12,
@@ -3235,24 +3448,32 @@ const useStyles = (theme: any) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingVertical: 2,
   },
   accountingCol: {
     flex: 1,
     alignItems: 'center',
-    gap: 2,
+    gap: 4,
+  },
+  accColLabelContainer: {
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   accColLabel: {
     fontFamily: Fonts.headlineBold,
-    fontSize: 8,
+    fontSize: 9,
     letterSpacing: 0.5,
+    textAlign: 'center',
   },
   accColVal: {
     fontFamily: Fonts.headlineBold,
-    fontSize: 13,
+    fontSize: 14,
+    textAlign: 'center',
   },
   accountingDivider: {
     width: 1,
-    height: 24,
+    height: 28,
     backgroundColor: theme.borderSubtle,
   },
   multiProgressWrap: {
