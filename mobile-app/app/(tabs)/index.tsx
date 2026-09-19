@@ -11,6 +11,7 @@ import { NotificationCenterModal } from '@/components/NotificationCenterModal';
 import { ToastNotification, ToastMessage } from '@/components/ToastNotification';
 import { MatchCountdownCard } from '@/components/MatchCountdownCard';
 import { AppGuideModal } from '@/components/AppGuideModal';
+import { MatchSeekingModal } from '@/components/MatchSeekingModal';
 import { useMatches } from '@/hooks/use-matches';
 import { useAuth } from '@/hooks/use-auth';
 import { Bouncable } from '@/components/Bouncable';
@@ -30,6 +31,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [createMatchVisible, setCreateMatchVisible] = useState(false);
+  const [matchSeekingVisible, setMatchSeekingVisible] = useState(false);
   const [notifModalVisible, setNotifModalVisible] = useState(false);
   const [guideVisible, setGuideVisible] = useState(false);
   const [hasViewedGuide, setHasViewedGuide] = useState(false);
@@ -150,6 +152,10 @@ export default function HomeScreen() {
             router.push('/match-room');
           }
         }}
+      />
+      <MatchSeekingModal
+        visible={matchSeekingVisible}
+        onClose={() => setMatchSeekingVisible(false)}
       />
 
       {/* Header */}
@@ -300,6 +306,54 @@ export default function HomeScreen() {
             <Text style={styles.quickActionText}>RAKİP BUL</Text>
           </Bouncable>
         </View>
+
+        {/* ── PLAYER MATCH SEEKING BEACON (OYUNCU MAÇ ARIYORUM SİNYALİ) ── */}
+        {user?.isLookingForMatch ? (
+          <Bouncable 
+            style={styles.seekingBeaconActiveCard} 
+            onPress={() => setMatchSeekingVisible(true)}
+          >
+            <View style={styles.beaconActiveLeft}>
+              <View style={styles.beaconPulseIcon}>
+                <View style={styles.beaconDotInner} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.beaconActiveTitle}>MAÇ ARIYORSUNUZ</Text>
+                  <View style={styles.beaconDateTag}>
+                    <Text style={styles.beaconDateTagText}>{user.availableDate || 'Bugün'}</Text>
+                  </View>
+                </View>
+                <Text style={styles.beaconActiveSub} numberOfLines={1}>
+                  {user.availableNote ? `💬 "${user.availableNote}"` : 'Kaptanlar seni oyuncu arama listesinde en üstte görüyor!'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.beaconEditBadge}>
+              <Text style={styles.beaconEditBadgeText}>Düzenle</Text>
+              <MaterialIcons name="chevron-right" size={16} color="#22c55e" />
+            </View>
+          </Bouncable>
+        ) : (
+          <Bouncable 
+            style={styles.seekingBeaconInactiveCard} 
+            onPress={() => setMatchSeekingVisible(true)}
+          >
+            <View style={styles.beaconInactiveIconBox}>
+              <MaterialIcons name="radar" size={22} color={theme.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.beaconInactiveTitle}>BUGÜN VEYA YARIN MAÇ MI ARIYORSUN?</Text>
+              <Text style={styles.beaconInactiveSub}>
+                Sinyalini aç, eksik oyuncusu olan kaptanlar seni hemen kadroya alsın.
+              </Text>
+            </View>
+            <View style={styles.beaconActionBtn}>
+              <MaterialIcons name="add-alert" size={14} color={theme.onPrimary} />
+              <Text style={styles.beaconActionBtnText}>İlan Ver</Text>
+            </View>
+          </Bouncable>
+        )}
 
         <View style={styles.sectionHeaderBox}>
           <Text style={styles.sectionTitle}>YAKLAŞAN MAÇLAR</Text>
@@ -651,5 +705,121 @@ const useStyles = (theme: any) => StyleSheet.create({
     padding: 4,
     borderRadius: 12,
     backgroundColor: theme.surfaceContainerHighest,
+  },
+
+  // Match Seeking Beacon
+  seekingBeaconActiveCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(34, 197, 94, 0.08)',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: '#22c55e',
+    marginBottom: 12,
+  },
+  beaconActiveLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  beaconPulseIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(34, 197, 94, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  beaconDotInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#22c55e',
+  },
+  beaconActiveTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 13,
+    color: '#22c55e',
+    letterSpacing: 0.3,
+  },
+  beaconDateTag: {
+    backgroundColor: 'rgba(34, 197, 94, 0.2)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  beaconDateTagText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: '#22c55e',
+  },
+  beaconActiveSub: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: theme.textMuted,
+    marginTop: 2,
+  },
+  beaconEditBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  beaconEditBadgeText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: '#22c55e',
+  },
+  seekingBeaconInactiveCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: theme.surfaceContainer,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: `${theme.primary}40`,
+    marginBottom: 12,
+  },
+  beaconInactiveIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: `${theme.primary}18`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  beaconInactiveTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 12,
+    color: theme.text,
+    letterSpacing: 0.2,
+  },
+  beaconInactiveSub: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: theme.textMuted,
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  beaconActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: theme.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  beaconActionBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.background,
   },
 });

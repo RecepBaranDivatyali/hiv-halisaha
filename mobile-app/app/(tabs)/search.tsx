@@ -59,6 +59,8 @@ export default function SearchScreen() {
   const [level, setLevel] = useState('0-3.9');
   const [difficulty, setDifficulty] = useState('Eğlence');
   const [selectedTimeFrame, setSelectedTimeFrame] = useState('Tümü');
+  const [reservationStatus, setReservationStatus] = useState<'all' | 'reserved' | 'no_reservation'>('all');
+  const [playerStatus, setPlayerStatus] = useState<'all' | 'looking'>('looking');
   const [remember, setRemember] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -140,6 +142,8 @@ export default function SearchScreen() {
         district: selectedDistrict,
         arena: selectedPitch !== 'Tüm Sahalar' ? selectedPitch : undefined,
         timeFrame: selectedTimeFrame !== 'Tümü' ? selectedTimeFrame : undefined,
+        reservationStatus: (activeTab === 'Maç' || activeTab === 'Rakip') && reservationStatus !== 'all' ? reservationStatus : undefined,
+        playerStatus: activeTab === 'Oyuncu' ? playerStatus : undefined,
       }
     });
   };
@@ -296,59 +300,151 @@ export default function SearchScreen() {
               </View>
             )}
 
-            {/* Timeframe filter for Maç tab */}
-            {activeTab === 'Maç' && (
-              <View style={styles.sectionBox}>
-                <Text style={styles.sectionTitle}>MAÇ ZAMANI</Text>
-                <View style={styles.levelGrid}>
-                  {['Tümü', 'Bugün', 'Yarın'].map((tf) => {
-                    const active = selectedTimeFrame === tf;
-                    return (
-                      <TouchableOpacity
-                        key={tf}
-                        style={levelBtnStyle(active)}
-                        onPress={() => setSelectedTimeFrame(tf)}
-                        activeOpacity={0.8}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: active }}
-                      >
-                        <Text style={[styles.levelText, active && styles.levelTextActive]}>{tf}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+            {/* 1. Tarih / Zaman Filtresi (Maç, Oyuncu ve Rakip - TÜMÜ) */}
+            <View style={styles.sectionBox}>
+              <Text style={styles.sectionTitle}>
+                {activeTab === 'Maç' ? 'MAÇ ZAMANI' : activeTab === 'Oyuncu' ? 'OYUNCU İÇİN GÜN / ZAMAN' : 'MAÇ GÜNÜ / ZAMAN'}
+              </Text>
+              <View style={styles.levelGrid}>
+                {['Tümü', 'Bugün', 'Yarın'].map((tf) => {
+                  const active = selectedTimeFrame === tf;
+                  return (
+                    <TouchableOpacity
+                      key={tf}
+                      style={levelBtnStyle(active)}
+                      onPress={() => setSelectedTimeFrame(tf)}
+                      activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                    >
+                      <Text style={[styles.levelText, active && styles.levelTextActive]}>{tf}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
 
-                  {/* 4. Buton: "Bu Hafta Sonu" yerine Tarih Seçici */}
-                  {(() => {
-                    const isCustomDate = selectedTimeFrame !== 'Tümü' && selectedTimeFrame !== 'Bugün' && selectedTimeFrame !== 'Yarın';
+                {/* 4. Buton: Tarih Seçici */}
+                {(() => {
+                  const isCustomDate = selectedTimeFrame !== 'Tümü' && selectedTimeFrame !== 'Bugün' && selectedTimeFrame !== 'Yarın';
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        levelBtnStyle(isCustomDate),
+                        { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }
+                      ]}
+                      onPress={() => setDateModalVisible(true)}
+                      activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isCustomDate }}
+                    >
+                      <MaterialIcons 
+                        name="calendar-today" 
+                        size={14} 
+                        color={isCustomDate ? theme.primary : theme.textMuted} 
+                      />
+                      <Text 
+                        style={[
+                          styles.levelText, 
+                          isCustomDate && styles.levelTextActive,
+                          { fontSize: isCustomDate ? 11 : 13 }
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {isCustomDate ? selectedTimeFrame.toUpperCase() : 'TARİH SEÇ'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })()}
+              </View>
+            </View>
+
+            {/* 2. Rezervasyon Durumu Filtresi (Maç & Rakip) */}
+            {(activeTab === 'Maç' || activeTab === 'Rakip') && (
+              <View style={styles.sectionBox}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                  <Text style={styles.sectionTitle}>REZERVASYON DURUMU</Text>
+                  <Text style={{ fontFamily: Fonts.body, fontSize: 11, color: theme.textMuted }}>
+                    {activeTab === 'Rakip' ? 'Sahası olan rakipleri bul' : 'Saha durumuna göre filtrele'}
+                  </Text>
+                </View>
+                <View style={styles.levelGrid}>
+                  {[
+                    { key: 'all', label: 'TÜMÜ' },
+                    { key: 'reserved', label: '✓ SAHASI HAZIR' },
+                    { key: 'no_reservation', label: '⚠️ SAHA ARANIYOR' },
+                  ].map((item) => {
+                    const active = reservationStatus === item.key;
                     return (
                       <TouchableOpacity
+                        key={item.key}
                         style={[
-                          levelBtnStyle(isCustomDate),
-                          { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }
+                          styles.levelBtn,
+                          { flex: item.key === 'all' ? 0.9 : 1.3 },
+                          {
+                            borderColor: active
+                              ? (item.key === 'reserved' ? '#22c55e' : item.key === 'no_reservation' ? '#f59e0b' : theme.primary)
+                              : theme.borderSubtle,
+                            backgroundColor: active
+                              ? (item.key === 'reserved' ? 'rgba(34,197,94,0.15)' : item.key === 'no_reservation' ? 'rgba(245,158,11,0.15)' : `${theme.primary}15`)
+                              : theme.surfaceContainerHighest
+                          }
                         ]}
-                        onPress={() => setDateModalVisible(true)}
+                        onPress={() => setReservationStatus(item.key as any)}
                         activeOpacity={0.8}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: isCustomDate }}
                       >
-                        <MaterialIcons 
-                          name="calendar-today" 
-                          size={14} 
-                          color={isCustomDate ? theme.primary : theme.textMuted} 
-                        />
-                        <Text 
-                          style={[
-                            styles.levelText, 
-                            isCustomDate && styles.levelTextActive,
-                            { fontSize: isCustomDate ? 12 : 13 }
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {isCustomDate ? selectedTimeFrame.toUpperCase() : 'TARİH SEÇ'}
+                        <Text style={[
+                          styles.levelText, 
+                          active && {
+                            color: item.key === 'reserved' ? '#22c55e' : item.key === 'no_reservation' ? '#f59e0b' : theme.primary,
+                            fontFamily: Fonts.headlineBold
+                          }
+                        ]}>
+                          {item.label}
                         </Text>
                       </TouchableOpacity>
                     );
-                  })()}
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* 3. Oyuncu Durumu Filtresi (Oyuncu Sekmesi) */}
+            {activeTab === 'Oyuncu' && (
+              <View style={styles.sectionBox}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                  <Text style={styles.sectionTitle}>OYUNCU DURUMU</Text>
+                  <Text style={{ fontFamily: Fonts.body, fontSize: 11, color: theme.textMuted }}>
+                    {playerStatus === 'looking' ? 'Bugün/yarın oynamak isteyenler' : 'Tüm oyuncular'}
+                  </Text>
+                </View>
+                <View style={styles.levelGrid}>
+                  {[
+                    { key: 'looking', label: '🟢 MAÇ ARAYANLAR' },
+                    { key: 'all', label: 'TÜM OYUNCULAR' },
+                  ].map((item) => {
+                    const active = playerStatus === item.key;
+                    return (
+                      <TouchableOpacity
+                        key={item.key}
+                        style={[
+                          styles.levelBtn,
+                          { flex: 1 },
+                          {
+                            borderColor: active ? (item.key === 'looking' ? '#22c55e' : theme.primary) : theme.borderSubtle,
+                            backgroundColor: active ? (item.key === 'looking' ? 'rgba(34,197,94,0.15)' : `${theme.primary}15`) : theme.surfaceContainerHighest
+                          }
+                        ]}
+                        onPress={() => setPlayerStatus(item.key as any)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[
+                          styles.levelText, 
+                          active && { color: item.key === 'looking' ? '#22c55e' : theme.primary, fontFamily: Fonts.headlineBold }
+                        ]}>
+                          {item.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </View>
             )}

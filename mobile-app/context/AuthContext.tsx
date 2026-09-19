@@ -37,6 +37,10 @@ export interface UserSession {
   ibanName?: string;
   bankName?: string;
   stats?: UserStats;
+  isLookingForMatch?: boolean;
+  availableDate?: string;
+  preferredDistrict?: string;
+  availableNote?: string;
 }
 
 export const INITIAL_USER: UserSession = {
@@ -49,6 +53,10 @@ export const INITIAL_USER: UserSession = {
   rating: 5.0,
   avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG',
   isLoggedIn: false,
+  isLookingForMatch: false,
+  availableDate: '',
+  preferredDistrict: '',
+  availableNote: '',
   hasSeenOnboarding: false,
   clubId: null,
   clubName: null,

@@ -49,6 +49,11 @@ export interface MatchModel {
   teamBHidden?: boolean;
   teamAFormation?: string;
   teamBFormation?: string;
+  hasReservation?: boolean; // Saha rezervasyonu alındı mı
+  isPitchFlexible?: boolean; // Saha henüz kesin değil / saha aranıyor
+  isTimeFlexible?: boolean; // Saat henüz kesin değil / esnek
+  preferredPitch?: string; // İstenen veya hedeflenen halısaha
+  preferredTimeSlot?: string; // İstenen veya hedeflenen saat
   status: 'active' | 'completed' | 'cancelled';
   score?: string;
   joinTerms?: number;
@@ -77,6 +82,7 @@ export interface ClubModel {
   name: string;
   desc: string;
   city?: string;
+  district?: string;
   rank?: string;
   points?: number;
   membersCount?: number;
@@ -87,6 +93,9 @@ export interface ClubModel {
   logo?: string;
   color?: string;
   members?: string[];
+  hasReservation?: boolean; // Kulübün hazır sahası/rezervasyonu var mı
+  reservationDetails?: string; // Örn: "ODTÜ Halısaha - Çarşamba 21:00"
+  availableDate?: string; // Oynamaya hazır olduğu tarih (örn: "24 Eylül", "Bugün")
   createdAt?: any;
 }
 
@@ -656,7 +665,14 @@ export const dbService = {
   // 3. ARAMA VE FİLTRELEME (SEARCH)
   // ==========================================
 
-  searchPlayers: async (criteria: { city?: string; district?: string; position?: string; level?: string }) => {
+  searchPlayers: async (criteria: { 
+    city?: string; 
+    district?: string; 
+    position?: string; 
+    level?: string;
+    onlyLookingForMatch?: boolean;
+    timeFrame?: string;
+  }) => {
     try {
       const usersRef = collection(db, 'users');
       const q = query(usersRef, limit(50));
@@ -669,12 +685,36 @@ export const dbService = {
           p.city && p.city.toLocaleLowerCase('tr').includes(cityLower)
         );
       }
+      if (criteria.district && criteria.district !== 'Tüm İlçeler') {
+        const distLower = criteria.district.trim().toLocaleLowerCase('tr');
+        players = players.filter((p: any) => 
+          (p.district && p.district.toLocaleLowerCase('tr').includes(distLower)) ||
+          (p.preferredDistrict && p.preferredDistrict.toLocaleLowerCase('tr').includes(distLower))
+        );
+      }
       if (criteria.position) {
         players = players.filter((p: any) => p.position && p.position.toUpperCase().includes(criteria.position!.toUpperCase()));
       }
       if (criteria.level) {
         players = players.filter((p: any) => p.level === criteria.level);
       }
+      if (criteria.onlyLookingForMatch) {
+        players = players.filter((p: any) => p.isLookingForMatch === true);
+      }
+      if (criteria.timeFrame && criteria.timeFrame !== 'Tümü' && criteria.timeFrame !== 'all') {
+        const tf = criteria.timeFrame.toLocaleLowerCase('tr').trim();
+        players = players.filter((p: any) => {
+          if (!p.availableDate) return !criteria.onlyLookingForMatch;
+          return p.availableDate.toLocaleLowerCase('tr').includes(tf);
+        });
+      }
+
+      // Aktif maç arayan oyuncuları her zaman en üstte göster
+      players.sort((a: any, b: any) => {
+        if (a.isLookingForMatch && !b.isLookingForMatch) return -1;
+        if (!a.isLookingForMatch && b.isLookingForMatch) return 1;
+        return (b.rating || 0) - (a.rating || 0);
+      });
 
       return players;
     } catch (error) {
@@ -683,7 +723,15 @@ export const dbService = {
     }
   },
 
-  searchMatches: async (criteria: { city?: string; district?: string; mode?: string; difficulty?: string; arena?: string; timeFrame?: string }) => {
+  searchMatches: async (criteria: { 
+    city?: string; 
+    district?: string; 
+    mode?: string; 
+    difficulty?: string; 
+    arena?: string; 
+    timeFrame?: string;
+    hasReservation?: 'all' | 'reserved' | 'no_reservation' | boolean;
+  }) => {
     try {
       const matchesRef = collection(db, 'matches');
       let q = query(matchesRef, where('status', '==', 'active'), limit(50));
@@ -695,12 +743,23 @@ export const dbService = {
         const cityLower = criteria.city.trim().toLocaleLowerCase('tr');
         list = list.filter(m => m.city && m.city.toLocaleLowerCase('tr').includes(cityLower));
       }
+      if (criteria.district && criteria.district !== 'Tüm İlçeler') {
+        const distLower = criteria.district.trim().toLocaleLowerCase('tr');
+        list = list.filter(m => m.district && m.district.toLocaleLowerCase('tr').includes(distLower));
+      }
       if (criteria.mode) {
         list = list.filter(m => m.mode === criteria.mode);
       }
       if (criteria.arena && criteria.arena !== 'Tüm Sahalar') {
         const arenaLower = criteria.arena.trim().toLocaleLowerCase('tr');
         list = list.filter(m => m.arena && m.arena.toLocaleLowerCase('tr').includes(arenaLower));
+      }
+      if (criteria.hasReservation !== undefined && criteria.hasReservation !== 'all') {
+        if (criteria.hasReservation === true || criteria.hasReservation === 'reserved') {
+          list = list.filter(m => m.hasReservation === true);
+        } else if (criteria.hasReservation === false || criteria.hasReservation === 'no_reservation') {
+          list = list.filter(m => !m.hasReservation);
+        }
       }
       if (criteria.timeFrame && criteria.timeFrame !== 'Tümü' && criteria.timeFrame !== 'all') {
         const tf = criteria.timeFrame.toLocaleLowerCase('tr').trim();
@@ -819,14 +878,76 @@ export const dbService = {
   // 5. KULÜP İŞLEMLERİ (CLUBS)
   // ==========================================
 
-  getClubs: async () => {
+  getClubs: async (criteria?: { city?: string; district?: string; hasReservation?: boolean; timeFrame?: string }) => {
     try {
       const clubsRef = collection(db, 'clubs');
       const snapshot = await getDocs(clubsRef);
-      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ClubModel));
+      let list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ClubModel));
+
+      if (criteria?.city) {
+        const cityLower = criteria.city.trim().toLocaleLowerCase('tr');
+        list = list.filter(c => c.city && c.city.toLocaleLowerCase('tr').includes(cityLower));
+      }
+      if (criteria?.district && criteria.district !== 'Tüm İlçeler') {
+        const distLower = criteria.district.trim().toLocaleLowerCase('tr');
+        list = list.filter(c => c.district && c.district.toLocaleLowerCase('tr').includes(distLower));
+      }
+      if (criteria?.hasReservation !== undefined) {
+        list = list.filter(c => c.hasReservation === criteria.hasReservation);
+      }
+      if (criteria?.timeFrame && criteria.timeFrame !== 'Tümü' && criteria.timeFrame !== 'all') {
+        const tf = criteria.timeFrame.toLocaleLowerCase('tr').trim();
+        list = list.filter(c => !c.availableDate || c.availableDate.toLocaleLowerCase('tr').includes(tf));
+      }
+
+      // Sahası hazır olan rakipleri öne çıkar
+      list.sort((a, b) => {
+        if (a.hasReservation && !b.hasReservation) return -1;
+        if (!a.hasReservation && b.hasReservation) return 1;
+        return (b.points || 0) - (a.points || 0);
+      });
+
+      return list;
     } catch (error) {
       console.error("Kulüpleri çekme hatası:", error);
       return [];
+    }
+  },
+
+  setUserLookingForMatch: async (
+    userId: string, 
+    isLooking: boolean, 
+    availableDateOrDetails?: string | { availableDate?: string; district?: string; availableNote?: string }, 
+    preferredDistrict?: string, 
+    note?: string
+  ) => {
+    let dateStr = 'Bugün';
+    let distStr = '';
+    let noteStr = '';
+
+    if (typeof availableDateOrDetails === 'object' && availableDateOrDetails !== null) {
+      dateStr = availableDateOrDetails.availableDate || 'Bugün';
+      distStr = availableDateOrDetails.district || '';
+      noteStr = availableDateOrDetails.availableNote || '';
+    } else {
+      dateStr = availableDateOrDetails || 'Bugün';
+      distStr = preferredDistrict || '';
+      noteStr = note || '';
+    }
+
+    try {
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        isLookingForMatch: isLooking,
+        availableDate: isLooking ? dateStr : deleteField(),
+        preferredDistrict: isLooking ? (distStr || null) : deleteField(),
+        availableNote: isLooking ? (noteStr || null) : deleteField(),
+        updatedAt: serverTimestamp()
+      });
+      return true;
+    } catch (error) {
+      console.error("Maç arama durumu güncelleme hatası:", error);
+      throw error;
     }
   },
 

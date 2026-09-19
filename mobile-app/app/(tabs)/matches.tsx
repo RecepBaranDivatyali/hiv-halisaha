@@ -176,7 +176,20 @@ export default function MatchesScreen() {
                           <MaterialIcons name="sports-soccer" size={32} color={iconColor} />
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.matchTitle}>{match.arena}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <Text style={styles.matchTitle}>{match.arena}</Text>
+                            {match.hasReservation ? (
+                              <View style={styles.resMiniBadge}>
+                                <MaterialIcons name="verified" size={11} color="#22c55e" />
+                                <Text style={styles.resMiniBadgeText}>Sahası Hazır</Text>
+                              </View>
+                            ) : match.isPitchFlexible ? (
+                              <View style={styles.flexMiniBadge}>
+                                <MaterialIcons name="location-searching" size={11} color="#f59e0b" />
+                                <Text style={styles.flexMiniBadgeText}>Saha Aranıyor</Text>
+                              </View>
+                            ) : null}
+                          </View>
                           <Text style={styles.matchSubtitle}>{match.dateTime} • {match.mode}</Text>
                         </View>
                       </View>
@@ -461,5 +474,33 @@ const useStyles = (theme: any) => StyleSheet.create({
     elevation: 8,
     borderWidth: 2,
     borderColor: `${theme.primary}40`
-  }
+  },
+  resMiniBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  resMiniBadgeText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 9,
+    color: '#22c55e',
+  },
+  flexMiniBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  flexMiniBadgeText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 9,
+    color: '#f59e0b',
+  },
 });

@@ -15,6 +15,7 @@ import { PITCH_DATABASE, PitchDatabaseItem } from '@/config/pitches';
 export interface NewMatchData {
   id: string;
   city: string;
+  district?: string;
   arena: string;
   pitchSubCode: string;
   dateStr: string;
@@ -31,6 +32,11 @@ export interface NewMatchData {
   organizerIbanName?: string;
   organizerBankName?: string;
   matchFormatType?: 'single_organizer' | 'two_captains';
+  hasReservation?: boolean;
+  isPitchFlexible?: boolean;
+  isTimeFlexible?: boolean;
+  preferredPitch?: string;
+  preferredTimeSlot?: string;
 }
 
 interface CreateMatchModalProps {
@@ -105,12 +111,19 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     selectedPitch.subFields[0]?.name || 'Tek Saha'
   );
 
+  // ── Saha & Rezervasyon Esnekliği ──
+  const [isPitchFlexible, setIsPitchFlexible] = useState(false);
+  const [hasReservation, setHasReservation] = useState(true);
+  const [preferredDistrict, setPreferredDistrict] = useState(user?.district || 'Çankaya');
+  const [isTimeFlexible, setIsTimeFlexible] = useState(false);
+
   const handleSelectCity = (c: string) => {
     setSelectedCity(c);
     setCitySelectorOpen(false);
     const firstPitch = PITCH_DATABASE.find(p => p.city === c);
     if (firstPitch) {
       setSelectedPitch(firstPitch);
+      setPreferredDistrict(firstPitch.district);
       setSelectedSubField(firstPitch.subFields[0]?.name || 'Tek Saha');
     }
   };
@@ -205,6 +218,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   const handlePitchSelect = (pitch: PitchDatabaseItem) => {
     setSelectedPitch(pitch);
     setSelectedCity(pitch.city); // Sync city!
+    setPreferredDistrict(pitch.district);
     setSelectedSubField(pitch.subFields[0]?.name || 'Tek Saha');
     setPitchPickerOpen(false);
     setPitchSearch('');
@@ -228,16 +242,30 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     if (isSubmitting) return;
     setIsSubmitting(true);
     const dateStr = formatDateTR(selectedDate);
-    const fullArenaName = `${selectedPitch.name} — ${selectedSubField}`;
-    const fullDateTime = `${dateStr}, ${selectedTimeSlot}`;
+    const targetDistrict = isPitchFlexible 
+      ? (selectedPitch?.district || preferredDistrict || 'Merkez')
+      : selectedPitch.district;
+
+    let fullArenaName = '';
+    if (isPitchFlexible) {
+      fullArenaName = selectedPitch?.name 
+        ? `${selectedPitch.name} (Saha Aranıyor)`
+        : `Saha Aranıyor (${targetDistrict})`;
+    } else {
+      fullArenaName = `${selectedPitch.name} — ${selectedSubField}`;
+    }
+
+    const timeSlotStr = isTimeFlexible ? 'Saat Esnek' : selectedTimeSlot;
+    const fullDateTime = `${dateStr}, ${timeSlotStr}`;
 
     const newMatch: NewMatchData = {
       id: Date.now().toString(),
       city: selectedCity,
+      district: targetDistrict,
       arena: fullArenaName,
-      pitchSubCode: selectedSubField,
+      pitchSubCode: isPitchFlexible ? 'Esnek' : selectedSubField,
       dateStr,
-      timeSlot: selectedTimeSlot,
+      timeSlot: timeSlotStr,
       dateTime: fullDateTime,
       mode: selectedMode,
       totalFee: totalFeeNum,
@@ -245,6 +273,11 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       isSubscription,
       isGkFree,
       matchFormatType,
+      hasReservation: isPitchFlexible ? false : hasReservation,
+      isPitchFlexible,
+      isTimeFlexible,
+      preferredPitch: selectedPitch?.name,
+      preferredTimeSlot: isTimeFlexible ? undefined : selectedTimeSlot,
       organizerIban: showIbanInput && organizerIban ? organizerIban.trim() : undefined,
       organizerIbanName: showIbanInput && organizerIbanName ? organizerIbanName.trim() : undefined,
       organizerBankName: showIbanInput && organizerBankName ? organizerBankName.trim() : undefined,
@@ -309,45 +342,131 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
 
           <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
 
-            {/* ── 1. HALISAHA SEÇİMİ ── */}
+            {/* ── 1. HALISAHA VE REZERVASYON SEÇİMİ ── */}
             <View style={styles.section}>
-              <Text style={styles.label}>HALISAHA TESİSİ</Text>
-
-              {/* Seçili tesis kutusu + değiştir butonu */}
-              <TouchableOpacity style={styles.pitchSelectedBox} onPress={() => setPitchPickerOpen(true)}>
-                <View style={styles.pitchSelectedLeft}>
-                  <MaterialIcons name="stadium" size={20} color={theme.primary} />
-                  <View>
-                    <Text style={styles.pitchSelectedName}>{selectedPitch.name}</Text>
-                    <Text style={styles.pitchSelectedDistrict}>{selectedPitch.district}  •  ★ {selectedPitch.rating}</Text>
-                  </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text style={styles.label}>HALISAHA TESİSİ</Text>
+                <View style={styles.pitchModeTabs}>
+                  <TouchableOpacity
+                    style={[styles.pitchModeTab, !isPitchFlexible && styles.pitchModeTabActive]}
+                    onPress={() => setIsPitchFlexible(false)}
+                    activeOpacity={0.8}
+                  >
+                    <MaterialIcons name="stadium" size={13} color={!isPitchFlexible ? theme.onPrimary : theme.textMuted} />
+                    <Text style={[styles.pitchModeTabText, !isPitchFlexible && styles.pitchModeTabTextActive]}>Saha Belirli</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.pitchModeTab, isPitchFlexible && styles.pitchModeTabActiveWarning]}
+                    onPress={() => { setIsPitchFlexible(true); setHasReservation(false); }}
+                    activeOpacity={0.8}
+                  >
+                    <MaterialIcons name="location-searching" size={13} color={isPitchFlexible ? '#ffffff' : theme.textMuted} />
+                    <Text style={[styles.pitchModeTabText, isPitchFlexible && { color: '#ffffff', fontFamily: Fonts.headlineBold }]}>Saha Aranıyor</Text>
+                  </TouchableOpacity>
                 </View>
-                <View style={styles.changeBadge}>
-                  <Text style={styles.changeBadgeText}>Değiştir</Text>
-                  <MaterialIcons name="keyboard-arrow-down" size={16} color={theme.primary} />
-                </View>
-              </TouchableOpacity>
+              </View>
 
-              {/* Alt Saha Seçimi */}
-              {selectedPitch.subFields.length > 0 && (
-                <View>
-                  <Text style={styles.subLabel}>SAHA / PARÇA</Text>
-                  <View style={styles.subFieldRow}>
-                    {selectedPitch.subFields.map(sub => (
+              {!isPitchFlexible ? (
+                <>
+                  {/* Seçili tesis kutusu + değiştir butonu */}
+                  <TouchableOpacity style={styles.pitchSelectedBox} onPress={() => setPitchPickerOpen(true)}>
+                    <View style={styles.pitchSelectedLeft}>
+                      <MaterialIcons name="stadium" size={20} color={theme.primary} />
+                      <View>
+                        <Text style={styles.pitchSelectedName}>{selectedPitch.name}</Text>
+                        <Text style={styles.pitchSelectedDistrict}>{selectedPitch.district}  •  ★ {selectedPitch.rating}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.changeBadge}>
+                      <Text style={styles.changeBadgeText}>Değiştir</Text>
+                      <MaterialIcons name="keyboard-arrow-down" size={16} color={theme.primary} />
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Alt Saha Seçimi */}
+                  {selectedPitch.subFields.length > 0 && (
+                    <View>
+                      <Text style={styles.subLabel}>SAHA / PARÇA</Text>
+                      <View style={styles.subFieldRow}>
+                        {selectedPitch.subFields.map(sub => (
+                          <TouchableOpacity
+                            key={sub.id}
+                            style={[styles.subFieldChip, selectedSubField === sub.name && styles.subFieldChipActive]}
+                            onPress={() => setSelectedSubField(sub.name)}
+                          >
+                            <Text style={[styles.subFieldText, selectedSubField === sub.name && styles.subFieldTextActive]}>
+                              {sub.name}
+                            </Text>
+                            <Text style={[styles.subFieldSurface, selectedSubField === sub.name && { color: theme.primary }]}>
+                              {sub.surface}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Rezervasyon Durumu Seçici */}
+                  <View style={{ marginTop: 8 }}>
+                    <Text style={styles.subLabel}>HALISAHA REZERVASYONU ALINDI MI?</Text>
+                    <View style={styles.resStatusRow}>
                       <TouchableOpacity
-                        key={sub.id}
-                        style={[styles.subFieldChip, selectedSubField === sub.name && styles.subFieldChipActive]}
-                        onPress={() => setSelectedSubField(sub.name)}
+                        style={[styles.resStatusCard, hasReservation && styles.resStatusCardActiveSuccess]}
+                        onPress={() => setHasReservation(true)}
+                        activeOpacity={0.8}
                       >
-                        <Text style={[styles.subFieldText, selectedSubField === sub.name && styles.subFieldTextActive]}>
-                          {sub.name}
-                        </Text>
-                        <Text style={[styles.subFieldSurface, selectedSubField === sub.name && { color: theme.primary }]}>
-                          {sub.surface}
-                        </Text>
+                        <View style={styles.resStatusCardTop}>
+                          <MaterialIcons name="verified" size={18} color={hasReservation ? '#22c55e' : theme.textMuted} />
+                          <Text style={[styles.resStatusCardTitle, hasReservation && { color: '#22c55e' }]}>
+                            ✓ Rezervasyon Var
+                          </Text>
+                        </View>
+                        <Text style={styles.resStatusCardSub}>Saha tutuldu, maç kesin (Saha Hazır)</Text>
                       </TouchableOpacity>
-                    ))}
+
+                      <TouchableOpacity
+                        style={[styles.resStatusCard, !hasReservation && styles.resStatusCardActiveWarning]}
+                        onPress={() => setHasReservation(false)}
+                        activeOpacity={0.8}
+                      >
+                        <View style={styles.resStatusCardTop}>
+                          <MaterialIcons name="hourglass-empty" size={18} color={!hasReservation ? '#f59e0b' : theme.textMuted} />
+                          <Text style={[styles.resStatusCardTitle, !hasReservation && { color: '#f59e0b' }]}>
+                            ⚠️ Henüz Alınmadı
+                          </Text>
+                        </View>
+                        <Text style={styles.resStatusCardSub}>Saha aranıyor / Rezerve rakip aranıyor</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
+                </>
+              ) : (
+                /* Saha Aranıyor Modu */
+                <View style={styles.flexiblePitchCard}>
+                  <View style={styles.flexiblePitchHeader}>
+                    <MaterialIcons name="not-listed-location" size={24} color="#f59e0b" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.flexiblePitchTitle}>Saha Henüz Belirlenmedi (Saha Aranıyor)</Text>
+                      <Text style={styles.flexiblePitchDesc}>
+                        Maç ilanınızda 'Saha Aranıyor' olarak gösterilir. Rezervasyonu hazır olan rakipler ve oyuncular size teklif gönderebilir.
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  <TouchableOpacity 
+                    style={styles.flexibleTargetPitchBox} 
+                    onPress={() => setPitchPickerOpen(true)}
+                    activeOpacity={0.8}
+                  >
+                    <MaterialIcons name="place" size={18} color={theme.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.flexibleTargetPitchLabel}>Hedef Tesis / Bölge Tercihi:</Text>
+                      <Text style={styles.flexibleTargetPitchValue}>
+                        {selectedPitch ? `${selectedPitch.name} (${selectedPitch.district})` : `${selectedCity} / ${preferredDistrict}`}
+                      </Text>
+                    </View>
+                    <Text style={styles.flexibleChangeText}>Değiştir</Text>
+                  </TouchableOpacity>
                 </View>
               )}
             </View>
@@ -389,27 +508,50 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
 
             {/* ── 3. SAAT SEÇİMİ ── */}
             <View style={styles.section}>
-              <Text style={styles.label}>MAÇ SAATİ</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={styles.label}>MAÇ SAATİ</Text>
+                {isTimeFlexible && (
+                  <View style={styles.timeFlexibleBadge}>
+                    <MaterialIcons name="schedule" size={12} color="#38bdf8" />
+                    <Text style={styles.timeFlexibleBadgeText}>Saat Esnek</Text>
+                  </View>
+                )}
+              </View>
 
-              {/* Popüler saatler + Seç butonu */}
+              {/* Popüler saatler + Saat Esnek + Seç butonu */}
               <View style={styles.timeTopRow}>
                 {popularSlots.map(slot => (
                   <TouchableOpacity
                     key={slot}
-                    style={[styles.timePopChip, selectedTimeSlot === slot && styles.timePopChipActive]}
-                    onPress={() => setSelectedTimeSlot(slot)}
+                    style={[styles.timePopChip, !isTimeFlexible && selectedTimeSlot === slot && styles.timePopChipActive]}
+                    onPress={() => { setIsTimeFlexible(false); setSelectedTimeSlot(slot); }}
                   >
-                    <Text style={[styles.timePopText, selectedTimeSlot === slot && styles.timePopTextActive]}>{slot}</Text>
+                    <Text style={[styles.timePopText, !isTimeFlexible && selectedTimeSlot === slot && styles.timePopTextActive]}>{slot}</Text>
                   </TouchableOpacity>
                 ))}
+
+                <TouchableOpacity
+                  style={[styles.timePopChip, isTimeFlexible && styles.timePopChipActiveFlexible]}
+                  onPress={() => {
+                    setIsTimeFlexible(true);
+                    setSelectedTimeSlot('Saat Esnek');
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <MaterialIcons name="all-inclusive" size={14} color={isTimeFlexible ? '#0284c7' : theme.textMuted} />
+                  <Text style={[styles.timePopText, isTimeFlexible && { color: '#0284c7', fontFamily: Fonts.headlineBold }]}>
+                    Saat Esnek
+                  </Text>
+                </TouchableOpacity>
+
                 <TouchableOpacity style={styles.timePickerBtn} onPress={() => setTimePickerOpen(true)}>
                   <MaterialIcons name="access-time" size={15} color={theme.primary} />
                   <Text style={styles.timePickerBtnText}>Tümü</Text>
                 </TouchableOpacity>
               </View>
 
-              {/* Seçili saat göstergesi (popüler dışında bir saat seçildiyse) */}
-              {!popularSlots.includes(selectedTimeSlot) && (
+              {/* Seçili saat göstergesi */}
+              {!isTimeFlexible && !popularSlots.includes(selectedTimeSlot) && (
                 <View style={styles.selectedTimeBox}>
                   <MaterialIcons name="schedule" size={16} color={theme.primary} />
                   <Text style={styles.selectedTimeText}>Seçili: {selectedTimeSlot}</Text>
@@ -1072,4 +1214,33 @@ const useStyles = (theme: any) => StyleSheet.create({
   orgModelHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   orgModelTitle: { fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.text },
   orgModelDesc: { fontFamily: Fonts.body, fontSize: 11, color: theme.textMuted, lineHeight: 16 },
+
+  // Saha Modu & Rezervasyon Durumu
+  pitchModeTabs: { flexDirection: 'row', backgroundColor: theme.surfaceContainerHighest, borderRadius: 8, padding: 2, gap: 2 },
+  pitchModeTab: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },
+  pitchModeTabActive: { backgroundColor: theme.primary },
+  pitchModeTabActiveWarning: { backgroundColor: '#f59e0b' },
+  pitchModeTabText: { fontFamily: Fonts.headlineBold, fontSize: 11, color: theme.textMuted },
+  pitchModeTabTextActive: { color: theme.background, fontWeight: 'bold' },
+
+  resStatusRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  resStatusCard: { flex: 1, backgroundColor: theme.surfaceContainer, borderRadius: 12, padding: 12, borderWidth: 1.5, borderColor: theme.borderSubtle, gap: 4 },
+  resStatusCardActiveSuccess: { borderColor: '#22c55e', backgroundColor: 'rgba(34, 197, 94, 0.08)' },
+  resStatusCardActiveWarning: { borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.08)' },
+  resStatusCardTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  resStatusCardTitle: { fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.text },
+  resStatusCardSub: { fontFamily: Fonts.body, fontSize: 10, color: theme.textMuted, lineHeight: 14 },
+
+  flexiblePitchCard: { backgroundColor: theme.surfaceContainer, borderRadius: 14, padding: 14, borderWidth: 1.5, borderColor: '#f59e0b', gap: 12 },
+  flexiblePitchHeader: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  flexiblePitchTitle: { fontFamily: Fonts.headlineBold, fontSize: 13, color: '#f59e0b' },
+  flexiblePitchDesc: { fontFamily: Fonts.body, fontSize: 11, color: theme.textMuted, marginTop: 3, lineHeight: 16 },
+  flexibleTargetPitchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.surfaceContainerHighest, padding: 10, borderRadius: 8 },
+  flexibleTargetPitchLabel: { fontFamily: Fonts.body, fontSize: 10, color: theme.textMuted },
+  flexibleTargetPitchValue: { fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.text },
+  flexibleChangeText: { fontFamily: Fonts.headlineBold, fontSize: 11, color: theme.primary },
+
+  timeFlexibleBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(56, 189, 248, 0.15)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  timeFlexibleBadgeText: { fontFamily: Fonts.headlineBold, fontSize: 10, color: '#38bdf8' },
+  timePopChipActiveFlexible: { borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.15)' },
 });
