@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Switch, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -23,6 +23,14 @@ const DISTRICTS_MAP: Record<string, string[]> = {
   'Samsun': ['Atakum', 'İlkadım', 'Canik'],
 };
 
+const TURKISH_MONTHS_NAMES = [
+  'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+  'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
+];
+const TURKISH_DAYS_NAMES = [
+  'Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'
+];
+
 const SEARCH_PREFS_KEY = '@hiv_search_prefs';
 
 export default function SearchScreen() {
@@ -45,6 +53,7 @@ export default function SearchScreen() {
   const [cityModalVisible, setCityModalVisible] = useState(false);
   const [districtModalVisible, setDistrictModalVisible] = useState(false);
   const [pitchModalVisible, setPitchModalVisible] = useState(false);
+  const [dateModalVisible, setDateModalVisible] = useState(false);
 
   const [pos, setPos] = useState('KL');
   const [level, setLevel] = useState('0-3.9');
@@ -52,6 +61,30 @@ export default function SearchScreen() {
   const [selectedTimeFrame, setSelectedTimeFrame] = useState('Tümü');
   const [remember, setRemember] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Önümüzdeki 30 günün tarih seçenekleri
+  const upcomingDateOptions = useMemo(() => {
+    const list: { date: Date; label: string; fullLabel: string; isWeekend: boolean; tag?: string }[] = [];
+    const base = new Date();
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(base);
+      d.setDate(base.getDate() + i);
+      const day = d.getDate();
+      const dayOfWeek = d.getDay();
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      const month = TURKISH_MONTHS_NAMES[d.getMonth()];
+      const dayName = TURKISH_DAYS_NAMES[dayOfWeek];
+      const tag = i === 0 ? 'Bugün' : i === 1 ? 'Yarın' : isWeekend ? 'Hafta Sonu' : undefined;
+      list.push({
+        date: d,
+        label: `${day} ${month}`,
+        fullLabel: `${day} ${month}, ${dayName}`,
+        isWeekend,
+        tag
+      });
+    }
+    return list;
+  }, []);
 
   const availableDistricts = DISTRICTS_MAP[selectedCity] || ['Merkez', '1. Bölge', '2. Bölge'];
   const cityPitches = PITCH_DATABASE.filter(p => p.city === selectedCity);
@@ -67,6 +100,7 @@ export default function SearchScreen() {
           if (parsed.pos) setPos(parsed.pos);
           if (parsed.level) setLevel(parsed.level);
           if (parsed.difficulty) setDifficulty(parsed.difficulty);
+          if (parsed.timeFrame) setSelectedTimeFrame(parsed.timeFrame);
         } catch (e) {
           console.error('AsyncStorage error:', e);
         }
@@ -91,6 +125,7 @@ export default function SearchScreen() {
         pos,
         level,
         difficulty,
+        timeFrame: selectedTimeFrame,
       })).catch((e) => { console.error('AsyncStorage error:', e); });
     }
 
@@ -266,7 +301,7 @@ export default function SearchScreen() {
               <View style={styles.sectionBox}>
                 <Text style={styles.sectionTitle}>MAÇ ZAMANI</Text>
                 <View style={styles.levelGrid}>
-                  {['Tümü', 'Bugün', 'Yarın', 'Bu Hafta Sonu'].map((tf) => {
+                  {['Tümü', 'Bugün', 'Yarın'].map((tf) => {
                     const active = selectedTimeFrame === tf;
                     return (
                       <TouchableOpacity
@@ -281,6 +316,39 @@ export default function SearchScreen() {
                       </TouchableOpacity>
                     );
                   })}
+
+                  {/* 4. Buton: "Bu Hafta Sonu" yerine Tarih Seçici */}
+                  {(() => {
+                    const isCustomDate = selectedTimeFrame !== 'Tümü' && selectedTimeFrame !== 'Bugün' && selectedTimeFrame !== 'Yarın';
+                    return (
+                      <TouchableOpacity
+                        style={[
+                          levelBtnStyle(isCustomDate),
+                          { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }
+                        ]}
+                        onPress={() => setDateModalVisible(true)}
+                        activeOpacity={0.8}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isCustomDate }}
+                      >
+                        <MaterialIcons 
+                          name="calendar-today" 
+                          size={14} 
+                          color={isCustomDate ? theme.primary : theme.textMuted} 
+                        />
+                        <Text 
+                          style={[
+                            styles.levelText, 
+                            isCustomDate && styles.levelTextActive,
+                            { fontSize: isCustomDate ? 12 : 13 }
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {isCustomDate ? selectedTimeFrame.toUpperCase() : 'TARİH SEÇ'}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })()}
                 </View>
               </View>
             )}
@@ -466,6 +534,110 @@ export default function SearchScreen() {
             <TouchableOpacity 
               style={styles.modalCloseBtn}
               onPress={() => setPitchModalVisible(false)}
+            >
+              <Text style={styles.modalCloseText}>KAPAT</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      )}
+
+      {/* Date Picker Modal with backdrop tap dismissal */}
+      {dateModalVisible && (
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setDateModalVisible(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { maxHeight: 500, paddingBottom: 16 }]}>
+            <View style={styles.modalHeaderRow}>
+              <View>
+                <Text style={styles.modalTitle}>MAÇ TARİHİ SEÇİN</Text>
+                <Text style={styles.modalSubtitle}>
+                  Aramak istediğiniz günü listeden seçin
+                </Text>
+              </View>
+              <TouchableOpacity 
+                onPress={() => setDateModalVisible(false)} 
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                accessibilityLabel="Kapat"
+              >
+                <MaterialIcons name="close" size={22} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Quick Option: Bu Hafta Sonu */}
+            <TouchableOpacity 
+              style={[
+                styles.modalQuickOption,
+                selectedTimeFrame === 'Bu Hafta Sonu' && { borderColor: theme.primary, backgroundColor: `${theme.primary}18` }
+              ]}
+              onPress={() => {
+                setSelectedTimeFrame('Bu Hafta Sonu');
+                setDateModalVisible(false);
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={[styles.modalDateIconBox, selectedTimeFrame === 'Bu Hafta Sonu' && { backgroundColor: `${theme.primary}33` }]}>
+                  <MaterialIcons name="weekend" size={18} color={selectedTimeFrame === 'Bu Hafta Sonu' ? theme.primary : theme.textMuted} />
+                </View>
+                <View>
+                  <Text style={[styles.modalItemText, selectedTimeFrame === 'Bu Hafta Sonu' && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                    Bu Hafta Sonu
+                  </Text>
+                  <Text style={{ fontFamily: Fonts.body, fontSize: 10, color: theme.textMuted }}>
+                    Cumartesi ve Pazar maçlarını filtreler
+                  </Text>
+                </View>
+              </View>
+              {selectedTimeFrame === 'Bu Hafta Sonu' && (
+                <MaterialIcons name="check" size={20} color={theme.primary} />
+              )}
+            </TouchableOpacity>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 290, marginTop: 4 }}>
+              {upcomingDateOptions.map((item) => {
+                const isSelected = selectedTimeFrame === item.label;
+                return (
+                  <TouchableOpacity 
+                    key={item.label}
+                    style={[styles.modalDateItem, isSelected && { borderColor: theme.primary, backgroundColor: `${theme.primary}12` }]}
+                    onPress={() => {
+                      setSelectedTimeFrame(item.label);
+                      setDateModalVisible(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <View style={[styles.modalDateNumberBox, isSelected && { borderColor: theme.primary, backgroundColor: `${theme.primary}25` }]}>
+                        <Text style={[styles.modalDateNumberText, isSelected && { color: theme.primary }]}>
+                          {item.date.getDate()}
+                        </Text>
+                      </View>
+                      <View>
+                        <Text style={[styles.modalDateTitle, isSelected && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                          {item.fullLabel}
+                        </Text>
+                        {item.tag && (
+                          <View style={[styles.modalTagBadge, { backgroundColor: isSelected ? `${theme.primary}30` : theme.surfaceContainerHighest }]}>
+                            <Text style={[styles.modalTagText, { color: isSelected ? theme.primary : theme.textMuted }]}>
+                              {item.tag}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                    {isSelected && (
+                      <MaterialIcons name="check" size={20} color={theme.primary} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <TouchableOpacity 
+              style={styles.modalCloseBtn}
+              onPress={() => setDateModalVisible(false)}
             >
               <Text style={styles.modalCloseText}>KAPAT</Text>
             </TouchableOpacity>
@@ -742,5 +914,81 @@ const useStyles = (theme: any) => StyleSheet.create({
   modalCloseText: {
     color: theme.textMuted,
     fontFamily: Fonts.headlineBold
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  modalSubtitle: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: theme.textMuted,
+    marginTop: 2,
+  },
+  modalQuickOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    backgroundColor: theme.surfaceContainerHighest,
+    marginBottom: 8,
+  },
+  modalDateIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.surfaceContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalDateItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    marginBottom: 6,
+    backgroundColor: theme.surface,
+  },
+  modalDateNumberBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    backgroundColor: theme.surfaceContainerHighest,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalDateNumberText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 14,
+    color: theme.text,
+  },
+  modalDateTitle: {
+    fontFamily: Fonts.body,
+    fontSize: 13,
+    color: theme.text,
+  },
+  modalTagBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+    marginTop: 2,
+  },
+  modalTagText: {
+    fontFamily: Fonts.label,
+    fontSize: 9,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
   }
 });

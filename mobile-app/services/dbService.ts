@@ -1,4 +1,5 @@
 import { db } from './firebaseConfig';
+import { parseTargetTimestamp, TURKISH_MONTHS } from './dateUtils';
 import { 
   collection, 
   doc, 
@@ -702,16 +703,51 @@ export const dbService = {
         list = list.filter(m => m.arena && m.arena.toLocaleLowerCase('tr').includes(arenaLower));
       }
       if (criteria.timeFrame && criteria.timeFrame !== 'Tümü' && criteria.timeFrame !== 'all') {
-        const tf = criteria.timeFrame.toLowerCase();
+        const tf = criteria.timeFrame.toLocaleLowerCase('tr').trim();
         if (tf.includes('bugün')) {
-          list = list.filter(m => m.dateTime && m.dateTime.toLowerCase().includes('bugün'));
+          list = list.filter(m => m.dateTime && m.dateTime.toLocaleLowerCase('tr').includes('bugün'));
         } else if (tf.includes('yarın')) {
-          list = list.filter(m => m.dateTime && m.dateTime.toLowerCase().includes('yarın'));
-        } else if (tf.includes('hafta sonu')) {
-          list = list.filter(m => m.dateTime && (
-            m.dateTime.toLowerCase().includes('cumartesi') || 
-            m.dateTime.toLowerCase().includes('pazar')
-          ));
+          list = list.filter(m => m.dateTime && m.dateTime.toLocaleLowerCase('tr').includes('yarın'));
+        } else if (tf.includes('hafta sonu') || tf.includes('haftasonu')) {
+          list = list.filter(m => {
+            if (!m.dateTime) return false;
+            const mLower = m.dateTime.toLocaleLowerCase('tr');
+            if (mLower.includes('cumartesi') || mLower.includes('pazar')) return true;
+            try {
+              const mDate = new Date(parseTargetTimestamp(m.dateTime));
+              const day = mDate.getDay();
+              return day === 0 || day === 6;
+            } catch {
+              return false;
+            }
+          });
+        } else {
+          // Özel Seçilen Tarih (Örn: "24 Eylül", "19 Eylül 2026", GG.AA.YYYY)
+          list = list.filter(m => {
+            if (!m.dateTime) return false;
+            const mLower = m.dateTime.toLocaleLowerCase('tr');
+            if (mLower.includes(tf)) return true;
+
+            try {
+              const mTs = parseTargetTimestamp(m.dateTime);
+              const mDate = new Date(mTs);
+              const dayMatch = tf.match(/(\d{1,2})/);
+              if (dayMatch) {
+                const targetDay = parseInt(dayMatch[1], 10);
+                if (mDate.getDate() === targetDay) {
+                  for (const [monthName, monthIndex] of Object.entries(TURKISH_MONTHS)) {
+                    if (tf.includes(monthName)) {
+                      return mDate.getMonth() === monthIndex;
+                    }
+                  }
+                  return true;
+                }
+              }
+            } catch {
+              // yoksay
+            }
+            return false;
+          });
         }
       }
 
