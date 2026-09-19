@@ -1047,16 +1047,6 @@ export default function MatchRoomScreen() {
             <Text style={styles.brandTitle}>MAÇ ODASI</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            {isOrganizer && (
-              <TouchableOpacity style={styles.finishMatchHeaderBtn} onPress={() => setScoreModalVisible(true)} activeOpacity={0.85}>
-                <MaterialIcons name="sports-score" size={15} color={theme.background} />
-                <Text style={styles.finishMatchHeaderBtnText}>SKOR</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={styles.storyHeaderBtn} onPress={() => setStoryModalVisible(true)} activeOpacity={0.85}>
-              <MaterialIcons name="camera-alt" size={15} color={theme.background} />
-              <Text style={styles.storyHeaderBtnText}>STORY</Text>
-            </TouchableOpacity>
             <TouchableOpacity style={styles.iconBtnHover} onPress={handleShareMatch} accessibilityLabel="Kadro Paylaş" accessibilityRole="button">
               <MaterialIcons name="share" size={20} color={theme.primary} />
             </TouchableOpacity>

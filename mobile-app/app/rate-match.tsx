@@ -35,7 +35,9 @@ export default function RateMatchScreen() {
   const { user } = useAuth();
   const styles = useStyles(theme);
   const params = useLocalSearchParams<{ matchId?: string; playerName?: string; playerAvatar?: string; matchScore?: string }>();
-  const matchScore = params.matchScore || '5 - 2';
+  const [scoreA, setScoreA] = useState(7);
+  const [scoreB, setScoreB] = useState(5);
+  const [evaluatedPlayers, setEvaluatedPlayers] = useState<Record<string, number>>({});
 
   const [roster, setRoster] = useState<RosterPlayer[]>(DEFAULT_PLAYERS);
   const [selectedPlayer, setSelectedPlayer] = useState<RosterPlayer>(DEFAULT_PLAYERS[1]);
@@ -43,33 +45,74 @@ export default function RateMatchScreen() {
   const [matchArena, setMatchArena] = useState<string>('Beşiktaş Arena');
 
   useEffect(() => {
+    if (params.matchScore && params.matchScore.includes('-')) {
+      const parts = params.matchScore.split('-').map(s => parseInt(s.trim(), 10));
+      if (!isNaN(parts[0]) && !isNaN(parts[1])) {
+        setScoreA(parts[0]);
+        setScoreB(parts[1]);
+      }
+    }
+  }, [params.matchScore]);
+
+  useEffect(() => {
     if (params.matchId) {
+      // Önce bu maça ait değerlendirilen oyuncuları depodan yükle
+      const storageKey = `@hiv_evaluated_${params.matchId}`;
+      AsyncStorage.getItem(storageKey).then(raw => {
+        if (raw) setEvaluatedPlayers(JSON.parse(raw));
+      }).catch(() => {});
+
       dbService.getMatchById(params.matchId).then((match) => {
         if (match) {
           if (match.arena) setMatchArena(match.arena);
+          if (match.score && match.score.includes('-')) {
+            const parts = match.score.split('-').map(s => parseInt(s.trim(), 10));
+            if (!isNaN(parts[0]) && !isNaN(parts[1])) {
+              setScoreA(parts[0]);
+              setScoreB(parts[1]);
+            }
+          }
           if (match.slots) {
-            const slotPlayers: RosterPlayer[] = Object.entries(match.slots)
+            const rawPlayers: RosterPlayer[] = Object.entries(match.slots)
               .filter((entry): entry is [string, NonNullable<typeof entry[1]>] => Boolean(entry[1] && entry[1].name))
               .map(([slotKey, s], idx) => ({
-                id: s.uid || `player-${idx}`,
+                id: s.uid || `slot-${slotKey}`,
                 name: s.name,
                 avatar: s.avatar || DEFAULT_PLAYERS[0].avatar,
-                position: s.position || slotKey,
+                position: s.position || (slotKey.includes('OS') ? 'Orta Saha' : slotKey.includes('FORVET') ? 'Forvet' : slotKey.includes('DEF') || slotKey.includes('DF') ? 'Defans' : slotKey.includes('KL') ? 'Kaleci' : 'Oyuncu'),
                 number: `#${idx + 1}`,
                 team: slotKey.startsWith('B_') ? 'B' : 'A',
               }));
-            if (slotPlayers.length > 0) {
-              setRoster(slotPlayers);
-              const found = slotPlayers.find(p => p.name === params.playerName) || 
-                            slotPlayers.find(p => p.id !== user?.uid) || 
-                            slotPlayers[0];
+
+            // Kesin tekilleştirme: Kullanıcı veya aynı isimdeki oyuncular asla 2 kez çıkmaz
+            const seenKeys = new Set<string>();
+            const deduplicated: RosterPlayer[] = [];
+
+            rawPlayers.forEach((p) => {
+              const isCurrentUser = (user?.uid && p.id === user.uid) || 
+                                    (user?.name && p.name.trim().toLowerCase() === user.name.trim().toLowerCase());
+              const key = isCurrentUser ? '__CURRENT_USER__' : (p.id && !p.id.startsWith('slot-') ? p.id : p.name.trim().toLowerCase());
+              if (!seenKeys.has(key)) {
+                seenKeys.add(key);
+                deduplicated.push({
+                  ...p,
+                  id: isCurrentUser && user?.uid ? user.uid : p.id
+                });
+              }
+            });
+
+            if (deduplicated.length > 0) {
+              setRoster(deduplicated);
+              const found = deduplicated.find(p => p.name === params.playerName) || 
+                            deduplicated.find(p => p.id !== user?.uid) || 
+                            deduplicated[0];
               setSelectedPlayer(found);
             }
           }
         }
       });
     }
-  }, [params.matchId, params.playerName, user?.uid]);
+  }, [params.matchId, params.playerName, user?.uid, user?.name]);
 
   const [rating, setRating] = useState(8.0);
   const [isMvp, setIsMvp] = useState(false);
@@ -88,6 +131,22 @@ export default function RateMatchScreen() {
     'Koşmuyor'
   ];
 
+  const handleScoreChange = (team: 'A' | 'B', delta: number) => {
+    if (team === 'A') {
+      const next = Math.max(0, scoreA + delta);
+      setScoreA(next);
+      if (params.matchId) {
+        dbService.updateMatch(params.matchId, { score: `${next} - ${scoreB}`, status: 'completed' }).catch(() => {});
+      }
+    } else {
+      const next = Math.max(0, scoreB + delta);
+      setScoreB(next);
+      if (params.matchId) {
+        dbService.updateMatch(params.matchId, { score: `${scoreA} - ${next}`, status: 'completed' }).catch(() => {});
+      }
+    }
+  };
+
   const toggleTag = (tag: string) => {
     if (activeTags.includes(tag)) {
       setActiveTags(activeTags.filter(t => t !== tag));
@@ -104,6 +163,7 @@ export default function RateMatchScreen() {
     }
     setSaving(true);
     try {
+      const finalScoreStr = `${scoreA} - ${scoreB}`;
       await dbService.saveMatchRating(params.matchId || 'general_match', {
         userId: user?.uid || 'anon',
         ratedPlayerId: selectedPlayer?.id,
@@ -115,11 +175,19 @@ export default function RateMatchScreen() {
       
       if (params.matchId) {
         try {
+          await dbService.updateMatch(params.matchId, { score: finalScoreStr, status: 'completed' });
           const raw = await AsyncStorage.getItem('@hiv_rated_matches');
           const list: string[] = raw ? JSON.parse(raw) : [];
           if (!list.includes(params.matchId)) {
             list.push(params.matchId);
             await AsyncStorage.setItem('@hiv_rated_matches', JSON.stringify(list));
+          }
+
+          // Değerlendirilen oyuncular haritasını güncelle
+          if (selectedPlayer?.id) {
+            const updatedEval = { ...evaluatedPlayers, [selectedPlayer.id]: rating };
+            setEvaluatedPlayers(updatedEval);
+            await AsyncStorage.setItem(`@hiv_evaluated_${params.matchId}`, JSON.stringify(updatedEval));
           }
         } catch (err) {
           console.log('Rated storage error:', err);
@@ -128,7 +196,7 @@ export default function RateMatchScreen() {
 
       Alert.alert(
         '✓ Değerlendirme Kaydedildi',
-        `${selectedPlayer?.name} için puanınız: ${rating.toFixed(1)}/10${isMvp ? ' • MVP adayı eklendi' : ''}`,
+        `${selectedPlayer?.name} için puanınız: ${rating.toFixed(1)}/10${isMvp ? ' • MVP adayı eklendi' : ''}\nMaç Skoru: ${finalScoreStr}`,
         [
           { text: 'Tamam', onPress: () => router.back() },
           { text: 'Story Oluştur', onPress: () => setStoryVisible(true) },
@@ -147,7 +215,7 @@ export default function RateMatchScreen() {
       <MatchStoryModal
         visible={storyVisible}
         mvpName={isMvp ? selectedPlayer?.name : 'KAPTAN SARI'}
-        score={matchScore}
+        score={`${scoreA} - ${scoreB}`}
         onClose={() => setStoryVisible(false)}
       />
       <PitchReviewModal
@@ -170,6 +238,69 @@ export default function RateMatchScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Match Score Section */}
+        <View style={styles.scoreSectionCard}>
+          <View style={styles.scoreSectionHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <MaterialIcons name="sports-score" size={20} color={theme.primary} />
+              <Text style={styles.scoreSectionTitle}>MAÇ SKORU</Text>
+            </View>
+            <View style={styles.scoreStatusPill}>
+              <Text style={styles.scoreStatusPillText}>BİTEN MAÇ</Text>
+            </View>
+          </View>
+          
+          <View style={styles.scoreCounterRow}>
+            {/* Team A */}
+            <View style={styles.teamScoreBox}>
+              <Text style={styles.teamNameLabel} numberOfLines={1}>A TAKIMI</Text>
+              <View style={styles.stepperContainer}>
+                <TouchableOpacity 
+                  style={styles.stepBtn} 
+                  onPress={() => handleScoreChange('A', -1)} 
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <MaterialIcons name="remove" size={16} color={theme.text} />
+                </TouchableOpacity>
+                <Text style={styles.scoreBigNum}>{scoreA}</Text>
+                <TouchableOpacity 
+                  style={styles.stepBtn} 
+                  onPress={() => handleScoreChange('A', 1)} 
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <MaterialIcons name="add" size={16} color={theme.text} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.scoreDividerBox}>
+              <Text style={styles.scoreDividerDash}>-</Text>
+            </View>
+
+            {/* Team B */}
+            <View style={styles.teamScoreBox}>
+              <Text style={styles.teamNameLabel} numberOfLines={1}>B TAKIMI</Text>
+              <View style={styles.stepperContainer}>
+                <TouchableOpacity 
+                  style={styles.stepBtn} 
+                  onPress={() => handleScoreChange('B', -1)} 
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <MaterialIcons name="remove" size={16} color={theme.text} />
+                </TouchableOpacity>
+                <Text style={styles.scoreBigNum}>{scoreB}</Text>
+                <TouchableOpacity 
+                  style={styles.stepBtn} 
+                  onPress={() => handleScoreChange('B', 1)} 
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <MaterialIcons name="add" size={16} color={theme.text} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+
         {/* Roster Picker Section */}
         <View style={styles.rosterSection}>
           <View style={styles.rosterHeader}>
@@ -179,14 +310,19 @@ export default function RateMatchScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rosterList}>
             {roster.map((player) => {
               const isSelected = selectedPlayer?.id === player.id;
-              const isSelf = player.id === user?.uid;
+              const isSelf = (user?.uid && player.id === user.uid) || 
+                             (user?.name && player.name.trim().toLowerCase() === user.name.trim().toLowerCase());
+              const playerRating = evaluatedPlayers[player.id];
+              const isRated = playerRating !== undefined;
+
               return (
                 <TouchableOpacity
                   key={player.id}
                   style={[
                     styles.rosterItem, 
                     isSelected && styles.rosterItemActive,
-                    isSelf && { borderColor: `${theme.secondary}66` }
+                    isRated && !isSelected && styles.rosterItemRated,
+                    isSelf && { borderColor: `${theme.secondary}55` }
                   ]}
                   onPress={() => {
                     if (isSelf) {
@@ -198,28 +334,49 @@ export default function RateMatchScreen() {
                       return;
                     }
                     setSelectedPlayer(player);
+                    if (playerRating !== undefined) {
+                      setRating(playerRating);
+                    } else {
+                      setRating(8.0);
+                    }
                     setIsMvp(false);
                   }}
                   activeOpacity={0.8}
                 >
-                  <View style={[styles.rosterAvatarWrap, isSelected && { borderColor: theme.primary }]}>
+                  <View style={[
+                    styles.rosterAvatarWrap, 
+                    isSelected && { borderColor: theme.primary },
+                    isRated && !isSelected && { borderColor: '#22c55e' }
+                  ]}>
                     <Image source={{ uri: player.avatar }} style={styles.rosterAvatar} />
                     {isSelected && (
                       <View style={styles.rosterSelectedBadge}>
-                        <MaterialIcons name="check" size={10} color={theme.background} />
+                        <MaterialIcons name="edit" size={9} color={theme.background} />
                       </View>
                     )}
-                    {isSelf && !isSelected && (
+                    {isRated && !isSelected && (
+                      <View style={[styles.rosterSelectedBadge, { backgroundColor: '#22c55e' }]}>
+                        <MaterialIcons name="check" size={9} color="#090B10" />
+                      </View>
+                    )}
+                    {isSelf && !isSelected && !isRated && (
                       <View style={[styles.rosterSelectedBadge, { backgroundColor: theme.secondary }]}>
                         <Text style={{ fontSize: 7, color: theme.background, fontWeight: 'bold' }}>SİZ</Text>
                       </View>
                     )}
                   </View>
-                  <Text style={[styles.rosterName, isSelected && { color: theme.primary, fontFamily: Fonts.headlineBold }]} numberOfLines={1}>
+                  <Text style={[
+                    styles.rosterName, 
+                    isSelected && { color: theme.primary, fontFamily: Fonts.headlineBold },
+                    isRated && !isSelected && { color: '#22c55e' }
+                  ]} numberOfLines={1}>
                     {player.name}
                   </Text>
-                  <Text style={styles.rosterPosition} numberOfLines={1}>
-                    {isSelf ? '(Kendiniz)' : player.position}
+                  <Text style={[
+                    styles.rosterPosition,
+                    isRated && { color: '#22c55e', fontWeight: 'bold' }
+                  ]} numberOfLines={1}>
+                    {isSelf ? '(Kendiniz)' : isRated ? `✓ ${playerRating.toFixed(1)}` : player.position}
                   </Text>
                 </TouchableOpacity>
               );
@@ -558,6 +715,90 @@ const useStyles = (theme: any) => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: -0.5},
 
+  scoreSectionCard: {
+    backgroundColor: theme.surface,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: `${theme.primary}30`,
+  },
+  scoreSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  scoreSectionTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 12,
+    color: theme.primary,
+    letterSpacing: 0.5,
+  },
+  scoreStatusPill: {
+    backgroundColor: `${theme.primary}20`,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  scoreStatusPillText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 9,
+    color: theme.primary,
+    letterSpacing: 0.5,
+  },
+  scoreCounterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+  },
+  teamScoreBox: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  teamNameLabel: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.textMuted,
+    letterSpacing: 0.5,
+  },
+  stepperContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.surfaceContainer,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    gap: 10,
+  },
+  stepBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: theme.surfaceContainerHighest,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scoreBigNum: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 22,
+    color: theme.text,
+    minWidth: 28,
+    textAlign: 'center',
+  },
+  scoreDividerBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 16,
+  },
+  scoreDividerDash: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 28,
+    color: theme.textMuted,
+  },
+
   rosterSection: {
     marginBottom: 24,
   },
@@ -574,57 +815,61 @@ const useStyles = (theme: any) => StyleSheet.create({
     letterSpacing: 0.5,
   },
   rosterList: {
-    gap: 12,
+    gap: 8,
     paddingVertical: 4,
   },
   rosterItem: {
     alignItems: 'center',
-    width: 80,
-    padding: 8,
-    borderRadius: 12,
+    width: 64,
+    padding: 6,
+    borderRadius: 10,
     backgroundColor: theme.surface,
     borderWidth: 1.5,
     borderColor: theme.borderSubtle,
   },
   rosterItemActive: {
     borderColor: theme.primary,
-    backgroundColor: `${theme.primary}12`,
+    backgroundColor: `${theme.primary}15`,
+  },
+  rosterItemRated: {
+    borderColor: '#22c55e',
+    backgroundColor: 'rgba(34, 197, 94, 0.12)',
   },
   rosterAvatarWrap: {
     position: 'relative',
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     borderWidth: 2,
     borderColor: 'transparent',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   rosterAvatar: {
     width: '100%',
     height: '100%',
-    borderRadius: 24,
+    borderRadius: 20,
   },
   rosterSelectedBadge: {
     position: 'absolute',
     bottom: -2,
     right: -2,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: 15,
+    height: 15,
+    borderRadius: 7.5,
     backgroundColor: theme.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   rosterName: {
     fontFamily: Fonts.headline,
-    fontSize: 11,
+    fontSize: 10,
     color: theme.text,
     textAlign: 'center',
     width: '100%',
   },
   rosterPosition: {
     fontFamily: Fonts.body,
-    fontSize: 9,
+    fontSize: 8,
     color: theme.textMuted,
     textAlign: 'center',
     marginTop: 2,

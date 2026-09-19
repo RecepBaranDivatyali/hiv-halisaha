@@ -277,6 +277,20 @@ export const dbService = {
     }
   },
 
+  updateMatch: async (matchId: string, data: Partial<MatchModel>) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      await updateDoc(matchRef, {
+        ...data,
+        updatedAt: serverTimestamp()
+      });
+      return true;
+    } catch (error) {
+      console.error("Maç güncelleme hatası:", error);
+      throw error;
+    }
+  },
+
   deleteMatch: async (matchId: string) => {
     try {
       const matchRef = doc(db, 'matches', matchId);
