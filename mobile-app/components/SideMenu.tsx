@@ -71,11 +71,21 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
     soon?: boolean;
   }
 
+  const ADMIN_EMAILS = [
+    'baranimoley@gmail.com',
+    'barandivatyali@gmail.com',
+    'admin@hivhalisaha.com',
+    'yonetim@hivhalisaha.com',
+  ];
+
+  const userEmail = (user?.email || '').toLowerCase().trim();
+  const isUserAdmin = user?.role === 'admin' || ADMIN_EMAILS.includes(userEmail);
+
   const menuItems: MenuItem[] = [
     { label: 'PROFİL', icon: 'person', route: '/(tabs)/profile', active: pathname?.includes('profile') },
     { label: 'BİLDİRİMLER', icon: 'notifications', action: 'notifications' },
     { label: 'AYARLAR', icon: 'settings', route: '/settings', active: pathname?.includes('settings') },
-    ...(user?.role === 'admin' ? [{ label: 'YÖNETİCİ PANELİ', icon: 'admin-panel-settings', action: 'admin' }] : []),
+    ...(isUserAdmin ? [{ label: 'YÖNETİCİ PANELİ', icon: 'admin-panel-settings', action: 'admin' }] : []),
     ...(!isInstalled ? [{ label: 'UYGULAMAYI YÜKLE', icon: 'get-app', action: 'install' }] : []),
     { label: 'NASIL KULLANILIR?', icon: 'help', action: 'guide' },
   ];
@@ -102,7 +112,12 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
     if (item.action === 'admin') {
       onClose();
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.location.href = '/admin';
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isLocal && window.location.port === '8081') {
+          window.open('http://localhost:5173', '_blank');
+        } else {
+          window.location.href = '/admin';
+        }
       } else {
         Linking.openURL('https://hiv-halisaha.vercel.app/admin');
       }
@@ -174,18 +189,30 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
                 {menuItems.map((item, idx) => (
                   <TouchableOpacity
                     key={idx}
-                    style={[styles.navItem, item.active && { backgroundColor: theme.surface, borderLeftWidth: 3, borderLeftColor: theme.primary }]}
+                    style={[
+                      styles.navItem, 
+                      item.active && { backgroundColor: theme.surface, borderLeftWidth: 3, borderLeftColor: theme.primary },
+                      item.action === 'admin' && styles.adminNavItem
+                    ]}
                     onPress={() => handleNavigate(item)}
                     activeOpacity={0.7}
                   >
                     <MaterialIcons 
                       name={item.icon as any} 
                       size={18} 
-                      color={item.active || item.action === 'guide' ? theme.primary : theme.textMuted} 
+                      color={item.action === 'admin' ? theme.primary : (item.active || item.action === 'guide' ? theme.primary : theme.textMuted)} 
                     />
-                    <Text style={[styles.navLabel, { color: item.active || item.action === 'guide' ? theme.primary : theme.textMuted }]}>
+                    <Text style={[
+                      styles.navLabel, 
+                      { color: item.action === 'admin' ? theme.primary : (item.active || item.action === 'guide' ? theme.primary : theme.textMuted) }
+                    ]}>
                       {item.label}
                     </Text>
+                    {item.action === 'admin' && (
+                      <View style={styles.adminBadge}>
+                        <Text style={styles.adminBadgeText}>PANEL</Text>
+                      </View>
+                    )}
                     {item.soon && (
                       <View style={styles.soonBadge}>
                         <Text style={styles.soonBadgeText}>YAKINDA</Text>
@@ -297,4 +324,22 @@ const useStyles = (theme: any) => StyleSheet.create({
   version: { fontSize: 8, fontFamily: Fonts.headlineBold, letterSpacing: 0.8, opacity: 0.5, color: theme.textMuted },
   soonBadge: { marginLeft: 'auto', backgroundColor: `${theme.secondary}26`, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 },
   soonBadgeText: { fontSize: 8, fontFamily: Fonts.headlineBold, color: theme.secondary, letterSpacing: 0.5 },
+  adminNavItem: {
+    backgroundColor: `${theme.primary}12`,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.primary,
+  },
+  adminBadge: {
+    marginLeft: 'auto',
+    backgroundColor: theme.primary,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  adminBadgeText: {
+    fontSize: 8,
+    fontFamily: Fonts.headlineBold,
+    color: theme.background,
+    letterSpacing: 0.5,
+  },
 });

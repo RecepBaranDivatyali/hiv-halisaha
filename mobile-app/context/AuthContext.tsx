@@ -73,6 +73,19 @@ export const INITIAL_USER: UserSession = {
   },
 };
 
+export const ADMIN_EMAILS = [
+  'baranimoley@gmail.com',
+  'barandivatyali@gmail.com',
+  'admin@hivhalisaha.com',
+  'yonetim@hivhalisaha.com',
+];
+
+export const checkIsAdmin = (email?: string, role?: string): boolean => {
+  if (role === 'admin') return true;
+  if (!email) return false;
+  return ADMIN_EMAILS.includes(email.toLowerCase().trim());
+};
+
 const USER_STORAGE_KEY = '@hiv_user_session';
 const ONBOARDING_STORAGE_KEY = '@hiv_has_seen_onboarding';
 
@@ -102,8 +115,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (savedSession) {
         const parsed: UserSession = JSON.parse(savedSession);
+        const isAdminUser = checkIsAdmin(parsed.email, parsed.role);
         setUser({
           ...parsed,
+          role: isAdminUser ? 'admin' : (parsed.role || 'user'),
           hasSeenOnboarding: hasSeenOnboarding || parsed.hasSeenOnboarding || false,
         });
       } else {
@@ -129,12 +144,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const savedOnboarding = await AsyncStorage.getItem(ONBOARDING_STORAGE_KEY);
           const hasSeenOnboarding = savedOnboarding === 'true';
 
+          const userEmail = (firebaseUser.email || profile?.email || '').toLowerCase().trim();
+          const isAdminUser = checkIsAdmin(userEmail, profile?.role);
+
           const activeUser: UserSession = {
             ...INITIAL_USER,
             ...(profile || {}),
             uid: firebaseUser.uid,
             email: firebaseUser.email || '',
             name: profile?.name || firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'Oyuncu'),
+            role: isAdminUser ? 'admin' : (profile?.role || 'user'),
             isLoggedIn: true,
             hasSeenOnboarding: true,
           };
