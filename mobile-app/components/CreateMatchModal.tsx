@@ -516,7 +516,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                         <View style={styles.resStatusCardTop}>
                           <MaterialIcons name="verified" size={18} color={hasReservation ? '#22c55e' : theme.textMuted} />
                           <Text style={[styles.resStatusCardTitle, hasReservation && { color: '#22c55e' }]}>
-                            ✓ Rezervasyon Var
+                            Rezervasyon Var
                           </Text>
                         </View>
                         <Text style={styles.resStatusCardSub}>Saha tutuldu, maç kesin (Saha Hazır)</Text>
@@ -530,7 +530,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                         <View style={styles.resStatusCardTop}>
                           <MaterialIcons name="hourglass-empty" size={18} color={!hasReservation ? '#f59e0b' : theme.textMuted} />
                           <Text style={[styles.resStatusCardTitle, !hasReservation && { color: '#f59e0b' }]}>
-                            ⚠️ Henüz Alınmadı
+                            Henüz Alınmadı
                           </Text>
                         </View>
                         <Text style={styles.resStatusCardSub}>Saha aranıyor / Rezerve rakip aranıyor</Text>
