@@ -1,7 +1,9 @@
 export interface SubFieldInfo {
   id: string;
-  name: string; // e.g. "1. Saha", "2. Saha", "A Sahası", "Tek Saha"
+  name: string;
   surface: 'Suni Çim' | 'Hibrit Çim' | 'Kapalı Saha';
+  lastSlot?: string;       // e.g. "21:00-22:00"
+  slotType?: 'full' | 'half'; // full = tam saat, half = yarım saat
 }
 
 export interface PitchDatabaseItem {
@@ -11,6 +13,7 @@ export interface PitchDatabaseItem {
   name: string;
   rating: number;
   isPopular?: boolean;
+  hourlyFee?: number;      // toplam saatlik ücret (TL)
   subFields: SubFieldInfo[];
 }
 
@@ -25,10 +28,11 @@ export const PITCH_DATABASE: PitchDatabaseItem[] = [
     name: 'ODTÜ Halı Saha Tesisleri',
     rating: 4.8,
     isPopular: true,
+    hourlyFee: 780,
     subFields: [
-      { id: 'odtu-1', name: '1. Saha (Stadyum Yanı)', surface: 'Suni Çim' },
-      { id: 'odtu-2', name: '2. Saha (Yurtlar Yanı)', surface: 'Suni Çim' },
-      { id: 'odtu-3', name: 'Kapalı Spor Salonu Sahası', surface: 'Kapalı Saha' },
+      { id: 'odtu-1', name: 'Halı Saha 1', surface: 'Suni Çim', lastSlot: '21:00-22:00', slotType: 'full' },
+      { id: 'odtu-2', name: 'Halı Saha 2', surface: 'Suni Çim', lastSlot: '20:30-21:30', slotType: 'half' },
+      { id: 'odtu-3', name: 'Halı Saha 3', surface: 'Suni Çim', lastSlot: '21:00-22:00', slotType: 'full' },
     ],
   },
   {

@@ -400,6 +400,11 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                             <Text style={[styles.subFieldSurface, selectedSubField === sub.name && { color: theme.primary }]}>
                               {sub.surface}
                             </Text>
+                            {sub.lastSlot ? (
+                              <Text style={[styles.subFieldSlot, selectedSubField === sub.name && { color: theme.primary }]}>
+                                Son: {sub.lastSlot}
+                              </Text>
+                            ) : null}
                           </TouchableOpacity>
                         ))}
                       </View>
@@ -1078,12 +1083,13 @@ const useStyles = (theme: any) => StyleSheet.create({
   changeBadgeText: { fontFamily: Fonts.body, fontSize: 11, color: theme.primary, fontWeight: 'bold' },
 
   // Alt Saha
-  subFieldRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  subFieldChip: { backgroundColor: theme.surfaceContainer, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: theme.border, gap: 2 },
+  subFieldRow: { flexDirection: 'row', gap: 6 },
+  subFieldChip: { flex: 1, backgroundColor: theme.surfaceContainer, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9, borderWidth: 1, borderColor: theme.border, gap: 2 },
   subFieldChipActive: { backgroundColor: `${theme.primary}26`, borderColor: theme.primary },
-  subFieldText: { fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.text },
+  subFieldText: { fontFamily: Fonts.headlineBold, fontSize: 11, color: theme.text },
   subFieldTextActive: { color: theme.primary },
   subFieldSurface: { fontFamily: Fonts.body, fontSize: 9, color: theme.textMuted },
+  subFieldSlot: { fontFamily: Fonts.body, fontSize: 9, color: theme.textMuted, marginTop: 1 },
 
   // Tarih
   dateRow: { flexDirection: 'row', gap: 8 },
