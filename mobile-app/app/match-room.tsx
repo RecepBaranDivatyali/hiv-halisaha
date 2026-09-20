@@ -1736,89 +1736,93 @@ export default function MatchRoomScreen() {
                 )}
               </View>
 
-              {/* 2. KASA & MUHASEBE DURUMU (ACCOUNTING BAR) */}
-              <Text style={[styles.paymentLabel, { marginTop: 18 }]}>2. KASA & MUHASEBE TAKİBİ</Text>
-              <View style={styles.accountingCard}>
-                <View style={styles.accountingStatsRow}>
-                  <View style={styles.accountingCol}>
-                    <View style={styles.accColLabelContainer}>
-                      <Text style={[styles.accColLabel, { color: theme.primary }]} numberOfLines={1}>ÖDENDİ</Text>
+              {/* 2. KASA & MUHASEBE DURUMU (ACCOUNTING BAR) — sadece organizatör & kaptanlar */}
+              {(isOrganizer || isCaptainB) && (
+                <>
+                  <Text style={[styles.paymentLabel, { marginTop: 18 }]}>2. KASA & MUHASEBE TAKİBİ</Text>
+                  <View style={styles.accountingCard}>
+                    <View style={styles.accountingStatsRow}>
+                      <View style={styles.accountingCol}>
+                        <View style={styles.accColLabelContainer}>
+                          <Text style={[styles.accColLabel, { color: theme.primary }]} numberOfLines={1}>ÖDENDİ</Text>
+                        </View>
+                        <Text style={[styles.accColVal, { color: theme.primary }]}>₺{collectedPaidAmount}</Text>
+                      </View>
+                      <View style={styles.accountingDivider} />
+                      <View style={styles.accountingCol}>
+                        <View style={styles.accColLabelContainer}>
+                          <Text style={[styles.accColLabel, { color: '#6e9bff' }]} numberOfLines={1}>NAKİT</Text>
+                        </View>
+                        <Text style={[styles.accColVal, { color: '#6e9bff' }]}>₺{collectedCashAmount}</Text>
+                      </View>
+                      <View style={styles.accountingDivider} />
+                      <View style={styles.accountingCol}>
+                        <View style={styles.accColLabelContainer}>
+                          <Text style={[styles.accColLabel, { color: '#ffb703' }]} numberOfLines={1}>BEKLEYEN</Text>
+                        </View>
+                        <Text style={[styles.accColVal, { color: '#ffb703' }]}>₺{pendingApprovalAmount}</Text>
+                      </View>
+                      <View style={styles.accountingDivider} />
+                      <View style={styles.accountingCol}>
+                        <View style={styles.accColLabelContainer}>
+                          <Text style={[styles.accColLabel, { color: theme.error }]} numberOfLines={1}>KALAN</Text>
+                        </View>
+                        <Text style={[styles.accColVal, { color: theme.error }]}>₺{unpaidAmount}</Text>
+                      </View>
                     </View>
-                    <Text style={[styles.accColVal, { color: theme.primary }]}>₺{collectedPaidAmount}</Text>
-                  </View>
-                  <View style={styles.accountingDivider} />
-                  <View style={styles.accountingCol}>
-                    <View style={styles.accColLabelContainer}>
-                      <Text style={[styles.accColLabel, { color: '#6e9bff' }]} numberOfLines={1}>NAKİT</Text>
-                    </View>
-                    <Text style={[styles.accColVal, { color: '#6e9bff' }]}>₺{collectedCashAmount}</Text>
-                  </View>
-                  <View style={styles.accountingDivider} />
-                  <View style={styles.accountingCol}>
-                    <View style={styles.accColLabelContainer}>
-                      <Text style={[styles.accColLabel, { color: '#ffb703' }]} numberOfLines={1}>BEKLEYEN</Text>
-                    </View>
-                    <Text style={[styles.accColVal, { color: '#ffb703' }]}>₺{pendingApprovalAmount}</Text>
-                  </View>
-                  <View style={styles.accountingDivider} />
-                  <View style={styles.accountingCol}>
-                    <View style={styles.accColLabelContainer}>
-                      <Text style={[styles.accColLabel, { color: theme.error }]} numberOfLines={1}>KALAN</Text>
-                    </View>
-                    <Text style={[styles.accColVal, { color: theme.error }]}>₺{unpaidAmount}</Text>
-                  </View>
-                </View>
 
-                {/* Multi-segment Progress Bar */}
-                <View style={styles.multiProgressWrap}>
-                  <View style={[styles.multiProgressPaid, { flex: Math.max(0.001, collectedPaidAmount) }]} />
-                  <View style={[styles.multiProgressCash, { flex: Math.max(0.001, collectedCashAmount) }]} />
-                  <View style={[styles.multiProgressPending, { flex: Math.max(0.001, pendingApprovalAmount) }]} />
-                  <View style={[styles.multiProgressUnpaid, { flex: Math.max(0.001, unpaidAmount) }]} />
-                </View>
-                <View style={styles.progressSubInfo}>
-                  <Text style={styles.progressSubText}>
-                    Toplam: ₺{totalMatchFee} • Kişi Başı: ₺{perPlayerFee}
-                  </Text>
-                  <Text style={[styles.progressSubText, { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
-                    %{totalMatchFee > 0 ? Math.min(100, Math.round(((collectedPaidAmount + collectedCashAmount) / totalMatchFee) * 100)) : 0} Güvencede
-                  </Text>
-                </View>
-
-                {/* İki Takımlı Maç İse: A Takımı vs B Takımı Kasa Kırılımı */}
-                {isTwoCaptainsMode && (
-                  <View style={styles.teamAccountingRow}>
-                    <View style={styles.teamAccBox}>
-                      <Text style={styles.teamAccTitle}>A TAKIMI (ORGANİZATÖR)</Text>
-                      <Text style={[styles.teamAccFee, { color: theme.primary }]}>₺{teamAPaid} / ₺{teamATotal}</Text>
-                      <Text style={styles.teamAccStatus}>
-                        %{teamATotal > 0 ? Math.min(100, Math.round((teamAPaid / teamATotal) * 100)) : 0} Toplandı
+                    {/* Multi-segment Progress Bar */}
+                    <View style={styles.multiProgressWrap}>
+                      <View style={[styles.multiProgressPaid, { flex: Math.max(0.001, collectedPaidAmount) }]} />
+                      <View style={[styles.multiProgressCash, { flex: Math.max(0.001, collectedCashAmount) }]} />
+                      <View style={[styles.multiProgressPending, { flex: Math.max(0.001, pendingApprovalAmount) }]} />
+                      <View style={[styles.multiProgressUnpaid, { flex: Math.max(0.001, unpaidAmount) }]} />
+                    </View>
+                    <View style={styles.progressSubInfo}>
+                      <Text style={styles.progressSubText}>
+                        Toplam: ₺{totalMatchFee} • Kişi Başı: ₺{perPlayerFee}
+                      </Text>
+                      <Text style={[styles.progressSubText, { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                        %{totalMatchFee > 0 ? Math.min(100, Math.round(((collectedPaidAmount + collectedCashAmount) / totalMatchFee) * 100)) : 0} Güvencede
                       </Text>
                     </View>
-                    <View style={styles.teamAccDivider} />
-                    <View style={styles.teamAccBox}>
-                      <Text style={styles.teamAccTitle}>B TAKIMI {activeMatch?.captainBName ? `(${activeMatch.captainBName})` : ''}</Text>
-                      <Text style={[styles.teamAccFee, { color: theme.secondary }]}>₺{teamBPaid} / ₺{teamBTotal}</Text>
-                      <Text style={styles.teamAccStatus}>
-                        %{teamBTotal > 0 ? Math.min(100, Math.round((teamBPaid / teamBTotal) * 100)) : 0} Toplandı
-                      </Text>
-                    </View>
-                  </View>
-                )}
 
-                {/* B Takımı Kaptanı Bildirim / Yönetim Kartı */}
-                {isCaptainB && !isOrganizer && (
-                  <View style={styles.captainBActionCard}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <MaterialIcons name="military-tech" size={20} color={theme.secondary} />
-                      <Text style={styles.captainBActionTitle}>⭐ B TAKIMI KAPTANI YÖNETİMİ</Text>
-                    </View>
-                    <Text style={styles.captainBActionDesc}>
-                      Takımınızın toplam payı ₺{teamBTotal}'dir. Kendi takımınızın ödemelerini aşağıdaki çizelgeden kontrol edebilir ve Organizatör ile paylaşabilirsiniz.
-                    </Text>
+                    {/* İki Takımlı Maç İse: A Takımı vs B Takımı Kasa Kırılımı */}
+                    {isTwoCaptainsMode && (
+                      <View style={styles.teamAccountingRow}>
+                        <View style={styles.teamAccBox}>
+                          <Text style={styles.teamAccTitle}>A TAKIMI (ORGANİZATÖR)</Text>
+                          <Text style={[styles.teamAccFee, { color: theme.primary }]}>₺{teamAPaid} / ₺{teamATotal}</Text>
+                          <Text style={styles.teamAccStatus}>
+                            %{teamATotal > 0 ? Math.min(100, Math.round((teamAPaid / teamATotal) * 100)) : 0} Toplandı
+                          </Text>
+                        </View>
+                        <View style={styles.teamAccDivider} />
+                        <View style={styles.teamAccBox}>
+                          <Text style={styles.teamAccTitle}>B TAKIMI {activeMatch?.captainBName ? `(${activeMatch.captainBName})` : ''}</Text>
+                          <Text style={[styles.teamAccFee, { color: theme.secondary }]}>₺{teamBPaid} / ₺{teamBTotal}</Text>
+                          <Text style={styles.teamAccStatus}>
+                            %{teamBTotal > 0 ? Math.min(100, Math.round((teamBPaid / teamBTotal) * 100)) : 0} Toplandı
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+
+                    {/* B Takımı Kaptanı Bildirim / Yönetim Kartı */}
+                    {isCaptainB && !isOrganizer && (
+                      <View style={styles.captainBActionCard}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <MaterialIcons name="military-tech" size={20} color={theme.secondary} />
+                          <Text style={styles.captainBActionTitle}>⭐ B TAKIMI KAPTANI YÖNETİMİ</Text>
+                        </View>
+                        <Text style={styles.captainBActionDesc}>
+                          Takımınızın toplam payı ₺{teamBTotal}&apos;dir. Kendi takımınızın ödemelerini aşağıdaki çizelgeden kontrol edebilir ve Organizatör ile paylaşabilirsiniz.
+                        </Text>
+                      </View>
+                    )}
                   </View>
-                )}
-              </View>
+                </>
+              )}
 
               {/* OYUNCU KENDİ ÖDEME AKSİYONU (Eğer mevkisi varsa ve henüz ödememişse) */}
               {(() => {

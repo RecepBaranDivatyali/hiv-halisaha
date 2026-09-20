@@ -266,15 +266,17 @@ export default function ClubsScreen() {
                     <Text style={styles.headerCreateBtnText}>KULÜP KUR</Text>
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity 
-                  onPress={() => {
-                    setSelectedClubForChallenge(null);
-                    setChallengeModalVisible(true);
-                  }}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={styles.filterBtnText}>MEYDAN OKU</Text>
-                </TouchableOpacity>
+                {Boolean(user?.clubId) && (
+                  <TouchableOpacity 
+                    onPress={() => {
+                      setSelectedClubForChallenge(null);
+                      setChallengeModalVisible(true);
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={styles.filterBtnText}>MEYDAN OKU</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
 

@@ -910,7 +910,8 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontFamily: Fonts.headlineBold,
     fontSize: 13,
     color: theme.text,
-    textTransform: 'uppercase'
+    textTransform: 'uppercase',
+    textAlign: 'center',
   },
   levelTextActive: {
     color: theme.primary

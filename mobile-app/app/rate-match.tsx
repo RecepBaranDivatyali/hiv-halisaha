@@ -365,17 +365,12 @@ export default function RateMatchScreen() {
             </Text>
           )}
 
-          {/* 🎽 Forma Golü (İlk Gol) & Beraberlik Kuralı Bölümü */}
+          {/* 🎽 Forma Golü — compact inline row */}
           <View style={styles.formaGoluBox}>
-            <View style={styles.formaGoluHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <MaterialIcons name="checkroom" size={16} color={theme.primary} />
-                <Text style={styles.formaGoluTitle}>FORMA GOLÜ (İLK GOL)</Text>
-              </View>
-              <Text style={styles.formaGoluSub}>Beraberlikte ilk golü atan galip sayılır</Text>
-            </View>
-
             <View style={styles.formaGoluActionsRow}>
+              <MaterialIcons name="checkroom" size={14} color={theme.primary} />
+              <Text style={styles.formaGoluTitle}>FORMA GOLÜ:</Text>
+
               <TouchableOpacity
                 style={[
                   styles.formaGoluChoiceBtn,
@@ -388,11 +383,11 @@ export default function RateMatchScreen() {
               >
                 <MaterialIcons 
                   name={formaGoluTeam === 'A' ? "check-circle" : "sports-soccer"} 
-                  size={14} 
+                  size={13} 
                   color={formaGoluTeam === 'A' ? theme.background : theme.primary} 
                 />
                 <Text style={[styles.formaGoluChoiceText, formaGoluTeam === 'A' && styles.formaGoluChoiceTextActive]}>
-                  A TAKIMI
+                  A
                 </Text>
               </TouchableOpacity>
 
@@ -408,11 +403,11 @@ export default function RateMatchScreen() {
               >
                 <MaterialIcons 
                   name={formaGoluTeam === 'B' ? "check-circle" : "sports-soccer"} 
-                  size={14} 
+                  size={13} 
                   color={formaGoluTeam === 'B' ? theme.background : theme.secondary} 
                 />
                 <Text style={[styles.formaGoluChoiceText, formaGoluTeam === 'B' && styles.formaGoluChoiceTextActive]}>
-                  B TAKIMI
+                  B
                 </Text>
               </TouchableOpacity>
 
@@ -422,35 +417,22 @@ export default function RateMatchScreen() {
                   onPress={() => handleFormaGoluSelect(formaGoluTeam)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <MaterialIcons name="close" size={14} color={theme.textMuted} />
+                  <MaterialIcons name="close" size={13} color={theme.textMuted} />
                 </TouchableOpacity>
               )}
-            </View>
 
-            {/* Live Tiebreaker Indicator */}
-            {scoreA === scoreB && (scoreA > 0 || scoreB > 0) ? (
-              formaGoluTeam ? (
-                <View style={styles.tiebreakerBanner}>
-                  <MaterialIcons name="emoji-events" size={16} color="#22c55e" />
-                  <Text style={styles.tiebreakerBannerText}>
-                    🏆 Beraberlik Bozuldu: {formaGoluTeam === 'A' ? 'A Takımı' : 'B Takımı'} Kazandı (Forma Golü)
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.tiebreakerHintBanner}>
-                  <MaterialIcons name="info-outline" size={14} color={theme.textMuted} />
-                  <Text style={styles.tiebreakerHintText}>
-                    Maç berabere! İlk golü atan takımı seçerek galibi belirleyin.
-                  </Text>
-                </View>
-              )
-            ) : formaGoluTeam ? (
-              <View style={styles.formaGoluStatusNote}>
-                <Text style={styles.formaGoluStatusNoteText}>
-                  🎽 Forma golünü {formaGoluTeam === 'A' ? 'A Takımı' : 'B Takımı'} attı ({formaGoluTeam === 'A' ? 'B Takımı yelek giydi' : 'A Takımı yelek giydi'})
+              {/* Inline tiebreaker note */}
+              {scoreA === scoreB && (scoreA > 0 || scoreB > 0) && !formaGoluTeam && (
+                <Text style={[styles.formaGoluStatusNoteText, { flex: 1, color: '#f59e0b' }]}>
+                  ⚠️ Berabere!
                 </Text>
-              </View>
-            ) : null}
+              )}
+              {formaGoluTeam && (
+                <Text style={[styles.formaGoluStatusNoteText, { flex: 1, color: scoreA === scoreB ? '#22c55e' : theme.textMuted }]}>
+                  {scoreA === scoreB ? `🏆 ${formaGoluTeam === 'A' ? 'A' : 'B'} Kazandı` : `🎽 ${formaGoluTeam === 'A' ? 'A' : 'B'} ilk golü attı`}
+                </Text>
+              )}
+            </View>
           </View>
         </View>
 
@@ -969,11 +951,10 @@ const useStyles = (theme: any) => StyleSheet.create({
     marginTop: 10,
   },
   formaGoluBox: {
-    marginTop: 16,
-    paddingTop: 14,
+    marginTop: 10,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: theme.borderSubtle,
-    gap: 10,
   },
   formaGoluHeader: {
     flexDirection: 'row',
@@ -994,16 +975,16 @@ const useStyles = (theme: any) => StyleSheet.create({
   formaGoluActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   formaGoluChoiceBtn: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    borderRadius: 8,
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 6,
     backgroundColor: theme.surfaceContainerHighest,
     borderWidth: 1,
     borderColor: theme.borderSubtle,
