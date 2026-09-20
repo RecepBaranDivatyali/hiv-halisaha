@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Modal as RNModal, ModalProps } from 'react-native';
 
 export interface AppModalProps extends ModalProps {

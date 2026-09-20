@@ -45,7 +45,7 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
   const [parkingRating, setParkingRating] = useState(5);
   const [userComment, setUserComment] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {

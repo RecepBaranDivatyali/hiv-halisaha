@@ -117,7 +117,7 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
             </View>
             <Text style={styles.reviewMainTitle}>MAÇIN NASILDI?</Text>
             <Text style={styles.reviewSubtitle}>
-              Maç sona erdi! Takım arkadaşlarını, maçın MVP'sini ve halısahayı şimdi değerlendir.
+              Maç sona erdi! Takım arkadaşlarını, maçın MVP&apos;sini ve halısahayı şimdi değerlendir.
             </Text>
           </View>
 
@@ -146,7 +146,7 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
         <>
           <View style={styles.timerRow}>
             <View style={styles.timeBox}>
-              <Text style={[styles.timeVal, { color: theme.secondary }]}>{format2Digits(timeLeft.minutes)}'</Text>
+              <Text style={[styles.timeVal, { color: theme.secondary }]}>{format2Digits(timeLeft.minutes)}&apos;</Text>
               <Text style={styles.timeLabel}>DAKİKA</Text>
             </View>
             <Text style={[styles.colon, { color: theme.secondary }]}>:</Text>

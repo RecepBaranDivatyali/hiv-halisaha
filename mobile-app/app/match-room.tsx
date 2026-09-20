@@ -46,7 +46,7 @@ export default function MatchRoomScreen() {
   const activeMatchId = params.matchId || fallbackMatch?.id || 'demo-match';
 
   const matchArena = activeMatch?.arena ?? 'Beşiktaş Arena';
-  const matchFee = activeMatch?.fee ?? 150;
+
   const matchTotalFee = activeMatch?.totalFee ?? 2100;
   const matchMode = activeMatch?.mode ?? '7v7';
   const matchDateTime = activeMatch?.dateTime ?? 'Bugün, 21:00';
@@ -94,7 +94,7 @@ export default function MatchRoomScreen() {
         text: `📋 [Diziliş]: ${activeTeam} Takımı formasyonunu ${newFormation} olarak güncelledi.`
       });
       Alert.alert('✓ Diziliş Güncellendi', `${activeTeam} Takımı formasyonu ${newFormation} olarak ayarlandı.`);
-    } catch (e) {
+    } catch {
       Alert.alert('Hata', 'Diziliş formasyonu güncellenemedi.');
     }
   };
@@ -129,7 +129,7 @@ export default function MatchRoomScreen() {
           ? `${activeTeam} Takımı kadrosu ve dizilimi rakip takımdan gizlendi. Sadece kendi takımınız görebilir.`
           : `${activeTeam} Takımı kadrosu artık tüm oyuncular tarafından görülebilir.`
       );
-    } catch (e) {
+    } catch {
       Alert.alert('Hata', 'Kadro gizlilik durumu güncellenemedi.');
     }
   };
@@ -141,8 +141,7 @@ export default function MatchRoomScreen() {
   const [submittingScore, setSubmittingScore] = useState(false);
 
   // Payment State
-  const [splitMode, setSplitMode] = useState<'separate' | 'joint'>('separate');
-  const [payMethod, setPayMethod] = useState<'cash' | 'online'>('cash');
+
   const [totalMatchFee, setTotalMatchFee] = useState(2100);
   const [showPaymentDetails, setShowPaymentDetails] = useState(true);
 
@@ -216,6 +215,7 @@ export default function MatchRoomScreen() {
     } else {
       setUserSlot(null);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMatch?.slots, user?.uid, isOrganizer]);
 
   const [isGkFree, setIsGkFree] = useState(activeMatch?.isGkFree ?? false);
@@ -275,7 +275,7 @@ export default function MatchRoomScreen() {
     .filter((p) => p.paymentStatus === 'pending_approval')
     .reduce((sum, p) => sum + p.amount, 0);
 
-  const totalCollectedOrPledged = collectedPaidAmount + collectedCashAmount;
+
   const unpaidAmount = Math.max(0, totalMatchFee - collectedPaidAmount - collectedCashAmount);
 
   // Team A & Team B Subtotals for 2-Captain Mode
@@ -328,7 +328,7 @@ export default function MatchRoomScreen() {
                 });
                 Alert.alert('✓ Kaptan Atandı', `${playerName} B Takımı Kaptanı olarak belirlendi.`);
               }
-            } catch (e) {
+            } catch {
               Alert.alert('Hata', 'Kaptan yetkisi güncellenirken bir sorun oluştu.');
             }
           }
@@ -362,7 +362,7 @@ export default function MatchRoomScreen() {
               senderName: isOrganizer ? 'Organizatör' : 'B Kaptanı',
               text: `✅ [Ödeme Onayı]: ${playerName} oyuncusunun maç ücreti alındı ve "ÖDENDİ" olarak işaretlendi.`
             });
-          } catch (e) {
+          } catch {
             Alert.alert('Hata', 'Ödeme durumu güncellenemedi.');
           }
         }
@@ -372,7 +372,7 @@ export default function MatchRoomScreen() {
         onPress: async () => {
           try {
             await dbService.updateSlotPayment(activeMatchId, slotKey, false, 'cash_on_pitch', 'cash');
-          } catch (e) {
+          } catch {
             Alert.alert('Hata', 'Ödeme durumu güncellenemedi.');
           }
         }
@@ -383,7 +383,7 @@ export default function MatchRoomScreen() {
         onPress: async () => {
           try {
             await dbService.updateSlotPayment(activeMatchId, slotKey, false, 'unpaid');
-          } catch (e) {
+          } catch {
             Alert.alert('Hata', 'Ödeme durumu güncellenemedi.');
           }
         }
@@ -427,7 +427,7 @@ export default function MatchRoomScreen() {
       });
       setCaptainIbanModalVisible(false);
       Alert.alert('✓ IBAN Kaydedildi', 'Kaptan IBAN bilgileriniz güncellendi. Oyuncular artık bu IBAN\'ı görerek FAST ile maç ücretini gönderebilir.');
-    } catch (e) {
+    } catch {
       Alert.alert('Hata', 'IBAN bilgileri güncellenirken bir sorun oluştu.');
     } finally {
       setSavingCaptainIban(false);
@@ -496,8 +496,8 @@ export default function MatchRoomScreen() {
         senderAvatar: user?.avatar,
         text: text
       });
-    } catch (e) {
-      console.log('Mesaj gönderme hatası:', e);
+    } catch {
+      console.log('Mesaj gönderme hatası');
       const newMsg = {
         id: Date.now().toString(),
         name: user?.name || 'Ben',
@@ -548,8 +548,8 @@ export default function MatchRoomScreen() {
         } else {
           Alert.alert('Ayrıldınız', `${slotLabel} mevkisinden ayrıldınız.`);
         }
-      } catch (e) {
-        console.error('Slot ayrılma hatası:', e);
+      } catch {
+        console.error('Slot ayrılma hatası');
         setUserSlot(slotKey); // Rollback
         Alert.alert('Hata', 'Mevkiden ayrılırken bir sorun oluştu.');
       }
@@ -645,8 +645,8 @@ export default function MatchRoomScreen() {
           position: slotLabel
         });
         Alert.alert('Kadroya Girildi', `${slotLabel} mevkiine geçtiniz.`);
-      } catch (e) {
-        console.error('Slot katılma hatası:', e);
+      } catch {
+        console.error('Slot katılma hatası');
         setUserSlot(oldSlot); // Rollback
         Alert.alert('Hata', 'Mevkiye katılırken bir sorun oluştu veya mevki dolmuş olabilir.');
       }
@@ -660,7 +660,7 @@ export default function MatchRoomScreen() {
       try {
         await dbService.updateMatchTerms(params.matchId, joinTerms);
         Alert.alert('✓ Şartlar Kaydedildi', 'Maç katılım kuralları başarıyla güncellendi.', [{ text: 'Tamam' }]);
-      } catch (e) {
+      } catch {
         Alert.alert('Hata', 'Katılım şartları güncellenirken bir sorun oluştu.');
       }
     } else {
@@ -695,8 +695,8 @@ export default function MatchRoomScreen() {
           { text: 'Tamam', onPress: () => router.back() }
         ]
       );
-    } catch (e) {
-      console.error('Maç tamamlama hatası:', e);
+    } catch {
+      console.error('Maç tamamlama hatası');
       Alert.alert('Hata', 'Skor kaydedilirken bir sorun oluştu.');
     } finally {
       setSubmittingScore(false);
@@ -733,7 +733,7 @@ export default function MatchRoomScreen() {
               await dbService.deleteMatch(activeMatchId);
               Alert.alert('İptal Edildi', 'Maçınız başarıyla iptal edildi.');
               router.replace('/(tabs)/matches');
-            } catch (e) {
+            } catch {
               Alert.alert('Hata', 'Maç iptal edilirken bir sorun oluştu.');
             }
           }
@@ -755,7 +755,7 @@ export default function MatchRoomScreen() {
         avatar: user.avatar
       });
       Alert.alert('✓ Yedek Sırasındasınız', 'Kadroda boş yer açıldığında veya bir oyuncu ayrıldığında size bildirim gönderilecektir.');
-    } catch (e) {
+    } catch {
       Alert.alert('Hata', 'Yedek sırasına eklenirken bir sorun oluştu.');
     }
   };
@@ -1288,7 +1288,7 @@ export default function MatchRoomScreen() {
                     : `📢 ${totalPlayersCount - rosterPayments.length} OYUNCU EKSİK • ARKADAŞLARINI ÇAĞIR`}
                 </Text>
                 <Text style={styles.shareRosterSub}>
-                  WhatsApp'ta kadro davetini tek tıkla paylaşın
+                  WhatsApp&apos;ta kadro davetini tek tıkla paylaşın
                 </Text>
               </View>
             </View>
@@ -1536,7 +1536,7 @@ export default function MatchRoomScreen() {
                       try {
                         await dbService.leaveMatchReserve(activeMatchId, user.uid);
                         Alert.alert('Ayrıldınız', 'Yedek sırasından ayrıldınız.');
-                      } catch (e) {
+                      } catch {
                         Alert.alert('Hata', 'Yedek sırasından ayrılırken bir hata oluştu.');
                       }
                     }}
@@ -1573,7 +1573,7 @@ export default function MatchRoomScreen() {
                         avatar: user.avatar
                       });
                       Alert.alert('✓ Sıraya Girildi', 'Yedek listesine eklendiniz. Asil kadrodan biri ayrıldığında öncelik sizin olacak!');
-                    } catch (e) {
+                    } catch {
                       Alert.alert('Hata', 'Yedek sırasına girilirken bir hata oluştu.');
                     }
                   }}
@@ -1653,8 +1653,8 @@ export default function MatchRoomScreen() {
                               ? `🧤 [Kaleci Ayarı]: Organizatör bu maçta kalecileri ücretten muaf tuttu. Yeni kişi başı ücret: ₺${Math.round(totalMatchFee / Math.max(1, totalPlayersCount - 2))}`
                               : `🧤 [Kaleci Ayarı]: Kaleci ücret muafiyeti kaldırıldı. Ücret tüm kadroya eşit bölündü (₺${Math.round(totalMatchFee / totalPlayersCount)}/kişi).`
                           });
-                        } catch (e) {
-                          console.error('Kaleci muafiyet güncelleme hatası:', e);
+                        } catch {
+                          console.error('Kaleci muafiyet güncelleme hatası');
                         }
                       }
                     }}

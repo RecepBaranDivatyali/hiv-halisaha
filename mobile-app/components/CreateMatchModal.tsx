@@ -448,7 +448,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                     <View style={{ flex: 1 }}>
                       <Text style={styles.flexiblePitchTitle}>Saha Henüz Belirlenmedi (Saha Aranıyor)</Text>
                       <Text style={styles.flexiblePitchDesc}>
-                        Maç ilanınızda 'Saha Aranıyor' olarak gösterilir. Rezervasyonu hazır olan rakipler ve oyuncular size teklif gönderebilir.
+                        Maç ilanınızda &apos;Saha Aranıyor&apos; olarak gösterilir. Rezervasyonu hazır olan rakipler ve oyuncular size teklif gönderebilir.
                       </Text>
                     </View>
                   </View>

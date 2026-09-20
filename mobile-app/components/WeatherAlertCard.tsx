@@ -85,7 +85,7 @@ export const WeatherAlertCard: React.FC<WeatherAlertCardProps> = ({
           setCurrentCondition(wInfo.condition);
           setCurrentIcon(wInfo.icon);
         }
-      } catch (err) {
+      } catch {
         // Fallback default
         if (isMounted) {
           setCurrentTemp('19°C');

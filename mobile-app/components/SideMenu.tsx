@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Image, Animated, Alert, Platform, Linking, ScrollView } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -43,7 +43,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
         }),
       ]).start();
     }
-  }, [visible]);
+  }, [visible, slideAnim, fadeAnim]);
 
   const handleClose = () => {
     Animated.parallel([

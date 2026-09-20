@@ -57,7 +57,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
     if (venueList.length > 0) {
       setSelectedVenue(venueList[0]);
     }
-  }, [targetClub, clubsList, city]);
+  }, [targetClub, clubsList, city, user?.clubId, venueList]);
 
   const handleSendChallenge = async () => {
     if (!user?.clubId && !user?.clubName) {
@@ -83,7 +83,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
         `"${selectedClubName}" kulübüne maç teklifiniz iletildi.\n\n• Saha: ${selectedVenue}\n• Tarih: ${selectedDate}\n\nRakip kaptan onayladığında maç odası açılacaktır.`,
         [{ text: 'Tamam', onPress: onClose }]
       );
-    } catch (e) {
+    } catch {
       Alert.alert('Hata', 'Meydan okuma gönderilirken bir sorun oluştu.');
     } finally {
       setIsSubmitting(false);

@@ -198,7 +198,7 @@ export const MatchPaymentModal: React.FC<MatchPaymentModalProps> = ({
                 <View style={styles.sectionBox}>
                   <View style={styles.sectionHeaderRow}>
                     <MaterialIcons name="account-balance" size={20} color={theme.primary} />
-                    <Text style={styles.sectionTitle}>1. KAPTANIN IBAN'INA GÖNDER (FAST)</Text>
+                    <Text style={styles.sectionTitle}>1. KAPTANIN IBAN&apos;INA GÖNDER (FAST)</Text>
                   </View>
 
                   {organizerIban ? (
@@ -234,7 +234,7 @@ export const MatchPaymentModal: React.FC<MatchPaymentModalProps> = ({
                       <View style={styles.tipBox}>
                         <MaterialIcons name="info-outline" size={14} color={theme.textMuted} />
                         <Text style={styles.tipText}>
-                          FAST ile gönderirken açıklama kısmına <Text style={{ color: theme.primary, fontWeight: 'bold' }}>"{user?.name || 'Adınız'}"</Text> yazmayı unutmayın.
+                          FAST ile gönderirken açıklama kısmına <Text style={{ color: theme.primary, fontWeight: 'bold' }}>&quot;{user?.name || 'Adınız'}&quot;</Text> yazmayı unutmayın.
                         </Text>
                       </View>
 
