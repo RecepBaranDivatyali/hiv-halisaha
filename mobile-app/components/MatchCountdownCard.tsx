@@ -29,6 +29,7 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
   const { theme } = useTheme();
   const styles = useStyles(theme);
   const [timeLeft, setTimeLeft] = useState({ 
+    days: 0,
     hours: isCompleted ? 0 : targetHours, 
     minutes: 0, 
     seconds: 0, 
@@ -38,7 +39,7 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
 
   useEffect(() => {
     if (isCompleted) {
-      setTimeLeft({ hours: 0, minutes: 0, seconds: 0, isLive: false, isPast: true });
+      setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, isLive: false, isPast: true });
       return;
     }
 
@@ -52,16 +53,17 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
         if (diffSec >= -4500) {
           // İlk 75 dakika maç oynanıyor kabul edilir
           const elapsed = Math.min(75, Math.floor(Math.abs(diffSec) / 60));
-          setTimeLeft({ hours: 0, minutes: elapsed, seconds: Math.abs(diffSec) % 60, isLive: true, isPast: false });
+          setTimeLeft({ days: 0, hours: 0, minutes: elapsed, seconds: Math.abs(diffSec) % 60, isLive: true, isPast: false });
         } else {
           // Maç bitti -> Değerlendirme durumuna geç
-          setTimeLeft({ hours: 0, minutes: 0, seconds: 0, isLive: false, isPast: true });
+          setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, isLive: false, isPast: true });
         }
       } else {
-        const hours = Math.floor(diffSec / 3600);
+        const days = Math.floor(diffSec / 86400);
+        const hours = Math.floor((diffSec % 86400) / 3600);
         const minutes = Math.floor((diffSec % 3600) / 60);
         const seconds = diffSec % 60;
-        setTimeLeft({ hours, minutes, seconds, isLive: false, isPast: false });
+        setTimeLeft({ days, hours, minutes, seconds, isLive: false, isPast: false });
       }
     };
 
@@ -96,14 +98,19 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
           </Text>
         </View>
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={styles.venueText} numberOfLines={1}>{arena} • {displayTime}</Text>
-          {timeLeft.isPast && onDismiss && (
-            <TouchableOpacity onPress={onDismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Kapat">
-              <MaterialIcons name="close" size={18} color={theme.textMuted} />
-            </TouchableOpacity>
-          )}
-        </View>
+        {timeLeft.isPast && onDismiss && (
+          <TouchableOpacity onPress={onDismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Kapat">
+            <MaterialIcons name="close" size={18} color={theme.textMuted} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* 1 Alt Satır: Saha Adı ve Saat Bilgisi */}
+      <View style={styles.venueRow}>
+        <MaterialIcons name="sports-soccer" size={15} color={theme.primary} />
+        <Text style={styles.venueText} numberOfLines={2}>
+          {arena}{displayTime ? ` • ${displayTime}` : ''}
+        </Text>
       </View>
 
       {/* Conditional Content: Past Review (Yemek Siparişi Değerlendirme Modeli) VS Timer */}
@@ -177,6 +184,11 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
         <>
           <View style={styles.timerRow}>
             <View style={styles.timeBox}>
+              <Text style={styles.timeVal}>{format2Digits(timeLeft.days)}</Text>
+              <Text style={styles.timeLabel}>GÜN</Text>
+            </View>
+            <Text style={styles.colon}>:</Text>
+            <View style={styles.timeBox}>
               <Text style={styles.timeVal}>{format2Digits(timeLeft.hours)}</Text>
               <Text style={styles.timeLabel}>SAAT</Text>
             </View>
@@ -230,7 +242,7 @@ const useStyles = (theme: any) => StyleSheet.create({
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'center', 
-    marginBottom: 12 
+    marginBottom: 6 
   },
   badge: { 
     flexDirection: 'row', 
@@ -253,22 +265,31 @@ const useStyles = (theme: any) => StyleSheet.create({
     color: theme.primary, 
     letterSpacing: 0.5 
   },
+  venueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+    paddingLeft: 2,
+  },
   venueText: { 
-    fontFamily: Fonts.body, 
-    fontSize: 11, 
-    color: theme.textMuted 
+    fontFamily: Fonts.headlineBold, 
+    fontSize: 12, 
+    color: theme.text,
+    flex: 1,
+    lineHeight: 16,
   },
   timerRow: { 
     flexDirection: 'row', 
     justifyContent: 'center', 
     alignItems: 'center', 
-    gap: 12, 
-    marginVertical: 8 
+    gap: 6, 
+    marginVertical: 6 
   },
   timeBox: { 
     backgroundColor: theme.surfaceContainer, 
-    width: 64, 
-    height: 56, 
+    width: 58, 
+    height: 52, 
     borderRadius: 12, 
     alignItems: 'center', 
     justifyContent: 'center', 
@@ -277,23 +298,23 @@ const useStyles = (theme: any) => StyleSheet.create({
   },
   timeVal: { 
     fontFamily: Fonts.headlineBold, 
-    fontSize: 24, 
+    fontSize: 21, 
     color: theme.text, 
     fontStyle: 'italic', 
-    lineHeight: 28 
+    lineHeight: 25 
   },
   timeLabel: { 
     fontFamily: Fonts.headlineBold, 
     fontSize: 8, 
     color: theme.textMuted, 
-    letterSpacing: 1, 
+    letterSpacing: 0.8, 
     marginTop: 2 
   },
   colon: { 
     fontFamily: Fonts.headlineBold, 
-    fontSize: 22, 
+    fontSize: 18, 
     color: theme.primary, 
-    marginTop: -12 
+    marginTop: -8 
   },
   bottomRow: { 
     flexDirection: 'row', 
