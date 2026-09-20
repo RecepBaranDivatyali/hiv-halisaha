@@ -56,13 +56,23 @@ export default function SearchScreen() {
   const [dateModalVisible, setDateModalVisible] = useState(false);
 
   const [pos, setPos] = useState('KL');
-  const [level, setLevel] = useState('0-3.9');
+  const [selectedLevels, setSelectedLevels] = useState<string[]>(['0-3.9']);
   const [difficulty, setDifficulty] = useState('Eğlence');
   const [selectedTimeFrame, setSelectedTimeFrame] = useState('Tümü');
   const [reservationStatus, setReservationStatus] = useState<'all' | 'reserved' | 'no_reservation'>('all');
   const [playerStatus, setPlayerStatus] = useState<'all' | 'looking'>('looking');
   const [remember, setRemember] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
+
+  const toggleLevel = (lv: string) => {
+    setSelectedLevels(prev => {
+      if (prev.includes(lv)) {
+        return prev.filter(item => item !== lv);
+      } else {
+        return [...prev, lv];
+      }
+    });
+  };
 
   // Önümüzdeki 30 günün tarih seçenekleri
   const upcomingDateOptions = useMemo(() => {
@@ -100,7 +110,11 @@ export default function SearchScreen() {
           if (parsed.city) setSelectedCity(parsed.city);
           if (parsed.district) setSelectedDistrict(parsed.district);
           if (parsed.pos) setPos(parsed.pos);
-          if (parsed.level) setLevel(parsed.level);
+          if (parsed.selectedLevels && Array.isArray(parsed.selectedLevels)) {
+            setSelectedLevels(parsed.selectedLevels);
+          } else if (parsed.level) {
+            setSelectedLevels(typeof parsed.level === 'string' ? parsed.level.split(',').map((s: string) => s.trim()).filter(Boolean) : [parsed.level]);
+          }
           if (parsed.difficulty) setDifficulty(parsed.difficulty);
           if (parsed.timeFrame) setSelectedTimeFrame(parsed.timeFrame);
         } catch (e) {
@@ -125,7 +139,8 @@ export default function SearchScreen() {
         city: selectedCity,
         district: selectedDistrict,
         pos,
-        level,
+        selectedLevels,
+        level: selectedLevels.join(','),
         difficulty,
         timeFrame: selectedTimeFrame,
       })).catch((e) => { console.error('AsyncStorage error:', e); });
@@ -137,7 +152,7 @@ export default function SearchScreen() {
         tab: activeTab, 
         pos: pos, 
         difficulty: difficulty, 
-        level: level, 
+        level: selectedLevels.length > 0 ? selectedLevels.join(',') : undefined, 
         city: selectedCity, 
         district: selectedDistrict,
         arena: selectedPitch !== 'Tüm Sahalar' ? selectedPitch : undefined,
@@ -175,7 +190,7 @@ export default function SearchScreen() {
             setSelectedDistrict('Kadıköy');
             setSelectedPitch('Tüm Sahalar');
             setPos('KL');
-            setLevel('0-3.9');
+            setSelectedLevels(['0-3.9']);
             setDifficulty('Eğlence');
             setSelectedTimeFrame('Tümü');
             Alert.alert('Filtreler Sıfırlandı', 'Arama kriterleri varsayılan değerlere döndürüldü.');
@@ -452,15 +467,26 @@ export default function SearchScreen() {
             {/* Level filter for Oyuncu tab */}
             {activeTab === 'Oyuncu' && (
               <View style={styles.sectionBox}>
-                <Text style={styles.sectionTitle}>OYUNCU SEVİYESİ</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>OYUNCU SEVİYESİ</Text>
+                  {selectedLevels.length > 0 ? (
+                    <Text style={{ fontFamily: Fonts.body, fontSize: 10, color: theme.primary }}>
+                      {selectedLevels.length} Seviye Seçili
+                    </Text>
+                  ) : (
+                    <Text style={{ fontFamily: Fonts.body, fontSize: 10, color: theme.textMuted }}>
+                      Tüm Seviyeler
+                    </Text>
+                  )}
+                </View>
                 <View style={styles.levelGrid}>
                   {['0-3.9', '4.0-5.9', '6.0-7.9', '8.0+'].map((lv) => {
-                    const active = level === lv;
+                    const active = selectedLevels.includes(lv);
                     return (
                       <TouchableOpacity
                         key={lv}
                         style={levelBtnStyle(active)}
-                        onPress={() => setLevel(lv)}
+                        onPress={() => toggleLevel(lv)}
                         activeOpacity={0.8}
                         accessibilityRole="button"
                         accessibilityState={{ selected: active }}

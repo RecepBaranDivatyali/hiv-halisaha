@@ -726,7 +726,23 @@ export const dbService = {
         players = players.filter((p: any) => p.position && p.position.toUpperCase().includes(criteria.position!.toUpperCase()));
       }
       if (criteria.level) {
-        players = players.filter((p: any) => p.level === criteria.level);
+        const selectedLevelList = criteria.level.split(',').map(s => s.trim()).filter(Boolean);
+        if (selectedLevelList.length > 0) {
+          players = players.filter((p: any) => {
+            if (p.level && selectedLevelList.includes(p.level)) return true;
+            const ratingNum = typeof p.rating === 'number' ? p.rating : parseFloat(p.rating);
+            if (!isNaN(ratingNum)) {
+              return selectedLevelList.some(lvl => {
+                if (lvl === '0-3.9') return ratingNum >= 0 && ratingNum <= 3.9;
+                if (lvl === '4.0-5.9') return ratingNum >= 4.0 && ratingNum <= 5.9;
+                if (lvl === '6.0-7.9') return ratingNum >= 6.0 && ratingNum <= 7.9;
+                if (lvl === '8.0+' || lvl === '8.0-10') return ratingNum >= 8.0;
+                return false;
+              });
+            }
+            return false;
+          });
+        }
       }
       if (criteria.onlyLookingForMatch) {
         players = players.filter((p: any) => p.isLookingForMatch === true);
