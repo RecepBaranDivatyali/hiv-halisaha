@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Fonts } from '@/constants/theme';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { SideMenu } from '@/components/SideMenu';
 import { CreateMatchModal } from '@/components/CreateMatchModal';
 import { NotificationCenterModal } from '@/components/NotificationCenterModal';
@@ -51,6 +51,16 @@ export default function HomeScreen() {
       }
     }).catch(() => {});
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      AsyncStorage.getItem('@hiv_rated_matches').then(val => {
+        if (val) {
+          setRatedMatches(JSON.parse(val));
+        }
+      }).catch(() => {});
+    }, [])
+  );
 
   const handleOpenGuide = () => {
     setGuideVisible(true);
@@ -103,13 +113,14 @@ export default function HomeScreen() {
     (user?.uid && m.slots && Object.values(m.slots).some(s => s?.uid === user.uid))
   );
 
-  // 1. Bitmiş ama kullanıcı tarafından HENÜZ değerlendirilmemiş maç (Yemeksepeti / Getir modeli)
-  const unratedFinishedMatch = [
-    ...userAllMatches,
-    ...pastMatches
-  ].find(m => 
-    (isMatchPast(m.dateTime) || m.status === 'completed') && !ratedMatches.includes(m.id)
-  );
+  // 1. Bitmiş ama kullanıcı tarafından HENÜZ değerlendirilmemiş tüm maçlar (Yemeksepeti / Getir modeli)
+  const allCandidateMatches = [...userAllMatches, ...pastMatches];
+  const seenMatchIds = new Set<string>();
+  const unratedFinishedMatches = allCandidateMatches.filter(m => {
+    if (!m.id || seenMatchIds.has(m.id)) return false;
+    seenMatchIds.add(m.id);
+    return (isMatchPast(m.dateTime) || m.status === 'completed') && !ratedMatches.includes(m.id);
+  });
 
   // 2. Kullanıcının gerçekten yaklaşan (gelecek) aktif maçı
   const upcomingUserMatch = userAllMatches.find(m => !isMatchPast(m.dateTime) && m.status !== 'completed');
@@ -218,7 +229,7 @@ export default function HomeScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
       >
         {/* 1. Live Match Countdown for Upcoming Active Match (Aktif maç her zaman en üstte) */}
-        {countdownMatch && (!unratedFinishedMatch || countdownMatch.id !== unratedFinishedMatch.id) && (
+        {countdownMatch && (!unratedFinishedMatches.some(m => m.id === countdownMatch.id)) && (
           <MatchCountdownCard 
             key={`upcoming-${countdownMatch.id}`}
             matchId={countdownMatch.id} 
@@ -228,13 +239,16 @@ export default function HomeScreen() {
           />
         )}
 
-        {/* 2. Tek Satırlık Kompakt Maç Değerlendirme Teşviki (Aktif maçın altında) */}
-        {unratedFinishedMatch && (
-          <View style={styles.compactReviewBanner}>
+        {/* 2. Kompakt Maç Değerlendirme Teşvikleri (Tüm değerlendirilmemiş biten maçlar listelenir) */}
+        {unratedFinishedMatches.map((m) => (
+          <View key={`review-${m.id}`} style={styles.compactReviewBanner}>
             <TouchableOpacity 
               style={styles.compactReviewBannerLeft}
               activeOpacity={0.8}
-              onPress={() => router.push(unratedFinishedMatch.id ? { pathname: '/rate-match', params: { matchId: unratedFinishedMatch.id } } : '/rate-match')}
+              onPress={() => {
+                handleDismissReview(m.id);
+                router.push(m.id ? { pathname: '/rate-match', params: { matchId: m.id } } : '/rate-match');
+              }}
             >
               <View style={styles.compactReviewIconBadge}>
                 <MaterialIcons name="grade" size={16} color="#FFD700" />
@@ -244,7 +258,7 @@ export default function HomeScreen() {
                   Maç nasıldı?
                 </Text>
                 <Text style={styles.compactReviewArena} numberOfLines={1}>
-                  {unratedFinishedMatch.arena}
+                  {m.arena}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -253,7 +267,10 @@ export default function HomeScreen() {
               <TouchableOpacity 
                 style={styles.compactReviewBtn}
                 activeOpacity={0.85}
-                onPress={() => router.push(unratedFinishedMatch.id ? { pathname: '/rate-match', params: { matchId: unratedFinishedMatch.id } } : '/rate-match')}
+                onPress={() => {
+                  handleDismissReview(m.id);
+                  router.push(m.id ? { pathname: '/rate-match', params: { matchId: m.id } } : '/rate-match');
+                }}
               >
                 <MaterialIcons name="star" size={12} color={theme.background} />
                 <Text style={styles.compactReviewBtnText}>DEĞERLENDİR</Text>
@@ -261,7 +278,7 @@ export default function HomeScreen() {
 
               <TouchableOpacity 
                 style={styles.compactReviewDismissBtn}
-                onPress={() => handleDismissReview(unratedFinishedMatch.id)}
+                onPress={() => handleDismissReview(m.id)}
                 hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
                 accessibilityLabel="Kapat"
               >
@@ -269,7 +286,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        )}
+        ))}
 
         {/* H.İ.V. NASIL KULLANILIR? REHBER KARTI */}
         {!isGuideDismissed && (
@@ -779,7 +796,7 @@ const useStyles = (theme: any) => StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    marginBottom: 16,
+    marginBottom: 10,
     gap: 8,
   },
   compactReviewBannerLeft: {
