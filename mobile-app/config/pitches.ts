@@ -1,9 +1,20 @@
+export interface EquipmentRentalInfo {
+  bootsRental: boolean;      // Krampon kiralama var mı?
+  bootsFee?: number;         // Krampon ücreti (TL)
+  glovesRental: boolean;     // Kaleci eldiveni kiralama var mı?
+  glovesFee?: number;        // Eldiven ücreti (TL)
+  vestsProvided?: boolean;   // Yelek veriliyor mu?
+  showerAvailable?: boolean; // Sıcak duş / soyunma odası
+  parkingAvailable?: boolean;// Otopark imkanı
+}
+
 export interface SubFieldInfo {
   id: string;
   name: string;
   surface: 'Suni Çim' | 'Hibrit Çim' | 'Kapalı Saha';
-  lastSlot?: string;       // e.g. "21:00-22:00"
-  slotType?: 'full' | 'half'; // full = tam saat, half = yarım saat
+  startSlot?: string;        // e.g. "09:00"
+  lastSlot?: string;         // e.g. "21:00-22:00"
+  slotType?: 'full' | 'half';// full = tam saat, half = yarım saat
 }
 
 export interface PitchDatabaseItem {
@@ -13,7 +24,15 @@ export interface PitchDatabaseItem {
   name: string;
   rating: number;
   isPopular?: boolean;
-  hourlyFee?: number;      // toplam saatlik ücret (TL)
+  hourlyFee?: number;        // Tek maç saatlik ücreti (TL)
+  subscriberFee?: number;    // Abone saatlik ücreti (TL)
+  openingTime?: string;      // örn: "09:00"
+  closingTime?: string;      // örn: "22:00"
+  optimalModes?: string[];   // İdeal oynanan formatlar: örn ['7v7'] (yeşil / uyarı yok)
+  tightModes?: string[];     // Sıkışık da olsa oynanabilen formatlar: örn ['8v8'] (sarı uyarı)
+  equipmentRental?: EquipmentRentalInfo;
+  phone?: string;
+  address?: string;
   subFields: SubFieldInfo[];
 }
 
@@ -29,10 +48,26 @@ export const PITCH_DATABASE: PitchDatabaseItem[] = [
     rating: 4.8,
     isPopular: true,
     hourlyFee: 780,
+    subscriberFee: 700,
+    openingTime: '09:00',
+    closingTime: '22:00',
+    optimalModes: ['7v7'],
+    tightModes: ['8v8'],
+    phone: '0312 210 20 00',
+    address: 'Üniversiteler Mah., Dumlupınar Blv. No:1, ODTÜ Kampüsü, Çankaya',
+    equipmentRental: {
+      bootsRental: true,
+      bootsFee: 50,
+      glovesRental: true,
+      glovesFee: 30,
+      vestsProvided: true,
+      showerAvailable: true,
+      parkingAvailable: true,
+    },
     subFields: [
-      { id: 'odtu-1', name: 'Halı Saha 1', surface: 'Suni Çim', lastSlot: '21:00-22:00', slotType: 'full' },
-      { id: 'odtu-2', name: 'Halı Saha 2', surface: 'Suni Çim', lastSlot: '20:30-21:30', slotType: 'half' },
-      { id: 'odtu-3', name: 'Halı Saha 3', surface: 'Suni Çim', lastSlot: '21:00-22:00', slotType: 'full' },
+      { id: 'odtu-1', name: 'Halı Saha 1', surface: 'Suni Çim', startSlot: '09:00', lastSlot: '21:00-22:00', slotType: 'full' },
+      { id: 'odtu-2', name: 'Halı Saha 2', surface: 'Suni Çim', startSlot: '09:30', lastSlot: '20:30-21:30', slotType: 'half' },
+      { id: 'odtu-3', name: 'Halı Saha 3', surface: 'Suni Çim', startSlot: '09:00', lastSlot: '21:00-22:00', slotType: 'full' },
     ],
   },
   {

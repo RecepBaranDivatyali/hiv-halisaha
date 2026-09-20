@@ -117,6 +117,21 @@ export interface PitchReviewModel {
   };
   createdAt?: any;
 }
+export interface PitchProposalModel {
+  id?: string;
+  pitchId: string;
+  pitchName: string;
+  city?: string;
+  district?: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt?: any;
+  originalData: Record<string, any>;
+  proposedData: Record<string, any>;
+  notes?: string;
+}
 
 export interface MessageModel {
   id?: string;
@@ -1067,6 +1082,22 @@ export const dbService = {
       return { id: docRef.id, pitchName, ...review };
     } catch (error) {
       console.error("Tesis yorumu ekleme hatası:", error);
+      throw error;
+    }
+  },
+
+  // ─── TESİS BİLGİ DÜZELTME / ÖNERİSİ ───
+  submitPitchProposal: async (proposal: Omit<PitchProposalModel, 'id' | 'createdAt' | 'status'>) => {
+    try {
+      const proposalsRef = collection(db, 'pitch_proposals');
+      const docRef = await addDoc(proposalsRef, {
+        ...proposal,
+        status: 'pending',
+        createdAt: serverTimestamp()
+      });
+      return { id: docRef.id, status: 'pending', ...proposal };
+    } catch (error) {
+      console.error("Saha önerisi gönderme hatası:", error);
       throw error;
     }
   }

@@ -184,6 +184,21 @@ export const adminDbService = {
     }
   },
 
+  subscribePitches(callback) {
+    try {
+      const q = query(collection(db, 'pitches'));
+      return onSnapshot(q, (snap) => {
+        const pitches = snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(p => p.status !== 'deleted');
+        callback(pitches);
+      });
+    } catch (e) {
+      console.error('Halısaha abonelik hatası:', e);
+      return () => {};
+    }
+  },
+
   async createPitch(pitchData) {
     const pitchRef = doc(collection(db, 'pitches'));
     const newPitch = {
@@ -200,14 +215,62 @@ export const adminDbService = {
 
   async updatePitch(pitchId, data) {
     const pitchRef = doc(db, 'pitches', pitchId);
-    await updateDoc(pitchRef, {
+    await setDoc(pitchRef, {
       ...data,
       updatedAt: serverTimestamp()
-    });
+    }, { merge: true });
   },
 
   async deletePitch(pitchId) {
     const pitchRef = doc(db, 'pitches', pitchId);
     await updateDoc(pitchRef, { status: 'deleted', deletedAt: serverTimestamp() });
+  },
+
+  // ─── KULLANICI SAHA ÖNERİLERİ & DÜZELTMELERİ ───
+  async getPitchProposals() {
+    try {
+      const snap = await getDocs(collection(db, 'pitch_proposals'));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (e) {
+      console.error('Önerileri getirme hatası:', e);
+      return [];
+    }
+  },
+
+  subscribePitchProposals(callback) {
+    try {
+      const q = query(collection(db, 'pitch_proposals'));
+      return onSnapshot(q, (snap) => {
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        callback(list);
+      });
+    } catch (e) {
+      console.error('Öneriler abonelik hatası:', e);
+      return () => {};
+    }
+  },
+
+  async approvePitchProposal(proposalId, pitchId, proposedData) {
+    // 1. Update or create pitch in pitches collection
+    const pitchRef = doc(db, 'pitches', pitchId);
+    await setDoc(pitchRef, {
+      ...proposedData,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    // 2. Mark proposal as approved
+    const proposalRef = doc(db, 'pitch_proposals', proposalId);
+    await updateDoc(proposalRef, {
+      status: 'approved',
+      resolvedAt: serverTimestamp()
+    });
+  },
+
+  async rejectPitchProposal(proposalId) {
+    const proposalRef = doc(db, 'pitch_proposals', proposalId);
+    await updateDoc(proposalRef, {
+      status: 'rejected',
+      resolvedAt: serverTimestamp()
+    });
   }
 };

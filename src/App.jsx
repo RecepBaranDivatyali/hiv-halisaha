@@ -118,10 +118,15 @@ function DashboardContent({ adminUser, onLogout, onBackToPlayer }) {
       setClubs(newClubs || []);
     });
 
+    const unsubPitches = adminDbService.subscribePitches((newPitches) => {
+      setPitches(newPitches || []);
+    });
+
     return () => {
       if (unsubMatches) unsubMatches();
       if (unsubUsers) unsubUsers();
       if (unsubClubs) unsubClubs();
+      if (unsubPitches) unsubPitches();
     };
   }, []);
 

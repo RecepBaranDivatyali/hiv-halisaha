@@ -11,6 +11,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { useMatches } from '@/hooks/use-matches';
 import { useAuth } from '@/hooks/use-auth';
 import { PITCH_DATABASE, PitchDatabaseItem } from '@/config/pitches';
+import { PitchDetailModal } from './PitchDetailModal';
 
 export interface NewMatchData {
   id: string;
@@ -47,8 +48,6 @@ interface CreateMatchModalProps {
 
 const CITIES = ['Ankara', 'İstanbul', 'İzmir', 'Bursa', 'Antalya'];
 
-// Standart tam saatler (19:00, 20:00, …)
-const STANDARD_HOURS = [17, 18, 19, 20, 21, 22, 23, 0];
 // Ara dakikalar
 const OFFSET_MINUTES = [15, 30, 45];
 
@@ -151,32 +150,116 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   const [isGkFree, setIsGkFree] = useState(false);
 
   // ── Saat ──────────────────────────────────────────────
+  const [pitchDetailModalOpen, setPitchDetailModalOpen] = useState(false);
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [showOffsetTimes, setShowOffsetTimes] = useState(false);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState('21:00 - 22:00');
 
-  // Tüm saat listesi
-  const allTimeSlots = useMemo(() => {
-    const slots: string[] = [];
-    STANDARD_HOURS.forEach(h => {
-      slots.push(formatTimeSlot(h, 0));
-      if (showOffsetTimes) {
-        OFFSET_MINUTES.forEach(m => slots.push(formatTimeSlot(h, m)));
-      }
-    });
-    return slots;
-  }, [showOffsetTimes]);
+  // Seçili alt saha objesi
+  const currentSubFieldObj = useMemo(() => {
+    return selectedPitch?.subFields.find(s => s.name === selectedSubField) || selectedPitch?.subFields[0];
+  }, [selectedPitch, selectedSubField]);
 
-  // Popüler saatler (hızlı erişim)
-  const popularSlots = ['20:00 - 21:00', '21:00 - 22:00', '22:00 - 23:00'];
+  // Alt sahaya göre dinamik saat listesi ve popüler saatler (son saat kısıtlaması dahil)
+  const { allTimeSlots, popularSlots } = useMemo(() => {
+    const isHalf = currentSubFieldObj?.slotType === 'half';
+    const lastSlotStr = currentSubFieldObj?.lastSlot; // örn: "20:30-21:30" veya "21:00-22:00"
+
+    let maxStartH = 23;
+    let maxStartM = 0;
+    if (lastSlotStr) {
+      const parts = lastSlotStr.split('-')[0].trim();
+      const [h, m] = parts.split(':').map(Number);
+      if (!isNaN(h)) {
+        maxStartH = h;
+        maxStartM = m || 0;
+      }
+    }
+
+    const slots: string[] = [];
+    const startH = 10;
+    for (let h = startH; h <= maxStartH; h++) {
+      const m = isHalf ? 30 : 0;
+      if (h === maxStartH && m > maxStartM) continue;
+      slots.push(formatTimeSlot(h, m));
+      if (showOffsetTimes && !isHalf) {
+        OFFSET_MINUTES.forEach(offM => {
+          if (h === maxStartH && offM > maxStartM) return;
+          slots.push(formatTimeSlot(h, offM));
+        });
+      }
+    }
+
+    // Popüler saatler
+    let pops: string[] = [];
+    if (isHalf) {
+      pops = ['18:30 - 19:30', '19:30 - 20:30', '20:30 - 21:30'].filter(s => slots.includes(s));
+      if (pops.length === 0) pops = slots.slice(-3);
+    } else {
+      pops = ['19:00 - 20:00', '20:00 - 21:00', '21:00 - 22:00'].filter(s => slots.includes(s));
+      if (pops.length === 0) pops = slots.slice(-3);
+    }
+
+    return { allTimeSlots: slots, popularSlots: pops };
+  }, [currentSubFieldObj, showOffsetTimes]);
+
+  // Alt saha değiştiğinde geçerli saat ayarı
+  React.useEffect(() => {
+    if (allTimeSlots.length > 0 && !allTimeSlots.includes(selectedTimeSlot) && !isTimeFlexible) {
+      const fallback = popularSlots[popularSlots.length - 1] || allTimeSlots[allTimeSlots.length - 1];
+      if (fallback) setSelectedTimeSlot(fallback);
+    }
+  }, [allTimeSlots, selectedTimeSlot, popularSlots, isTimeFlexible]);
+
+  // Rezervasyon var ise "Saat Esnek" iptal edilsin
+  React.useEffect(() => {
+    if (hasReservation && isTimeFlexible) {
+      setIsTimeFlexible(false);
+      const fallback = popularSlots[popularSlots.length - 1] || allTimeSlots[allTimeSlots.length - 1] || '20:00 - 21:00';
+      setSelectedTimeSlot(fallback);
+    }
+  }, [hasReservation, isTimeFlexible, popularSlots, allTimeSlots]);
 
   // ── Maç Formatı ──────────────────────────────────────────────
   const [selectedMode, setSelectedMode] = useState('7v7');
   const [showAllModes, setShowAllModes] = useState(false);
   const [matchFormatType, setMatchFormatType] = useState<'single_organizer' | 'two_captains'>('single_organizer');
 
+  // ── Format Uygunluk Kontrolü (Sarı & Kırmızı Uyarı) ──
+  const formatWarning = useMemo(() => {
+    if (isPitchFlexible || !selectedPitch) return null;
+    const optimal = selectedPitch.optimalModes || ['7v7'];
+    const tight = selectedPitch.tightModes || ['8v8'];
+
+    if (optimal.includes(selectedMode)) {
+      return null;
+    }
+
+    if (tight.includes(selectedMode)) {
+      return {
+        level: 'yellow' as const,
+        text: `⚠️ Dikkat: Bu saha ${selectedMode} için dar olabilir. Oyun biraz sıkışık geçebilir. (İdeal format: ${optimal.join(', ')})`
+      };
+    }
+
+    const selCount = parseInt(selectedMode.split('v')[0], 10) || 7;
+    const allSupported = [...optimal, ...tight];
+    const maxSupported = Math.max(...allSupported.map(m => parseInt(m.split('v')[0], 10) || 7));
+
+    if (selCount > maxSupported) {
+      return {
+        level: 'red' as const,
+        text: `🚫 Kritik Uyarı: Bu saha ${selectedMode} formatı için kesinlikle uygun değildir! Saha boyutları bu oyuncu sayısını kaldıramaz. (Maksimum oynanabilen: ${allSupported.join(', ')})`
+      };
+    }
+
+    return null;
+  }, [isPitchFlexible, selectedPitch, selectedMode]);
+
   // ── Ücret ──────────────────────────────────────────────
-  const [totalFeeInput, setTotalFeeInput] = useState('2100');
+  const [totalFeeInput, setTotalFeeInput] = useState(
+    selectedPitch?.hourlyFee ? String(selectedPitch.hourlyFee) : '2100'
+  );
 
   // ── Kaptan IBAN ──────────────────────────────────────────
   const [organizerIban, setOrganizerIban] = useState(user?.iban || '');
@@ -369,19 +452,33 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               {!isPitchFlexible ? (
                 <>
                   {/* Seçili tesis kutusu + değiştir butonu */}
-                  <TouchableOpacity style={styles.pitchSelectedBox} onPress={() => setPitchPickerOpen(true)}>
-                    <View style={styles.pitchSelectedLeft}>
-                      <MaterialIcons name="stadium" size={20} color={theme.primary} />
-                      <View>
-                        <Text style={styles.pitchSelectedName}>{selectedPitch.name}</Text>
-                        <Text style={styles.pitchSelectedDistrict}>{selectedPitch.district}  •  ★ {selectedPitch.rating}</Text>
+                  <View style={styles.pitchSelectedBox}>
+                    <TouchableOpacity 
+                      style={styles.pitchSelectedLeft} 
+                      onPress={() => setPitchDetailModalOpen(true)}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialIcons name="stadium" size={22} color={theme.primary} />
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.pitchSelectedName}>{selectedPitch.name}</Text>
+                          <MaterialIcons name="info-outline" size={14} color={theme.primary} />
+                        </View>
+                        <Text style={styles.pitchSelectedDistrict}>
+                          {selectedPitch.district}  •  ★ {selectedPitch.rating}  •  <Text style={{ color: theme.primary, fontWeight: 'bold' }}>Detay & Bilgi</Text>
+                        </Text>
                       </View>
-                    </View>
-                    <View style={styles.changeBadge}>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity 
+                      style={styles.changeBadge} 
+                      onPress={() => setPitchPickerOpen(true)}
+                      activeOpacity={0.8}
+                    >
                       <Text style={styles.changeBadgeText}>Değiştir</Text>
                       <MaterialIcons name="keyboard-arrow-down" size={16} color={theme.primary} />
-                    </View>
-                  </TouchableOpacity>
+                    </TouchableOpacity>
+                  </View>
 
                   {/* Alt Saha Seçimi */}
                   {selectedPitch.subFields.length > 0 && (
@@ -393,6 +490,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                             key={sub.id}
                             style={[styles.subFieldChip, selectedSubField === sub.name && styles.subFieldChipActive]}
                             onPress={() => setSelectedSubField(sub.name)}
+                            activeOpacity={0.8}
                           >
                             <Text style={[styles.subFieldText, selectedSubField === sub.name && styles.subFieldTextActive]}>
                               {sub.name}
@@ -400,11 +498,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                             <Text style={[styles.subFieldSurface, selectedSubField === sub.name && { color: theme.primary }]}>
                               {sub.surface}
                             </Text>
-                            {sub.lastSlot ? (
-                              <Text style={[styles.subFieldSlot, selectedSubField === sub.name && { color: theme.primary }]}>
-                                Son: {sub.lastSlot}
-                              </Text>
-                            ) : null}
                           </TouchableOpacity>
                         ))}
                       </View>
@@ -535,19 +628,21 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                   </TouchableOpacity>
                 ))}
 
-                <TouchableOpacity
-                  style={[styles.timePopChip, isTimeFlexible && styles.timePopChipActiveFlexible]}
-                  onPress={() => {
-                    setIsTimeFlexible(true);
-                    setSelectedTimeSlot('Saat Esnek');
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <MaterialIcons name="all-inclusive" size={14} color={isTimeFlexible ? '#0284c7' : theme.textMuted} />
-                  <Text style={[styles.timePopText, isTimeFlexible && { color: '#0284c7', fontFamily: Fonts.headlineBold }]}>
-                    Saat Esnek
-                  </Text>
-                </TouchableOpacity>
+                {!hasReservation && (
+                  <TouchableOpacity
+                    style={[styles.timePopChip, isTimeFlexible && styles.timePopChipActiveFlexible]}
+                    onPress={() => {
+                      setIsTimeFlexible(true);
+                      setSelectedTimeSlot('Saat Esnek');
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <MaterialIcons name="all-inclusive" size={14} color={isTimeFlexible ? '#0284c7' : theme.textMuted} />
+                    <Text style={[styles.timePopText, isTimeFlexible && { color: '#0284c7', fontFamily: Fonts.headlineBold }]}>
+                      Saat Esnek
+                    </Text>
+                  </TouchableOpacity>
+                )}
 
                 <TouchableOpacity style={styles.timePickerBtn} onPress={() => setTimePickerOpen(true)}>
                   <MaterialIcons name="access-time" size={15} color={theme.primary} />
@@ -578,6 +673,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                     <Text style={[styles.modeChipText, selectedMode === m && styles.modeChipTextActive]}>{m}</Text>
                   </TouchableOpacity>
                 ))}
+
                 <TouchableOpacity
                   style={[styles.modeChip, styles.modeChipOther, showAllModes && styles.modeChipActive]}
                   onPress={() => setShowAllModes(!showAllModes)}
@@ -601,6 +697,20 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                       <Text style={[styles.modeChipText, selectedMode === m && styles.modeChipTextActive]}>{m}</Text>
                     </TouchableOpacity>
                   ))}
+                </View>
+              )}
+
+              {/* Saha Format Uygunluk Uyarısı (Sarı & Kırmızı) */}
+              {formatWarning && (
+                <View style={[styles.formatWarningBox, formatWarning.level === 'red' ? styles.formatWarningRed : styles.formatWarningYellow]}>
+                  <MaterialIcons 
+                    name={formatWarning.level === 'red' ? "dangerous" : "warning"} 
+                    size={16} 
+                    color={formatWarning.level === 'red' ? '#ef4444' : '#f59e0b'} 
+                  />
+                  <Text style={[styles.formatWarningText, formatWarning.level === 'red' ? styles.formatWarningTextRed : styles.formatWarningTextYellow]}>
+                    {formatWarning.text}
+                  </Text>
                 </View>
               )}
             </View>
@@ -1043,6 +1153,13 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
         </View>
       </Modal>
 
+      {/* ── SAHA DETAYLARI & BİLGİ ÖNERİ MODALI ── */}
+      <PitchDetailModal
+        visible={pitchDetailModalOpen}
+        pitch={selectedPitch}
+        onClose={() => setPitchDetailModalOpen(false)}
+      />
+
     </Modal>
   );
 };
@@ -1249,4 +1366,12 @@ const useStyles = (theme: any) => StyleSheet.create({
   timeFlexibleBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(56, 189, 248, 0.15)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   timeFlexibleBadgeText: { fontFamily: Fonts.headlineBold, fontSize: 10, color: '#38bdf8' },
   timePopChipActiveFlexible: { borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.15)' },
+
+  // Format Uyarıları (Sarı & Kırmızı)
+  formatWarningBox: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, marginTop: 4 },
+  formatWarningYellow: { backgroundColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'rgba(245, 158, 11, 0.35)' },
+  formatWarningRed: { backgroundColor: 'rgba(239, 68, 68, 0.12)', borderColor: 'rgba(239, 68, 68, 0.4)' },
+  formatWarningText: { flex: 1, fontFamily: Fonts.body, fontSize: 11, lineHeight: 15 },
+  formatWarningTextYellow: { color: '#f59e0b' },
+  formatWarningTextRed: { color: '#ef4444', fontWeight: 'bold' },
 });
