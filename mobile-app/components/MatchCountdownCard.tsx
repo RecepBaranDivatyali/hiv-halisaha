@@ -105,13 +105,23 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
         )}
       </View>
 
-      {/* 1 Alt Satır: Saha Adı ve Saat Bilgisi */}
+      {/* Saha Adı */}
       <View style={styles.venueRow}>
         <MaterialIcons name="sports-soccer" size={15} color={theme.primary} />
-        <Text style={styles.venueText} numberOfLines={2}>
-          {arena}{displayTime ? ` • ${displayTime}` : ''}
+        <Text style={styles.venueText} numberOfLines={1}>
+          {arena}
         </Text>
       </View>
+
+      {/* Sahanın 1 Alt Satırında Saat / Tarih Bilgisi */}
+      {displayTime ? (
+        <View style={styles.timeInfoRow}>
+          <MaterialIcons name="schedule" size={13} color={theme.textMuted} />
+          <Text style={styles.timeInfoText} numberOfLines={1}>
+            {displayTime}
+          </Text>
+        </View>
+      ) : null}
 
       {/* Conditional Content: Past Review (Yemek Siparişi Değerlendirme Modeli) VS Timer */}
       {timeLeft.isPast ? (
@@ -269,15 +279,28 @@ const useStyles = (theme: any) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 10,
+    marginBottom: 4,
     paddingLeft: 2,
   },
   venueText: { 
     fontFamily: Fonts.headlineBold, 
-    fontSize: 12, 
+    fontSize: 13, 
     color: theme.text,
     flex: 1,
-    lineHeight: 16,
+    lineHeight: 17,
+  },
+  timeInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 10,
+    paddingLeft: 3,
+  },
+  timeInfoText: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: theme.textMuted,
+    lineHeight: 15,
   },
   timerRow: { 
     flexDirection: 'row', 
