@@ -84,14 +84,22 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   const { addMatch } = useMatches();
 
   // ── Şehir ──────────────────────────────────────────────
-  const [selectedCity, setSelectedCity] = useState(user?.city || 'İstanbul');
+  const normalizeCity = (c?: string): string => {
+    if (!c) return 'İstanbul';
+    const clean = c.trim().toLowerCase();
+    if (clean === 'ankara') return 'Ankara';
+    if (clean === 'izmir' || clean === 'i̇zmir') return 'İzmir';
+    return 'İstanbul';
+  };
+
+  const [selectedCity, setSelectedCity] = useState(() => normalizeCity(user?.city));
   const [citySelectorOpen, setCitySelectorOpen] = useState(false);
 
   // ── Halısaha Picker ──────────────────────────────────────────────
   const [pitchPickerOpen, setPitchPickerOpen] = useState(false);
   const [pitchSearch, setPitchSearch] = useState('');
   const cityPitches = useMemo(
-    () => PITCH_DATABASE.filter(p => p.city === selectedCity),
+    () => PITCH_DATABASE.filter(p => p.city.toLowerCase() === selectedCity.toLowerCase()),
     [selectedCity]
   );
   const filteredPitches = useMemo(() => {
@@ -103,8 +111,8 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   }, [cityPitches, pitchSearch]);
 
   const [selectedPitch, setSelectedPitch] = useState<PitchDatabaseItem>(() => {
-    const initialCity = user?.city || 'İstanbul';
-    return PITCH_DATABASE.find(p => p.city === initialCity) || PITCH_DATABASE[0];
+    const initialCity = normalizeCity(user?.city);
+    return PITCH_DATABASE.find(p => p.city.toLowerCase() === initialCity.toLowerCase()) || PITCH_DATABASE[0];
   });
   const [selectedSubField, setSelectedSubField] = useState(
     selectedPitch.subFields[0]?.name || 'Tek Saha'
@@ -113,13 +121,14 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   // ── Saha & Rezervasyon Esnekliği ──
   const [isPitchFlexible, setIsPitchFlexible] = useState(false);
   const [hasReservation, setHasReservation] = useState(true);
-  const [preferredDistrict, setPreferredDistrict] = useState(user?.district || 'Çankaya');
+  const [preferredDistrict, setPreferredDistrict] = useState(user?.district || selectedPitch?.district || 'Çankaya');
   const [isTimeFlexible, setIsTimeFlexible] = useState(false);
 
   const handleSelectCity = (c: string) => {
-    setSelectedCity(c);
+    const norm = normalizeCity(c);
+    setSelectedCity(norm);
     setCitySelectorOpen(false);
-    const firstPitch = PITCH_DATABASE.find(p => p.city === c);
+    const firstPitch = PITCH_DATABASE.find(p => p.city.toLowerCase() === norm.toLowerCase());
     if (firstPitch) {
       setSelectedPitch(firstPitch);
       setPreferredDistrict(firstPitch.district);
@@ -341,9 +350,11 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     const timeSlotStr = isTimeFlexible ? 'Saat Esnek' : selectedTimeSlot;
     const fullDateTime = `${dateStr}, ${timeSlotStr}`;
 
+    const resolvedCity = isPitchFlexible ? selectedCity : (selectedPitch?.city || selectedCity);
+
     const newMatch: NewMatchData = {
       id: Date.now().toString(),
-      city: selectedCity,
+      city: resolvedCity,
       district: targetDistrict,
       arena: fullArenaName,
       pitchSubCode: isPitchFlexible ? 'Esnek' : selectedSubField,

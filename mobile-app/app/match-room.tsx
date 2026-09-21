@@ -15,6 +15,7 @@ import { useMatches } from '@/hooks/use-matches';
 import { useAuth } from '@/hooks/use-auth';
 import { dbService, MatchModel, BenchPlayer } from '@/services/dbService';
 import { auth } from '@/services/firebaseConfig';
+import { PITCH_DATABASE } from '@/config/pitches';
 
 interface PlayerPayment {
   slotKey: string;
@@ -47,10 +48,29 @@ export default function MatchRoomScreen() {
 
   const matchArena = activeMatch?.arena ?? 'Beşiktaş Arena';
 
+  // Sahanın veri tabanındaki resmi kaydı (gerçek şehir & ilçe çözümlemesi için)
+  const dbPitch = React.useMemo(() => {
+    if (!matchArena) return null;
+    const lower = matchArena.toLowerCase();
+    return PITCH_DATABASE.find(p => 
+      lower.includes(p.name.toLowerCase()) || 
+      p.name.toLowerCase().includes(lower)
+    );
+  }, [matchArena]);
+
   const matchTotalFee = activeMatch?.totalFee ?? 2100;
   const matchMode = activeMatch?.mode ?? '7v7';
   const matchDateTime = activeMatch?.dateTime ?? 'Bugün, 21:00';
-  const matchCity = activeMatch?.city ?? 'İstanbul';
+  // Eğer saha veri tabanında bulunuyorsa sahanın gerçek şehri esastır (Örn: ODTÜ Halısaha her zaman Ankara'dır)
+  const matchCity = dbPitch?.city || activeMatch?.city || 'İstanbul';
+  const matchDistrict = dbPitch?.district || activeMatch?.district || '';
+
+  // Eğer Firestore'daki eski kayıtta şehir yanlış kalmışsa (Örn: ODTÜ için İstanbul girilmişse) arka planda düzelt
+  React.useEffect(() => {
+    if (activeMatchId && dbPitch?.city && activeMatch?.city && activeMatch.city !== dbPitch.city) {
+      dbService.updateMatch(activeMatchId, { city: dbPitch.city, district: dbPitch.district }).catch(() => {});
+    }
+  }, [activeMatchId, dbPitch?.city, dbPitch?.district, activeMatch?.city]);
 
   const openVenueLocation = () => {
     const query = encodeURIComponent(`${matchArena} ${matchCity}`);
@@ -1325,7 +1345,12 @@ export default function MatchRoomScreen() {
             <TouchableOpacity style={styles.iconBtnHover} onPress={() => router.back()} accessibilityLabel="Geri" accessibilityRole="button">
               <MaterialIcons name="arrow-back" size={24} color={theme.primary} />
             </TouchableOpacity>
-            <Text style={styles.brandTitle}>MAÇ ODASI</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.brandTitle}>MAÇ ODASI</Text>
+              <Text style={styles.headerSubtitle} numberOfLines={1}>
+                {matchArena}
+              </Text>
+            </View>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <TouchableOpacity style={styles.iconBtnHover} onPress={handleShareMatch} accessibilityLabel="Kadro Paylaş" accessibilityRole="button">
@@ -1343,7 +1368,69 @@ export default function MatchRoomScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          {/* Live Weather Forecast Alert */}
+          {/* 1. Saha & Maç Bilgi Kartı (Saha Adı, İlçe/Şehir, Tarih/Saat, Format ve Rezervasyon Durumu) */}
+          <TouchableOpacity 
+            style={styles.venueInfoCard} 
+            activeOpacity={0.88}
+            onPress={openVenueLocation}
+          >
+            <View style={styles.venueCardTop}>
+              <View style={styles.venueIconBadge}>
+                <MaterialIcons name="stadium" size={24} color={theme.primary} />
+              </View>
+              <View style={styles.venueMainInfo}>
+                <View style={styles.venueTitleRow}>
+                  <Text style={styles.venueTitle} numberOfLines={2}>
+                    {matchArena}
+                  </Text>
+                </View>
+                <View style={styles.venueLocationRow}>
+                  <MaterialIcons name="location-on" size={13} color={theme.primary} />
+                  <Text style={styles.venueLocationText}>
+                    {matchDistrict ? `${matchDistrict}, ` : ''}{matchCity}
+                  </Text>
+                  {activeMatch?.hasReservation ? (
+                    <View style={styles.venueResBadge}>
+                      <MaterialIcons name="verified" size={11} color="#22c55e" />
+                      <Text style={styles.venueResBadgeText}>Sahası Hazır</Text>
+                    </View>
+                  ) : activeMatch?.isPitchFlexible ? (
+                    <View style={styles.venueFlexBadge}>
+                      <MaterialIcons name="location-searching" size={11} color="#f59e0b" />
+                      <Text style={styles.venueFlexBadgeText}>Saha Aranıyor</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+              <TouchableOpacity 
+                style={styles.venueMapBtn}
+                onPress={openVenueLocation}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="directions" size={15} color={theme.onPrimary || theme.background} />
+                <Text style={styles.venueMapBtnText}>Harita</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.venueCardDivider} />
+
+            <View style={styles.venueMetaRow}>
+              <View style={styles.venueMetaItem}>
+                <MaterialIcons name="event" size={13} color={theme.primary} />
+                <Text style={styles.venueMetaText}>{matchDateTime}</Text>
+              </View>
+              <View style={styles.venueMetaItem}>
+                <MaterialIcons name="groups" size={13} color={theme.secondary} />
+                <Text style={styles.venueMetaText}>{matchMode}</Text>
+              </View>
+              <View style={styles.venueMetaItem}>
+                <MaterialIcons name="payments" size={13} color={theme.warning || '#f59e0b'} />
+                <Text style={styles.venueMetaText}>₺{perPlayerFee} / kişi</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          {/* 2. Live Weather Forecast Alert */}
           <WeatherAlertCard 
             city={matchCity}
             isOpenField={!matchArena.toLowerCase().includes('kapalı')} 
@@ -2542,32 +2629,163 @@ const useStyles = (theme: any) => StyleSheet.create({
     flex: 1,
     backgroundColor: theme.background},
   header: {
-    height: 64,
+    minHeight: 64,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
     backgroundColor: `${theme.background}CC`,
     borderBottomWidth: 1,
     borderBottomColor: theme.borderSubtle,
-    zIndex: 50},
+    zIndex: 50,
+  },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16},
+    gap: 12,
+    flex: 1,
+    marginRight: 8,
+  },
   brandTitle: {
     fontFamily: Fonts.headlineBold,
-    fontSize: 24,
+    fontSize: 20,
     color: theme.primary,
     fontStyle: 'italic',
     textTransform: 'uppercase',
-    letterSpacing: -1},
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: theme.textMuted,
+    lineHeight: 14,
+    marginTop: 1,
+  },
   iconBtnHover: {
-    padding: 8},
+    padding: 8,
+  },
   scrollContent: {
-    paddingTop: 24,
+    paddingTop: 16,
     paddingHorizontal: 16,
-    paddingBottom: 40},
+    paddingBottom: 40,
+  },
+
+  // Venue Info Card Styles
+  venueInfoCard: {
+    backgroundColor: theme.surfaceContainer,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: `${theme.primary}40`,
+    borderLeftWidth: 4,
+    borderLeftColor: theme.primary,
+    padding: 14,
+    marginBottom: 12,
+    gap: 10,
+  },
+  venueCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  venueIconBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: `${theme.primary}20`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  venueMainInfo: {
+    flex: 1,
+  },
+  venueTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  venueTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 15,
+    color: theme.text,
+    letterSpacing: -0.3,
+    lineHeight: 19,
+  },
+  venueLocationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 3,
+    flexWrap: 'wrap',
+  },
+  venueLocationText: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: theme.textMuted,
+  },
+  venueResBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(34, 197, 94, 0.18)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 4,
+  },
+  venueResBadgeText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 9,
+    color: '#22c55e',
+  },
+  venueFlexBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(245, 158, 11, 0.18)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 4,
+  },
+  venueFlexBadgeText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 9,
+    color: '#f59e0b',
+  },
+  venueMapBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: theme.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  venueMapBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.onPrimary || theme.background,
+  },
+  venueCardDivider: {
+    height: 1,
+    backgroundColor: theme.borderSubtle,
+  },
+  venueMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  venueMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  venueMetaText: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: theme.textMuted,
+  },
   sectionContainer: {
     backgroundColor: theme.surface,
     borderRadius: 12,
