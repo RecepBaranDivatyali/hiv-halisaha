@@ -1496,22 +1496,6 @@ export default function MatchRoomScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* AI Team Balancer Button */}
-          <TouchableOpacity
-            style={styles.aiBalanceBtn}
-            activeOpacity={0.85}
-            onPress={() => {
-              Alert.alert(
-                '⚖️ Yapay Zeka Takım Dengelendi!',
-                'Oyuncuların reyting ve mevkilerine göre kadro tam %50 - %50 eşit güçte A Takımı ve B Takımı olarak dağıtıldı.\n\n• A Takımı Güç Oranı: %50.0 (8.4 Avg)\n• B Takımı Güç Oranı: %50.0 (8.4 Avg)',
-                [{ text: 'Kadroya Uygula', style: 'default' }]
-              );
-            }}
-          >
-            <MaterialIcons name="balance" size={18} color={theme.primary} />
-            <Text style={styles.aiBalanceBtnText}>TAKIMLARI OTOMATİK DENGELER (AI)</Text>
-          </TouchableOpacity>
-
           {/* Team Switcher Tabs */}
           <View style={styles.teamTabsContainer}>
             <TouchableOpacity 
@@ -3426,25 +3410,6 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontFamily: Fonts.headlineBold,
     fontSize: 10,
     color: theme.onPrimary,
-    letterSpacing: 0.5,
-  },
-  aiBalanceBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: `${theme.primary}1E`,
-    borderWidth: 1,
-    borderColor: theme.primary,
-    borderRadius: 10,
-    paddingVertical: 10,
-    marginTop: 8,
-    marginBottom: 12,
-  },
-  aiBalanceBtnText: {
-    fontFamily: Fonts.headlineBold,
-    fontSize: 11,
-    color: theme.primary,
     letterSpacing: 0.5,
   },
   gkFreeToggleBox: {
