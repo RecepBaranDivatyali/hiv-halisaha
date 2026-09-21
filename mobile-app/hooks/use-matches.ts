@@ -142,5 +142,17 @@ export function useMatches() {
     }
   };
 
-  return { matches, pastMatches, addMatch, loading, reloadMatches: loadMatches };
+  const deleteMatch = async (matchId: string) => {
+    try {
+      await dbService.deleteMatch(matchId);
+    } catch (e) {
+      console.log('Maç silme hatası (Firestore):', e);
+    }
+    const updated = matches.filter(m => m.id !== matchId);
+    setMatches(updated);
+    await AsyncStorage.setItem(MATCHES_CACHE_KEY, JSON.stringify(updated));
+    return true;
+  };
+
+  return { matches, pastMatches, addMatch, deleteMatch, loading, reloadMatches: loadMatches };
 }

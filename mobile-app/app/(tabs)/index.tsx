@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Fonts } from '@/constants/theme';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SideMenu } from '@/components/SideMenu';
 import { CreateMatchModal } from '@/components/CreateMatchModal';
 import { NotificationCenterModal } from '@/components/NotificationCenterModal';
@@ -15,7 +15,7 @@ import { MatchSeekingModal } from '@/components/MatchSeekingModal';
 import { useMatches } from '@/hooks/use-matches';
 import { useAuth } from '@/hooks/use-auth';
 import { Bouncable } from '@/components/Bouncable';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, ZoomIn, ZoomOut, FadeInDown } from 'react-native-reanimated';
 import { useTheme } from '@/context/ThemeContext';
 import { isMatchPast, parseTargetTimestamp } from '@/services/dateUtils';
 
@@ -23,6 +23,7 @@ const GUIDE_STORAGE_KEY = '@hiv_guide_viewed';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ matchCreated?: string }>();
   const { matches, pastMatches, reloadMatches } = useMatches();
   const { user } = useAuth();
   const { theme } = useTheme();
@@ -31,12 +32,30 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [createMatchVisible, setCreateMatchVisible] = useState(false);
+  const [createdMatchSuccessVisible, setCreatedMatchSuccessVisible] = useState(false);
   const [matchSeekingVisible, setMatchSeekingVisible] = useState(false);
   const [notifModalVisible, setNotifModalVisible] = useState(false);
   const [guideVisible, setGuideVisible] = useState(false);
   const [isGuideDismissed, setIsGuideDismissed] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [ratedMatches, setRatedMatches] = useState<string[]>([]);
+
+  const showMatchCreatedFeedback = useCallback(() => {
+    setCreatedMatchSuccessVisible(true);
+    const timer = setTimeout(() => {
+      setCreatedMatchSuccessVisible(false);
+    }, 1800);
+    return timer;
+  }, []);
+
+  useEffect(() => {
+    if (params.matchCreated) {
+      reloadMatches();
+      const timer = showMatchCreatedFeedback();
+      router.setParams({ matchCreated: undefined });
+      return () => clearTimeout(timer);
+    }
+  }, [params.matchCreated, reloadMatches, showMatchCreatedFeedback, router]);
 
   useEffect(() => {
     AsyncStorage.getItem(GUIDE_STORAGE_KEY).then(val => {
@@ -192,6 +211,7 @@ export default function HomeScreen() {
         onClose={() => setCreateMatchVisible(false)}
         onSuccess={async () => {
           await reloadMatches();
+          showMatchCreatedFeedback();
         }}
       />
       <MatchSeekingModal
@@ -599,6 +619,35 @@ export default function HomeScreen() {
           )}
         </View>
       </ScrollView>
+
+      {createdMatchSuccessVisible && (
+        <Animated.View 
+          entering={FadeIn.duration(200)} 
+          exiting={FadeOut.duration(250)} 
+          style={styles.successOverlay}
+          pointerEvents="box-none"
+        >
+          <TouchableOpacity 
+            activeOpacity={1} 
+            style={styles.successBackdrop} 
+            onPress={() => setCreatedMatchSuccessVisible(false)}
+          >
+            <Animated.View 
+              entering={ZoomIn.duration(280)} 
+              exiting={ZoomOut.duration(200)} 
+              style={styles.successCard}
+            >
+              <View style={styles.successIconCircle}>
+                <MaterialIcons name="check" size={48} color={theme.onPrimary} />
+              </View>
+              <Text style={styles.successTitle}>MAÇ OLUŞTURULDU!</Text>
+              <Text style={styles.successSub}>
+                İlanınız başarıyla kaydedildi.
+              </Text>
+            </Animated.View>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
     </SafeAreaView>
   );
 }
@@ -1092,5 +1141,66 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontFamily: Fonts.headlineBold,
     fontSize: 11,
     color: theme.background,
+  },
+
+  // Maç Oluşturuldu Başarı Bildirimi (Ana Ekran Üstü Katman)
+  successOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successBackdrop: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    paddingHorizontal: 24,
+  },
+  successCard: {
+    backgroundColor: theme.surfaceContainerHigh,
+    borderRadius: 22,
+    paddingVertical: 32,
+    paddingHorizontal: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: `${theme.primary}50`,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 12,
+    width: '100%',
+    maxWidth: 320,
+  },
+  successIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: theme.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+    shadowColor: theme.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  successTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 20,
+    color: theme.text,
+    letterSpacing: 0.5,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  successSub: {
+    fontFamily: Fonts.body,
+    fontSize: 13,
+    color: theme.textMuted,
+    textAlign: 'center',
   },
 });

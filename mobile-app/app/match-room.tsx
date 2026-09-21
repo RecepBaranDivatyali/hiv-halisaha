@@ -36,7 +36,7 @@ export default function MatchRoomScreen() {
   const { user } = useAuth();
   const styles = useStyles(theme);
   const params = useLocalSearchParams<{ matchId?: string }>();
-  const { matches } = useMatches();
+  const { matches, deleteMatch, reloadMatches } = useMatches();
   
   // Realtime match state
   const [remoteMatch, setRemoteMatch] = useState<MatchModel | null>(null);
@@ -1000,6 +1000,31 @@ export default function MatchRoomScreen() {
   // Organizer: Cancel / Delete Match
   const handleCancelMatch = () => {
     if (!isOrganizer) return;
+
+    const executeDelete = async () => {
+      try {
+        await deleteMatch(activeMatchId);
+        await reloadMatches();
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.alert('Maçınız başarıyla iptal edildi.');
+        } else {
+          Alert.alert('İptal Edildi', 'Maçınız başarıyla iptal edildi.');
+        }
+        router.replace('/(tabs)');
+      } catch (err) {
+        console.error('Maç iptal edilirken hata:', err);
+        Alert.alert('Hata', 'Maç iptal edilirken bir sorun oluştu.');
+      }
+    };
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const confirmed = window.confirm('Bu maçı yayından kaldırmak ve iptal etmek istediğinize emin misiniz? Bu işlem geri alınamaz.');
+      if (confirmed) {
+        executeDelete();
+      }
+      return;
+    }
+
     Alert.alert(
       'Maçı İptal Et',
       'Bu maçı yayından kaldırmak ve iptal etmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
@@ -1008,15 +1033,7 @@ export default function MatchRoomScreen() {
         { 
           text: 'Maçı İptal Et', 
           style: 'destructive',
-          onPress: async () => {
-            try {
-              await dbService.deleteMatch(activeMatchId);
-              Alert.alert('İptal Edildi', 'Maçınız başarıyla iptal edildi.');
-              router.replace('/(tabs)/matches');
-            } catch {
-              Alert.alert('Hata', 'Maç iptal edilirken bir sorun oluştu.');
-            }
-          }
+          onPress: executeDelete
         }
       ]
     );

@@ -66,7 +66,7 @@ export default function MatchesScreen() {
         onClose={() => setCreateModalVisible(false)}
         onSuccess={async () => {
           await reloadMatches();
-          router.replace('/(tabs)');
+          router.replace({ pathname: '/(tabs)', params: { matchCreated: '1' } });
         }}
       />
 
