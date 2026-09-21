@@ -17,7 +17,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { Bouncable } from '@/components/Bouncable';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useTheme } from '@/context/ThemeContext';
-import { isMatchPast } from '@/services/dateUtils';
+import { isMatchPast, parseTargetTimestamp } from '@/services/dateUtils';
 
 const GUIDE_STORAGE_KEY = '@hiv_guide_viewed';
 
@@ -98,20 +98,30 @@ export default function HomeScreen() {
     }
   };
 
+  // Helper: Kullanıcı bu maçta yer alıyor mu? (Organizatör, kaptan, kadro, yedek kulübesi)
+  const isUserInMatch = useCallback((m: any): boolean => {
+    if (!user?.uid && !user?.name) return false;
+    if (m.organizer?.toLowerCase().includes('siz')) return true;
+    if (user?.uid && m.organizerId === user.uid) return true;
+    if (user?.name && m.organizer?.toLowerCase().includes(user.name.toLowerCase())) return true;
+    if (user?.uid && (m.captainAId === user.uid || m.captainBId === user.uid)) return true;
+    if (user?.uid && m.slots && Object.values(m.slots).some((s: any) => s?.uid === user.uid)) return true;
+    if (user?.uid && m.benchA && Array.isArray(m.benchA) && m.benchA.some((b: any) => b?.uid === user.uid)) return true;
+    if (user?.uid && m.benchB && Array.isArray(m.benchB) && m.benchB.some((b: any) => b?.uid === user.uid)) return true;
+    if (user?.uid && m.reserves && Array.isArray(m.reserves) && m.reserves.some((r: any) => r?.uid === user.uid)) return true;
+    return false;
+  }, [user?.uid, user?.name]);
+
   // Kullanıcının kendi oluşturduğu maçlar (organizatör)
   const myMatches = matches.filter(m => 
     m.organizer?.toLowerCase().includes('siz') || (user?.uid && m.organizerId === user.uid)
   );
 
-  // Kullanıcının oynadığı / organize ettiği tüm maçlar
+  // Kullanıcının oynadığı / organize ettiği tüm maçlar (aktif + geçmiş)
   const userAllMatches = [
     ...matches,
     ...pastMatches
-  ].filter(m => 
-    m.organizer?.toLowerCase().includes('siz') || 
-    (user?.uid && m.organizerId === user.uid) ||
-    (user?.uid && m.slots && Object.values(m.slots).some(s => s?.uid === user.uid))
-  );
+  ].filter(isUserInMatch);
 
   // 1. Bitmiş ama kullanıcı tarafından HENÜZ değerlendirilmemiş tüm maçlar (Yemeksepeti / Getir modeli)
   const allCandidateMatches = [...userAllMatches, ...pastMatches];
@@ -122,19 +132,43 @@ export default function HomeScreen() {
     return (isMatchPast(m.dateTime) || m.status === 'completed') && !ratedMatches.includes(m.id);
   });
 
-  // 2. Kullanıcının gerçekten yaklaşan (gelecek) aktif maçı
-  const upcomingUserMatch = userAllMatches.find(m => !isMatchPast(m.dateTime) && m.status !== 'completed');
+  // 2. Kullanıcının gerçekten yaklaşan (gelecek) aktif maçları - Kronolojik en yakından uzağa sıralı
+  const userActiveMatchesSeen = new Set<string>();
+  const userActiveUpcomingMatches = matches
+    .filter(m => {
+      if (!m.id || userActiveMatchesSeen.has(m.id)) return false;
+      userActiveMatchesSeen.add(m.id);
+      return (
+        isUserInMatch(m) &&
+        !isMatchPast(m.dateTime) &&
+        m.status !== 'completed' &&
+        m.status !== 'cancelled'
+      );
+    })
+    .sort((a, b) => parseTargetTimestamp(a.dateTime) - parseTargetTimestamp(b.dateTime));
 
   // 3. Genel yaklaşan aktif maç (kullanıcı maçı yoksa vitrin)
-  const upcomingGeneralMatch = matches.find(m => !isMatchPast(m.dateTime) && m.status !== 'completed');
+  const upcomingGeneralMatch = matches
+    .filter(m => !isMatchPast(m.dateTime) && m.status !== 'completed' && m.status !== 'cancelled')
+    .sort((a, b) => parseTargetTimestamp(a.dateTime) - parseTargetTimestamp(b.dateTime))[0];
 
-  // Geri sayım maçı (Yaklaşan kullanıcı maçı veya genel aktif maç)
-  const countdownMatch = upcomingUserMatch || upcomingGeneralMatch;
+  // En yakın aktif maç (Kullanıcının en yakın maçı, yoksa genel en yakın aktif maç)
+  const countdownMatch = userActiveUpcomingMatches[0] || upcomingGeneralMatch;
 
-  // Diğer yaklaşan maçlar (Üstteki geri sayım maçı hariç tutularak çiftleme önlenir)
-  const otherUpcomingMatches = matches.filter(m => 
-    !isMatchPast(m.dateTime) && (!countdownMatch || m.id !== countdownMatch.id)
-  ).slice(0, 5);
+  // Kullanıcının 2., 3. vb. diğer yaklaşan aktif maçları (geri sayım kartının altında tek satır gösterilir)
+  const otherUserUpcomingMatches = userActiveUpcomingMatches.slice(1);
+
+  // Diğer genel yaklaşan maçlar (Alt kısımdaki yatay listede gösterilir, üsttekiler hariç tutulur)
+  const otherUpcomingMatches = matches
+    .filter(m => 
+      !isMatchPast(m.dateTime) && 
+      m.status !== 'completed' && 
+      m.status !== 'cancelled' && 
+      (!countdownMatch || m.id !== countdownMatch.id) &&
+      !otherUserUpcomingMatches.some(um => um.id === m.id)
+    )
+    .sort((a, b) => parseTargetTimestamp(a.dateTime) - parseTargetTimestamp(b.dateTime))
+    .slice(0, 5);
 
   // Kullanıcı istatistikleri — Firestore'dan çekilen gerçek değerler
   const weeklyGoals = user?.stats?.goals ?? 0;
@@ -228,7 +262,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
       >
-        {/* 1. Live Match Countdown for Upcoming Active Match (Aktif maç her zaman en üstte) */}
+        {/* 1. Live Match Countdown for Upcoming Active Match (En yakın aktif maç her zaman en üstte) */}
         {countdownMatch && (!unratedFinishedMatches.some(m => m.id === countdownMatch.id)) && (
           <MatchCountdownCard 
             key={`upcoming-${countdownMatch.id}`}
@@ -236,8 +270,48 @@ export default function HomeScreen() {
             arena={countdownMatch.arena}
             dateTime={countdownMatch.dateTime}
             mode={countdownMatch.mode}
+            onMatchPast={() => reloadMatches()}
           />
         )}
+
+        {/* 2. Diğer Yaklaşan Kullanıcı Maçları (2., 3. vb. aktif maçlar değerlendirme satırı gibi tek satır) */}
+        {otherUserUpcomingMatches.map((m, idx) => (
+          <View key={`upcoming-row-${m.id}`} style={styles.compactUpcomingBanner}>
+            <TouchableOpacity 
+              style={styles.compactUpcomingBannerLeft}
+              activeOpacity={0.8}
+              onPress={() => router.push({ pathname: '/match-room', params: { matchId: m.id } })}
+            >
+              <View style={styles.compactUpcomingIconBadge}>
+                <MaterialIcons name="sports-soccer" size={16} color={theme.secondary} />
+              </View>
+              <View style={styles.compactUpcomingTextGroup}>
+                <View style={styles.compactUpcomingTitleRow}>
+                  <Text style={styles.compactUpcomingTitle} numberOfLines={1}>
+                    {m.arena}
+                  </Text>
+                  <View style={styles.compactUpcomingTag}>
+                    <Text style={styles.compactUpcomingTagText}>{idx + 2}. MAÇ</Text>
+                  </View>
+                </View>
+                <Text style={styles.compactUpcomingSub} numberOfLines={1}>
+                  {m.dateTime} • {m.mode || '7v7'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <View style={styles.compactUpcomingRight}>
+              <TouchableOpacity 
+                style={styles.compactUpcomingBtn}
+                activeOpacity={0.85}
+                onPress={() => router.push({ pathname: '/match-room', params: { matchId: m.id } })}
+              >
+                <Text style={styles.compactUpcomingBtnText}>ODAYA GİT</Text>
+                <MaterialIcons name="chevron-right" size={14} color={theme.background} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
 
         {/* 2. Kompakt Maç Değerlendirme Teşvikleri (Tüm değerlendirilmemiş biten maçlar listelenir) */}
         {unratedFinishedMatches.map((m) => (
@@ -406,7 +480,7 @@ export default function HomeScreen() {
           <>
             <View style={styles.sectionHeaderBox}>
               <Text style={styles.sectionTitle}>
-                {upcomingUserMatch ? 'DİĞER YAKLAŞAN MAÇLAR' : 'KATILABİLECEĞİN MAÇLAR'}
+                {userActiveUpcomingMatches.length > 0 ? 'DİĞER YAKLAŞAN MAÇLAR' : 'KATILABİLECEĞİN MAÇLAR'}
               </Text>
               <TouchableOpacity style={styles.seeAllBtn} onPress={() => router.push('/(tabs)/matches')}>
                 <Text style={styles.seeAllText}>TÜMÜ</Text>
@@ -852,6 +926,90 @@ const useStyles = (theme: any) => StyleSheet.create({
     padding: 4,
     borderRadius: 12,
     backgroundColor: theme.surfaceContainerHighest,
+  },
+
+  // Compact Upcoming Active Match Row (2., 3. vb. yaklaşan aktif maçlar tek satır)
+  compactUpcomingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.surfaceContainer,
+    borderWidth: 1,
+    borderColor: `${theme.secondary}40`,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.secondary,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    gap: 8,
+  },
+  compactUpcomingBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  compactUpcomingIconBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: `${theme.secondary}20`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compactUpcomingTextGroup: {
+    flex: 1,
+  },
+  compactUpcomingTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  compactUpcomingTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 12,
+    color: theme.text,
+    lineHeight: 16,
+    flexShrink: 1,
+  },
+  compactUpcomingTag: {
+    backgroundColor: `${theme.secondary}25`,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  compactUpcomingTagText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 9,
+    color: theme.secondary,
+    letterSpacing: 0.3,
+  },
+  compactUpcomingSub: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: theme.textMuted,
+    lineHeight: 14,
+    marginTop: 1,
+  },
+  compactUpcomingRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  compactUpcomingBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: theme.secondary,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  compactUpcomingBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: theme.background,
+    letterSpacing: 0.3,
   },
 
   // Match Seeking Beacon

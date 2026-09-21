@@ -14,6 +14,7 @@ interface MatchCountdownCardProps {
   mode?: string;
   isCompleted?: boolean;
   onDismiss?: () => void;
+  onMatchPast?: () => void;
 }
 
 export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({ 
@@ -23,7 +24,8 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
   dateTime = '21:00',
   mode = '7v7',
   isCompleted = false,
-  onDismiss
+  onDismiss,
+  onMatchPast
 }) => {
   const router = useRouter();
   const { theme } = useTheme();
@@ -57,6 +59,7 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
         } else {
           // Maç bitti -> Değerlendirme durumuna geç
           setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, isLive: false, isPast: true });
+          onMatchPast?.();
         }
       } else {
         const days = Math.floor(diffSec / 86400);
@@ -70,7 +73,7 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
     updateTimer();
     const timer = setInterval(updateTimer, 1000);
     return () => clearInterval(timer);
-  }, [targetHours, dateTime, isCompleted]);
+  }, [targetHours, dateTime, isCompleted, onMatchPast]);
 
   const format2Digits = (num: number) => num.toString().padStart(2, '0');
   const displayTime = dateTime.includes(',') ? (dateTime.split(',').pop()?.trim() || dateTime) : dateTime;
