@@ -13,7 +13,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
 import { useMatches } from '@/hooks/use-matches';
 import { useAuth } from '@/hooks/use-auth';
-import { dbService, MatchModel } from '@/services/dbService';
+import { dbService, MatchModel, BenchPlayer } from '@/services/dbService';
 import { auth } from '@/services/firebaseConfig';
 
 interface PlayerPayment {
@@ -77,11 +77,33 @@ export default function MatchRoomScreen() {
   const [formationModalVisible, setFormationModalVisible] = useState(false);
 
   // Tactical Formations (2-3-1, 3-2-1, 2-2-2, 3-1-2)
+  // Bench state from active match
+  const benchA: BenchPlayer[] = React.useMemo(() => activeMatch?.benchA || [], [activeMatch?.benchA]);
+  const benchB: BenchPlayer[] = React.useMemo(() => activeMatch?.benchB || [], [activeMatch?.benchB]);
+
+  const userInBenchA = Boolean(currentUid && benchA.some(p => p.uid === currentUid));
+  const userInBenchB = Boolean(currentUid && benchB.some(p => p.uid === currentUid));
+  const userInSlotA = Boolean(userSlot && !userSlot.startsWith('B_'));
+  const userInSlotB = Boolean(userSlot && userSlot.startsWith('B_'));
+
+  // My Team ('A' | 'B' | null) — locked to the team user joined (either slot or bench)
+  const myTeam: 'A' | 'B' | null = (userInSlotB || userInBenchB) ? 'B' : ((userInSlotA || userInBenchA) ? 'A' : null);
+
+  // Role & Permissions:
+  // In single organizer mode (tek organizatör): Organizer can manage BOTH Team A and Team B.
+  // In two captains mode: Captain A manages Team A, Captain B manages Team B.
+  const canManageTeamA = isOrganizer || isCaptainA;
+  const canManageTeamB = isTwoCaptainsMode ? isCaptainB : isOrganizer;
+  const canManageActiveTeam = activeTeam === 'A' ? canManageTeamA : canManageTeamB;
+
+  // Placement state: Selected bench player waiting to be assigned to a pitch slot
+  const [selectedBenchPlayer, setSelectedBenchPlayer] = useState<{ team: 'A' | 'B'; player: BenchPlayer } | null>(null);
+
+  // Tactical Formations (2-3-1, 3-2-1, 2-2-2, 3-1-2)
   const currentTeamFormation = activeTeam === 'A'
     ? (activeMatch?.teamAFormation || '2-3-1')
     : (activeMatch?.teamBFormation || '2-3-1');
-  const canManageCurrentFormation = (activeTeam === 'A' && (isOrganizer || isCaptainA)) ||
-                                   (activeTeam === 'B' && (isCaptainB || isOrganizer));
+  const canManageCurrentFormation = canManageActiveTeam;
 
   const handleSelectFormation = async (newFormation: string) => {
     setFormationModalVisible(false);
@@ -99,40 +121,11 @@ export default function MatchRoomScreen() {
     }
   };
 
-  // My Team ('A' | 'B' | null)
-  const myTeam: 'A' | 'B' | null = userSlot?.startsWith('B_') ? 'B' : (userSlot ? 'A' : null);
-
   // Tactical Roster Privacy
   const isTeamAHidden = Boolean(activeMatch?.teamAHidden);
   const isTeamBHidden = Boolean(activeMatch?.teamBHidden);
   const isTeamAHiddenForMe = isTeamAHidden && !(isOrganizer || isCaptainA || myTeam === 'A');
   const isTeamBHiddenForMe = isTeamBHidden && !(isCaptainB || myTeam === 'B' || (isOrganizer && !hasCaptainB));
-  const canManageActiveTeamPrivacy = (activeTeam === 'A' && (isOrganizer || isCaptainA)) ||
-                                     (activeTeam === 'B' && (isCaptainB || isOrganizer));
-  const isActiveTeamHidden = activeTeam === 'A' ? isTeamAHidden : isTeamBHidden;
-
-  const handleToggleCurrentTeamPrivacy = async () => {
-    if (!canManageActiveTeamPrivacy || !activeMatchId) return;
-    const nextVal = !isActiveTeamHidden;
-    try {
-      await dbService.toggleTeamRosterPrivacy(activeMatchId, activeTeam, nextVal);
-      await dbService.sendMessage(`match_${activeMatchId}`, {
-        senderId: currentUid || 'anon',
-        senderName: activeTeam === 'A' ? (activeMatch?.captainAName || 'A Kaptanı') : (activeMatch?.captainBName || 'B Kaptanı'),
-        text: nextVal 
-          ? `🔒 [Taktik Gizliliği]: ${activeTeam} Takımı kadro ve taktiğini rakip takımdan gizledi!`
-          : `👁️ [Taktik Gizliliği]: ${activeTeam} Takımı kadrosunu ve taktiğini herkese açtı.`
-      });
-      Alert.alert(
-        nextVal ? '🔒 Kadro Gizlendi' : '👁️ Kadro Açıldı',
-        nextVal 
-          ? `${activeTeam} Takımı kadrosu ve dizilimi rakip takımdan gizlendi. Sadece kendi takımınız görebilir.`
-          : `${activeTeam} Takımı kadrosu artık tüm oyuncular tarafından görülebilir.`
-      );
-    } catch {
-      Alert.alert('Hata', 'Kadro gizlilik durumu güncellenemedi.');
-    }
-  };
   
   // Score modal state for captain
   const [scoreModalVisible, setScoreModalVisible] = useState(false);
@@ -209,14 +202,32 @@ export default function MatchRoomScreen() {
         }
       } else {
         setUserSlot(null);
+        if (!hasInitialTeamSet.current && effUid) {
+          if (benchB.some(p => p.uid === effUid)) {
+            setActiveTeam('B');
+            hasInitialTeamSet.current = true;
+          } else if (benchA.some(p => p.uid === effUid)) {
+            setActiveTeam('A');
+            hasInitialTeamSet.current = true;
+          }
+        }
       }
     } else if (isOrganizer && !userSlot) {
       setUserSlot('A_OS_ORTA');
     } else {
       setUserSlot(null);
+      if (!hasInitialTeamSet.current && effUid) {
+        if (benchB.some(p => p.uid === effUid)) {
+          setActiveTeam('B');
+          hasInitialTeamSet.current = true;
+        } else if (benchA.some(p => p.uid === effUid)) {
+          setActiveTeam('A');
+          hasInitialTeamSet.current = true;
+        }
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMatch?.slots, user?.uid, isOrganizer]);
+  }, [activeMatch?.slots, benchA, benchB, user?.uid, isOrganizer]);
 
   const [isGkFree, setIsGkFree] = useState(activeMatch?.isGkFree ?? false);
 
@@ -228,11 +239,73 @@ export default function MatchRoomScreen() {
 
   // Dynamic players and fee calculation based on match mode
   const modePlayersPerTeam = parseInt(matchMode.split('v')[0], 10) || 7;
+  const targetPerTeam = modePlayersPerTeam;
   const totalPlayersCount = modePlayersPerTeam * 2;
   const activePayersCount = isGkFree ? Math.max(1, totalPlayersCount - 2) : totalPlayersCount;
   const perPlayerFee = Math.round(totalMatchFee / activePayersCount);
 
-  // Dynamic Roster Payments synchronized with Firestore slots
+  // All squad members for the active team (pitch slots + bench), sorted chronologically by joinedAt
+  const activeTeamAllPlayers = React.useMemo(() => {
+    const list: {
+      uid: string;
+      name: string;
+      avatar?: string;
+      position?: string;
+      joinedAt: number;
+      source: 'pitch' | 'bench';
+      slotKey?: string;
+    }[] = [];
+
+    // 1. Slots for active team
+    const slots = activeMatch?.slots || {};
+    Object.entries(slots).forEach(([slotKey, slotData]) => {
+      if (!slotData || !slotData.uid) return;
+      const belongsToThisTeam = activeTeam === 'A' 
+        ? (!slotKey.startsWith('B_')) 
+        : slotKey.startsWith('B_');
+      if (belongsToThisTeam) {
+        list.push({
+          uid: slotData.uid,
+          name: slotData.name,
+          avatar: slotData.avatar,
+          position: slotData.position || slotKey,
+          joinedAt: slotData.joinedAt || 1,
+          source: 'pitch',
+          slotKey
+        });
+      }
+    });
+
+    // 2. Bench for active team
+    const bench = activeTeam === 'A' ? benchA : benchB;
+    bench.forEach((bp, index) => {
+      if (bp.uid && !list.some(item => item.uid === bp.uid)) {
+        list.push({
+          uid: bp.uid,
+          name: bp.name,
+          avatar: bp.avatar,
+          position: bp.position,
+          joinedAt: bp.joinedAt || (1000 + index),
+          source: 'bench'
+        });
+      }
+    });
+
+    // Sort ascending by joinedAt
+    list.sort((a, b) => a.joinedAt - b.joinedAt);
+    return list;
+  }, [activeMatch?.slots, activeTeam, benchA, benchB]);
+
+  // Helper to determine surplus status and order
+  const getPlayerSquadStatus = React.useCallback((playerUid: string) => {
+    const idx = activeTeamAllPlayers.findIndex(p => p.uid === playerUid);
+    if (idx === -1) return { orderNumber: 0, isSurplus: false };
+    const orderNumber = idx + 1;
+    const isSurplus = orderNumber > targetPerTeam;
+    return { orderNumber, isSurplus };
+  }, [activeTeamAllPlayers, targetPerTeam]);
+
+  // Dynamic Roster Payments synchronized with Firestore slots and benches
   const rosterPayments: PlayerPayment[] = React.useMemo(() => {
     const slots = activeMatch?.slots || {};
     const list: PlayerPayment[] = [];
@@ -260,8 +333,32 @@ export default function MatchRoomScreen() {
       });
     });
 
+    // Also include bench players if not already in list
+    const appendBench = (bench: BenchPlayer[], teamPrefix: string) => {
+      bench.forEach(bp => {
+        if (!bp.uid || list.some(p => p.uid === bp.uid)) return;
+        const isPaid = Boolean(bp.paid) || bp.paymentStatus === 'paid';
+        const paymentStatus: 'paid' | 'pending_approval' | 'unpaid' | 'cash_on_pitch' | 'exempt' =
+          bp.paymentStatus || (isPaid ? 'paid' : 'unpaid');
+        list.push({
+          slotKey: `BENCH_${teamPrefix}_${bp.uid}`,
+          uid: bp.uid,
+          name: bp.name,
+          role: bp.position || `${teamPrefix} Takımı Yedeği`,
+          avatar: bp.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100',
+          paid: isPaid,
+          paymentStatus,
+          paymentMethod: bp.paymentMethod || 'cash',
+          amount: perPlayerFee,
+          isGk: false
+        });
+      });
+    };
+    appendBench(benchA, 'A');
+    appendBench(benchB, 'B');
+
     return list;
-  }, [activeMatch?.slots, isGkFree, perPlayerFee]);
+  }, [activeMatch?.slots, benchA, benchB, isGkFree, perPlayerFee]);
 
   const collectedPaidAmount = rosterPayments
     .filter((p) => p.paymentStatus === 'paid')
@@ -561,98 +658,261 @@ export default function MatchRoomScreen() {
   const handleSelectSlot = async (slotKey: string, slotLabel: string) => {
     const effUid = user?.uid || auth.currentUser?.uid;
     if (!effUid) {
-      Alert.alert('Giriş Yapın', 'Kadroya katılmak veya mevkiden ayrılmak için lütfen önce giriş yapın.');
+      Alert.alert('Giriş Yapın', 'Kadroya katılmak veya işlem yapmak için lütfen önce giriş yapın.');
       return;
     }
 
     const targetMatchId = params.matchId || fallbackMatch?.id;
-    const isCurrentlyMySlot = userSlot === slotKey || 
-      (Boolean(effUid) && activeMatch?.slots?.[slotKey]?.uid === effUid);
+    if (!targetMatchId || targetMatchId === 'demo-match') {
+      Alert.alert('Demo Maç', 'Demo maçta kadro değişiklikleri sunucuya kaydedilmez.');
+      return;
+    }
 
-    if (isCurrentlyMySlot) {
-      // User is attempting to leave the slot -> apply tiered penalty!
-      const hoursLeft = calculateHoursUntilMatch(matchDateTime);
-      if (hoursLeft <= 2) {
+    // 1. If a bench player is currently selected for placement
+    if (selectedBenchPlayer) {
+      if (selectedBenchPlayer.team !== activeTeam) {
+        Alert.alert('Hata', 'Seçilen yedek oyuncu farklı bir takıma ait.');
+        setSelectedBenchPlayer(null);
+        return;
+      }
+
+      // Check permission: can user place this bench player?
+      const isMyOwnBenchPlayer = selectedBenchPlayer.player.uid === effUid;
+      if (!canManageActiveTeam && !isMyOwnBenchPlayer) {
+        Alert.alert('Yetki Yok', 'Bu yedek oyuncuyu sadece takım kaptanı veya organizatör sahaya yerleştirebilir.');
+        return;
+      }
+
+      const existingOccupant = activeMatch?.slots?.[slotKey];
+      if (existingOccupant && existingOccupant.uid) {
+        // Swap occupant to bench, and put selected bench player here
         Alert.alert(
-          '🚨 ACİL MAÇ BOZMA UYARISI',
-          `Maça 2 saatten az süre kaldı (${hoursLeft.toFixed(1)} saat)! Son dakika ayrılmak kadroyu eksik bırakır ve maçı tehlikeye atar.\n\nKadrodan ayrılırsanız Güvenilirlik Puanınız %15 düşürülecektir. Devam edilsin mi?`,
+          'Oyuncu Değişikliği',
+          `Sahadaki ${existingOccupant.name} yedek kulübesine alınacak ve yerine ${selectedBenchPlayer.player.name} sahaya geçecek. Onaylıyor musunuz?`,
           [
             { text: 'Vazgeç', style: 'cancel' },
-            { 
-              text: 'Evet, Ayrıl (%15 Ceza)', 
-              style: 'destructive',
-              onPress: () => executeLeaveSlot(slotKey, slotLabel, 15)
+            {
+              text: 'Değişikliği Yap',
+              onPress: async () => {
+                try {
+                  await dbService.assignBenchPlayerToSlot(targetMatchId, activeTeam, selectedBenchPlayer.player.uid, slotKey);
+                  Alert.alert('✓ Değişiklik Yapıldı', `${selectedBenchPlayer.player.name} sahaya alındı, ${existingOccupant.name} yedek kulübesine çekildi.`);
+                  setSelectedBenchPlayer(null);
+                } catch {
+                  Alert.alert('Hata', 'Oyuncu değişikliği yapılırken bir sorun oluştu.');
+                }
+              }
             }
           ]
         );
-      } else if (hoursLeft <= 6) {
-        Alert.alert(
-          '⚠️ Ciddi İptal Uyarısı',
-          `Maça 6 saatten az süre kaldı (${hoursLeft.toFixed(1)} saat)! Kadroyu eksik bırakmak maçı riske atar.\n\nAyrılırsanız Güvenilirlik Puanınız %8 düşecektir. Devam etmek istiyor musunuz?`,
-          [
-            { text: 'Vazgeç', style: 'cancel' },
-            { 
-              text: 'Ayrıl (%8 Ceza)', 
-              style: 'destructive',
-              onPress: () => executeLeaveSlot(slotKey, slotLabel, 8)
-            }
-          ]
-        );
-      } else if (hoursLeft <= 24) {
-        Alert.alert(
-          '⚠️ Geç İptal Uyarısı',
-          `Maça 24 saatten az süre kaldı (${Math.round(hoursLeft)} saat). Ayrılırsanız Güvenilirlik Puanınız %3 düşecektir. Onaylıyor musunuz?`,
-          [
-            { text: 'Vazgeç', style: 'cancel' },
-            { 
-              text: 'Ayrıl (%3 Ceza)', 
-              style: 'destructive',
-              onPress: () => executeLeaveSlot(slotKey, slotLabel, 3)
-            }
-          ]
-        );
-      } else {
-        Alert.alert(
-          'Kadrodan Ayrıl',
-          `${slotLabel} mevkisinden ayrılmak istediğinize emin misiniz? (Maça 24 saatten fazla olduğu için ceza uygulanmaz)`,
-          [
-            { text: 'İptal', style: 'cancel' },
-            { text: 'Ayrıl', style: 'destructive', onPress: () => executeLeaveSlot(slotKey, slotLabel, 0) }
-          ]
-        );
+        return;
+      }
+
+      // Slot is empty -> Assign bench player directly
+      try {
+        await dbService.assignBenchPlayerToSlot(targetMatchId, activeTeam, selectedBenchPlayer.player.uid, slotKey);
+        Alert.alert('✓ Sahaya Yerleştirildi', `${selectedBenchPlayer.player.name} ${slotLabel} mevkisine yerleştirildi.`);
+        setSelectedBenchPlayer(null);
+      } catch {
+        Alert.alert('Hata', 'Yedek oyuncu sahaya yerleştirilirken bir sorun oluştu.');
       }
       return;
     }
 
-    // Check if slot is occupied by someone else
+    // 2. Normal Slot Interaction (No bench player selected)
     const existingOccupant = activeMatch?.slots?.[slotKey];
-    if (existingOccupant && existingOccupant.uid && existingOccupant.uid !== effUid) {
+
+    if (existingOccupant && existingOccupant.uid) {
+      const isMySlot = existingOccupant.uid === effUid || userSlot === slotKey;
+
+      if (isMySlot) {
+        // My own slot -> options to move to bench or leave match
+        Alert.alert(
+          'Mevki İşlemleri',
+          `${slotLabel} mevkisindesiniz. Ne yapmak istersiniz?`,
+          [
+            { text: 'Vazgeç', style: 'cancel' },
+            {
+              text: '🔄 Yedek Kulübesine Geç',
+              onPress: async () => {
+                try {
+                  await dbService.moveSlotToBench(targetMatchId, activeTeam, slotKey);
+                  Alert.alert('Yedek Kulübesine Geçtiniz', 'Sahadan çıkıp yedek kulübesine geçtiniz.');
+                } catch {
+                  Alert.alert('Hata', 'Yedek kulübesine geçilirken bir sorun oluştu.');
+                }
+              }
+            },
+            {
+              text: '🚪 Kadrodan Ayrıl',
+              style: 'destructive',
+              onPress: () => {
+                const hoursLeft = calculateHoursUntilMatch(matchDateTime);
+                let penalty = 0;
+                if (hoursLeft <= 2) penalty = 15;
+                else if (hoursLeft <= 6) penalty = 8;
+                else if (hoursLeft <= 24) penalty = 3;
+                executeLeaveSlot(slotKey, slotLabel, penalty);
+              }
+            }
+          ]
+        );
+        return;
+      }
+
+      // Slot is occupied by someone else
+      if (canManageActiveTeam) {
+        const options: any[] = [
+          { text: 'Vazgeç', style: 'cancel' },
+          {
+            text: '🔄 Yedek Kulübesine Çek',
+            onPress: async () => {
+              try {
+                await dbService.moveSlotToBench(targetMatchId, activeTeam, slotKey);
+                Alert.alert('Yedek Kulübesine Alındı', `${existingOccupant.name} yedek kulübesine çekildi.`);
+              } catch {
+                Alert.alert('Hata', 'Oyuncu kulübeye çekilirken bir sorun oluştu.');
+              }
+            }
+          },
+          {
+            text: '💵 Ödeme Durumunu Değiştir',
+            onPress: () => {
+              handleCaptainTogglePayment(slotKey, existingOccupant.name, existingOccupant.paymentStatus || 'unpaid', existingOccupant.uid);
+            }
+          }
+        ];
+
+        if (isOrganizer && activeTeam === 'B' && existingOccupant.uid !== effUid) {
+          const isSlotCapB = Boolean(activeMatch?.captainBId && activeMatch.captainBId === existingOccupant.uid);
+          options.splice(1, 0, {
+            text: isSlotCapB ? '⭐ B Kaptanlığını Kaldır' : '⭐ B Takımı Kaptanı Yap',
+            onPress: () => handleAssignCaptainB(existingOccupant.uid, existingOccupant.name)
+          });
+        }
+
+        Alert.alert(`Oyuncu Yönetimi: ${existingOccupant.name}`, `${activeTeam} Takımı yöneticisi olarak işlem seçin:`, options);
+        return;
+      }
+
+      // Regular user trying to click someone else's slot
       Alert.alert('Mevki Dolu', `Bu mevki ${existingOccupant.name} tarafından doldurulmuştur.`);
       return;
     }
 
-    const oldSlot = userSlot;
-    setUserSlot(slotKey);
-    if (targetMatchId && targetMatchId !== 'demo-match') {
+    // 3. Slot is EMPTY:
+    // Check team lock: can user take this slot?
+    if (myTeam && myTeam !== activeTeam) {
+      Alert.alert('Farklı Takımdasınız', `Siz ${myTeam} Takımındasınız. ${activeTeam} Takımının mevkisine geçemez veya takım değiştiremezsiniz.`);
+      return;
+    }
+
+    // If user is already in this team's bench:
+    const isInThisTeamBench = (activeTeam === 'A' ? benchA : benchB).some(p => p.uid === effUid);
+    if (isInThisTeamBench) {
       try {
-        if (oldSlot && oldSlot !== slotKey) {
-          await dbService.leaveMatchSlot(targetMatchId, oldSlot, effUid);
-        }
+        await dbService.assignBenchPlayerToSlot(targetMatchId, activeTeam, effUid, slotKey);
+        Alert.alert('✓ Kadroya Girildi', `${slotLabel} mevkisine yerleştiniz.`);
+      } catch {
+        Alert.alert('Hata', 'Mevkiye yerleşirken bir sorun oluştu.');
+      }
+      return;
+    }
+
+    // If user is already on another pitch slot in this team:
+    if (userSlot && userSlot !== slotKey) {
+      try {
+        await dbService.leaveMatchSlot(targetMatchId, userSlot, effUid);
         await dbService.joinMatchSlot(targetMatchId, slotKey, {
           uid: effUid,
           name: user?.name || auth.currentUser?.displayName || 'Oyuncu',
           avatar: user?.avatar || auth.currentUser?.photoURL || '',
-          position: slotLabel
+          position: slotLabel,
+          joinedAt: Date.now()
         });
-        Alert.alert('Kadroya Girildi', `${slotLabel} mevkiine geçtiniz.`);
+        Alert.alert('Mevki Değiştirildi', `${slotLabel} mevkiine geçtiniz.`);
       } catch {
-        console.error('Slot katılma hatası');
-        setUserSlot(oldSlot); // Rollback
-        Alert.alert('Hata', 'Mevkiye katılırken bir sorun oluştu veya mevki dolmuş olabilir.');
+        Alert.alert('Hata', 'Mevki değiştirilirken bir sorun oluştu.');
       }
-    } else {
-      Alert.alert('Kadroya Girildi', `${slotLabel} mevkiine geçtiniz.`);
+      return;
     }
+
+    // If user is not yet in the team at all:
+    // Joining bench then placing into slot:
+    try {
+      await dbService.joinTeamBench(targetMatchId, activeTeam, {
+        uid: effUid,
+        name: user?.name || auth.currentUser?.displayName || 'Oyuncu',
+        avatar: user?.avatar || auth.currentUser?.photoURL || '',
+        joinedAt: Date.now()
+      });
+      await dbService.assignBenchPlayerToSlot(targetMatchId, activeTeam, effUid, slotKey);
+      Alert.alert('✓ Takıma Katıldınız', `${activeTeam} Takımı ${slotLabel} mevkisine yerleştiniz.`);
+    } catch {
+      Alert.alert('Hata', 'Takıma katılırken bir sorun oluştu.');
+    }
+  };
+
+  // Join active team's bench
+  const handleJoinActiveTeamBench = async () => {
+    const effUid = user?.uid || auth.currentUser?.uid;
+    if (!effUid) {
+      Alert.alert('Giriş Yapın', 'Yedek kulübesine katılmak için lütfen önce giriş yapın.');
+      return;
+    }
+    if (myTeam && myTeam !== activeTeam) {
+      Alert.alert('Farklı Takımdasınız', `Siz ${myTeam} Takımındasınız. ${activeTeam} Takımına geçemezsiniz.`);
+      return;
+    }
+    const targetMatchId = params.matchId || fallbackMatch?.id;
+    if (!targetMatchId || targetMatchId === 'demo-match') return;
+
+    try {
+      await dbService.joinTeamBench(targetMatchId, activeTeam, {
+        uid: effUid,
+        name: user?.name || auth.currentUser?.displayName || 'Oyuncu',
+        avatar: user?.avatar || auth.currentUser?.photoURL || '',
+        joinedAt: Date.now()
+      });
+      Alert.alert('✓ Yedek Kulübesindesiniz', `${activeTeam} Takımı yedek kulübesine katıldınız. Kaptan veya siz sahadaki boş bir mevkiye geçebilirsiniz.`);
+    } catch {
+      Alert.alert('Hata', 'Yedek kulübesine katılırken bir sorun oluştu.');
+    }
+  };
+
+  // Leave bench
+  const handleLeaveBench = async (playerUid: string, playerName: string) => {
+    const effUid = user?.uid || auth.currentUser?.uid;
+    const canRemove = canManageActiveTeam || playerUid === effUid;
+    if (!canRemove) return;
+
+    const targetMatchId = params.matchId || fallbackMatch?.id;
+    if (!targetMatchId || targetMatchId === 'demo-match') return;
+
+    Alert.alert(
+      playerUid === effUid ? 'Yedek Kulübesinden Ayrıl' : 'Oyuncuyu Çıkar',
+      playerUid === effUid 
+        ? `${activeTeam} Takımı yedek kulübesinden ayrılmak istiyor musunuz?`
+        : `${playerName} oyuncusunu ${activeTeam} Takımı yedek kulübesinden çıkarmak istiyor musunuz?`,
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Ayrıl / Çıkar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await dbService.leaveMatchSquad(targetMatchId, playerUid);
+              if (selectedBenchPlayer?.player.uid === playerUid) {
+                setSelectedBenchPlayer(null);
+              }
+              Alert.alert('Ayrıldı', `${playerName} yedek kulübesinden ayrıldı.`);
+            } catch {
+              Alert.alert('Hata', 'İşlem yapılırken bir sorun oluştu.');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleConfirmTerms = async () => {
@@ -742,24 +1002,6 @@ export default function MatchRoomScreen() {
     );
   };
 
-  // Reserve Join Handler
-  const handleJoinReserve = async () => {
-    if (!user?.uid) {
-      Alert.alert('Giriş Yapın', 'Yedek sırasına girmek için lütfen giriş yapın.');
-      return;
-    }
-    try {
-      await dbService.joinMatchReserve(activeMatchId, {
-        uid: user.uid,
-        name: user.name || 'Oyuncu',
-        avatar: user.avatar
-      });
-      Alert.alert('✓ Yedek Sırasındasınız', 'Kadroda boş yer açıldığında veya bir oyuncu ayrıldığında size bildirim gönderilecektir.');
-    } catch {
-      Alert.alert('Hata', 'Yedek sırasına eklenirken bir sorun oluştu.');
-    }
-  };
-
   // Player counts for Team A & Team B
   const matchSlots = activeMatch?.slots || {};
   const teamAPlayers = Object.keys(matchSlots).filter(k => 
@@ -788,6 +1030,9 @@ export default function MatchRoomScreen() {
     const isOccupied = !!occupant;
     const isMySlot = isSelectedByMe || Boolean(occupant && occupant.uid === currentUid);
     const teamColor = activeTeam === 'A' ? theme.primary : theme.secondary;
+
+    const occUid = isMySlot ? currentUid : occupant?.uid;
+    const { orderNumber, isSurplus } = occUid ? getPlayerSquadStatus(occUid) : { orderNumber: 0, isSurplus: false };
 
     const avatarUrl = isMySlot
       ? (user?.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG')
@@ -820,20 +1065,27 @@ export default function MatchRoomScreen() {
       badgeIcon = 'payments';
     }
 
+    const isSlotPlacementTarget = selectedBenchPlayer && selectedBenchPlayer.team === activeTeam;
+
     return (
       <View style={styles.slotContainer}>
         {isOccupied || isMySlot ? (
           <TouchableOpacity 
-            style={[styles.occupiedSlot, isMySlot && { borderColor: teamColor, borderWidth: 2 }]} 
+            style={[
+              styles.occupiedSlot, 
+              { borderColor: isSurplus ? '#f59e0b' : (isMySlot ? teamColor : `${teamColor}99`), borderWidth: isSurplus ? 2.5 : (isMySlot ? 2 : 1.5) },
+              isSurplus && { backgroundColor: 'rgba(245, 158, 11, 0.18)' }
+            ]} 
             onPress={() => handleSelectSlot(slotKey, roleName)}
           >
             <Image source={{ uri: avatarUrl }} style={styles.slotAvatar} />
-            <View style={[styles.slotBadge, { backgroundColor: teamColor }]}>
-              <Text style={[styles.slotBadgeText, { color: theme.background }]}>{numberStr}</Text>
+            <View style={[styles.slotBadge, { backgroundColor: isSurplus ? '#f59e0b' : teamColor }]}>
+              <Text style={[styles.slotBadgeText, { color: isSurplus ? '#000000' : theme.background }]}>
+                {isSurplus ? `⚡${orderNumber}` : numberStr}
+              </Text>
             </View>
             {/* Captain / Organizer Crown Badge */}
             {(() => {
-              const occUid = isMySlot ? currentUid : occupant?.uid;
               const isOrg = occUid && (
                 occUid === activeMatch?.organizerId || 
                 occUid === activeMatch?.captainAId || 
@@ -859,20 +1111,42 @@ export default function MatchRoomScreen() {
           </TouchableOpacity>
         ) : (
           <TouchableOpacity 
-            style={[styles.emptySlot, { borderColor: `${teamColor}66` }]} 
+            style={[
+              styles.emptySlot, 
+              { borderColor: isSlotPlacementTarget ? teamColor : `${teamColor}66` },
+              isSlotPlacementTarget && {
+                borderWidth: 2.5,
+                backgroundColor: `${teamColor}28`,
+                shadowColor: teamColor,
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 0.8,
+                shadowRadius: 8,
+                elevation: 6
+              }
+            ]} 
             onPress={() => handleSelectSlot(slotKey, roleName)}
           >
-            <MaterialIcons name="add" size={24} color={teamColor} />
+            <MaterialIcons 
+              name={isSlotPlacementTarget ? "touch-app" : "add"} 
+              size={isSlotPlacementTarget ? 26 : 24} 
+              color={teamColor} 
+            />
           </TouchableOpacity>
         )}
-        <Text style={[styles.slotLabel, isMySlot && { color: teamColor, fontWeight: 'bold' }]} numberOfLines={1}>
-          {isOccupied ? occupant?.name : roleName}
+        <Text 
+          style={[
+            styles.slotLabel, 
+            isMySlot && { color: teamColor, fontWeight: 'bold' },
+            isSurplus && { color: '#f59e0b', fontWeight: 'bold' }
+          ]} 
+          numberOfLines={1}
+        >
+          {isOccupied ? (isSurplus ? `⚡ ${occupant?.name}` : occupant?.name) : roleName}
         </Text>
         {(isOccupied || isMySlot) && (
           <TouchableOpacity 
             style={[styles.slotPaymentPill, { backgroundColor: `${badgeColor}22`, borderColor: badgeColor }]}
             onPress={() => {
-              const occUid = isMySlot ? user?.uid : occupant?.uid;
               const occName = isMySlot ? user?.name : occupant?.name;
               if (isOrganizer || (isCaptainB && slotKey.startsWith('B_'))) {
                 handleCaptainTogglePayment(slotKey, occName || 'Oyuncu', occupant?.paymentStatus || (isPaid ? 'paid' : 'unpaid'), occUid);
@@ -1165,7 +1439,7 @@ export default function MatchRoomScreen() {
                 </Text>
               </View>
               <View style={[styles.teamCountBadge, activeTeam === 'A' && { backgroundColor: `${theme.primary}33` }]}>
-                <Text style={[styles.teamCountText, activeTeam === 'A' && { color: theme.primary }]}>{teamACount}/{modePlayersPerTeam}</Text>
+                <Text style={[styles.teamCountText, activeTeam === 'A' && { color: theme.primary }]}>{teamACount + benchA.length}/{modePlayersPerTeam}</Text>
               </View>
             </TouchableOpacity>
 
@@ -1184,7 +1458,7 @@ export default function MatchRoomScreen() {
                 </Text>
               </View>
               <View style={[styles.teamCountBadge, activeTeam === 'B' && { backgroundColor: `${theme.secondary}33` }]}>
-                <Text style={[styles.teamCountText, activeTeam === 'B' && { color: theme.secondary }]}>{teamBCount}/{modePlayersPerTeam}</Text>
+                <Text style={[styles.teamCountText, activeTeam === 'B' && { color: theme.secondary }]}>{teamBCount + benchB.length}/{modePlayersPerTeam}</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -1216,31 +1490,6 @@ export default function MatchRoomScreen() {
               <Text style={styles.formationBarSubHint}>Kaptan tarafından belirlenir</Text>
             )}
           </View>
-
-          {/* Captain Roster Privacy Control */}
-          {canManageActiveTeamPrivacy && (
-            <TouchableOpacity 
-              style={[styles.rosterPrivacyToggleBtn, isActiveTeamHidden && styles.rosterPrivacyToggleBtnActive]}
-              onPress={handleToggleCurrentTeamPrivacy}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons 
-                name={isActiveTeamHidden ? "lock" : "lock-open"} 
-                size={16} 
-                color={isActiveTeamHidden ? (activeTeam === 'A' ? theme.primary : theme.secondary) : theme.textMuted} 
-              />
-              <Text style={[styles.rosterPrivacyToggleText, isActiveTeamHidden && { color: activeTeam === 'A' ? theme.primary : theme.secondary }]}>
-                {isActiveTeamHidden 
-                  ? `${activeTeam} Takımı Kadrosu Rakibe Gizli (Korumalı) 🔒` 
-                  : `${activeTeam} Takımı Kadrosunu Rakibe Gizle 👁️`}
-              </Text>
-              <View style={[styles.miniPrivacyPill, { backgroundColor: isActiveTeamHidden ? (activeTeam === 'A' ? `${theme.primary}33` : `${theme.secondary}33`) : theme.surfaceContainerHighest }]}>
-                <Text style={[styles.miniPrivacyPillText, { color: isActiveTeamHidden ? (activeTeam === 'A' ? theme.primary : theme.secondary) : theme.textMuted }]}>
-                  {isActiveTeamHidden ? 'GİZLİ' : 'AÇIK'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          )}
 
           {/* B Takımı Kaptan Bilgi & Atama Kartı */}
           {activeTeam === 'B' && (
@@ -1297,20 +1546,28 @@ export default function MatchRoomScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* Kadro Doluysa ve kullanıcı kadroda değilse: Yedek Sırası Kartı */}
-          {rosterPayments.length >= totalPlayersCount && !userSlot && (
-            <View style={styles.reserveJoinCard}>
+          {/* Placement Guide Banner when moving bench player */}
+          {selectedBenchPlayer && (
+            <View style={styles.placementModeBanner}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-                <MaterialIcons name="hourglass-empty" size={20} color={theme.secondary} />
+                <Image 
+                  source={{ uri: selectedBenchPlayer.player.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100' }} 
+                  style={styles.placementAvatar} 
+                />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.reserveJoinTitle}>KADRO DOLDU • YEDEK SIRASI</Text>
-                  <Text style={styles.reserveJoinSub}>
-                    Bir oyuncu maçtan ayrılırsa ilk size bildirim gönderilir.
+                  <Text style={styles.placementTitle} numberOfLines={1}>
+                    👉 {selectedBenchPlayer.player.name} Seçildi
+                  </Text>
+                  <Text style={styles.placementSub}>
+                    Sahada boş bir mevkiye (+) dokunarak yerleştirin veya oyuncu değiştirin
                   </Text>
                 </View>
               </View>
-              <TouchableOpacity style={styles.reserveJoinBtn} onPress={handleJoinReserve}>
-                <Text style={styles.reserveJoinBtnText}>YEDEĞE GİR</Text>
+              <TouchableOpacity 
+                style={styles.placementCancelBtn} 
+                onPress={() => setSelectedBenchPlayer(null)}
+              >
+                <Text style={styles.placementCancelBtnText}>İptal</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -1346,18 +1603,6 @@ export default function MatchRoomScreen() {
                 <View style={styles.pitchCornerBottomLeft} />
                 <View style={styles.pitchCornerBottomRight} />
               </View>
-
-              {/* Kale Dönmeli / Takım Değiştirme butonu */}
-              <TouchableOpacity 
-                style={styles.kaleBtn}
-                onPress={() => setActiveTeam(prev => prev === 'A' ? 'B' : 'A')}
-                activeOpacity={0.8}
-              >
-                <MaterialIcons name="sync-alt" size={12} color={activeTeam === 'A' ? theme.primary : theme.secondary} />
-                <Text style={[styles.kaleBtnText, { color: activeTeam === 'A' ? theme.primary : theme.secondary }]}>
-                  {activeTeam === 'A' ? 'A TAKIMI (B\'YE GEÇ ➔)' : 'B TAKIMI (A\'YA GEÇ ➔)'}
-                </Text>
-              </TouchableOpacity>
 
               {/* Secret Tactical Shroud OR Formation Grid */}
               {((activeTeam === 'A' && isTeamAHiddenForMe) || (activeTeam === 'B' && isTeamBHiddenForMe)) ? (
@@ -1484,106 +1729,162 @@ export default function MatchRoomScreen() {
             </View>
           </View>
 
-          {/* 🪑 YEDEK KULÜBESİ (RESERVE BENCH) */}
-          <View style={styles.reserveSection}>
-            <View style={styles.reserveHeader}>
-              <View style={styles.reserveHeaderLeft}>
-                <MaterialIcons name="event-seat" size={18} color={theme.tertiary} />
-                <Text style={styles.reserveTitle}>YEDEK KULÜBESİ ({activeMatch?.reserves?.length || 0})</Text>
-              </View>
-              <Text style={styles.reserveSubHint}>Asil kadrodan çıkan olursa ilk sıradaki geçer</Text>
-            </View>
+          {/* 🪑 YEDEK KULÜBESİ (TEAM BENCH) */}
+          {(() => {
+            const currentBench = activeTeam === 'A' ? benchA : benchB;
+            const teamColor = activeTeam === 'A' ? theme.primary : theme.secondary;
+            const isInMyBench = Boolean(currentUid && currentBench.some(p => p.uid === currentUid));
+            const isUserInOtherTeam = Boolean(myTeam && myTeam !== activeTeam);
 
-            {/* Reserve players row */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.reserveList}>
-              {(!activeMatch?.reserves || activeMatch.reserves.length === 0) ? (
-                <Text style={styles.emptyReserveText}>Şu an yedekte bekleyen oyuncu yok</Text>
-              ) : (
-                activeMatch.reserves.map((reserve, idx) => (
-                  <View key={reserve.uid || idx} style={styles.reserveItem}>
-                    <View style={styles.reserveAvatarWrap}>
-                      <Image source={{ uri: reserve.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100' }} style={styles.reserveAvatar} />
-                      <View style={styles.reserveOrderBadge}>
-                        <Text style={styles.reserveOrderText}>#{idx + 1}</Text>
-                      </View>
-                    </View>
-                    <Text style={styles.reserveName} numberOfLines={1}>{reserve.name}</Text>
-                  </View>
-                ))
-              )}
-            </ScrollView>
-
-            {/* Action button: Join or Leave Reserve Queue */}
-            {(() => {
-              const isAlreadyInMainSlot = Boolean(
-                userSlot || 
-                (currentUid && activeMatch?.slots && Object.values(activeMatch.slots).some(s => s?.uid === currentUid)) ||
-                (isOrganizer && (activeMatch?.slots?.['A_OS_ORTA'] || activeMatch?.slots?.['OS_ORTA'] || !userSlot))
-              );
-              const isAlreadyInReserve = Boolean(currentUid && activeMatch?.reserves?.some(r => r.uid === currentUid));
-              const isRosterFull = rosterPayments.length >= totalPlayersCount;
-
-              if (isAlreadyInMainSlot) {
-                return null;
-              }
-
-              if (isAlreadyInReserve) {
-                return (
-                  <TouchableOpacity
-                    style={styles.leaveReserveBtn}
-                    onPress={async () => {
-                      if (!user?.uid || !activeMatchId) return;
-                      try {
-                        await dbService.leaveMatchReserve(activeMatchId, user.uid);
-                        Alert.alert('Ayrıldınız', 'Yedek sırasından ayrıldınız.');
-                      } catch {
-                        Alert.alert('Hata', 'Yedek sırasından ayrılırken bir hata oluştu.');
-                      }
-                    }}
-                  >
-                    <MaterialIcons name="person-remove" size={16} color={theme.error} />
-                    <Text style={styles.leaveReserveBtnText}>Yedek Sırasından Çık</Text>
-                  </TouchableOpacity>
-                );
-              }
-
-              if (!isRosterFull) {
-                return (
-                  <View style={styles.openSlotsNotice}>
-                    <MaterialIcons name="info-outline" size={16} color={theme.primary} />
-                    <Text style={styles.openSlotsNoticeText}>
-                      Kadroda henüz {totalPlayersCount - rosterPayments.length} kişilik boş yer var! Sahadaki boş bir mevkiye (+) dokunarak doğrudan asil kadroya dahil olabilirsiniz.
+            return (
+              <View style={[styles.benchSection, { borderColor: `${teamColor}40` }]}>
+                <View style={styles.benchHeader}>
+                  <View style={styles.benchHeaderLeft}>
+                    <MaterialIcons name="event-seat" size={18} color={teamColor} />
+                    <Text style={[styles.benchTitle, { color: teamColor }]}>
+                      {activeTeam} TAKIMI YEDEK KULÜBESİ ({currentBench.length})
                     </Text>
                   </View>
-                );
-              }
+                  <Text style={styles.benchSubHint}>
+                    {canManageActiveTeam 
+                      ? 'Dokunarak sahaya yerleştirebilir veya oyundaki oyuncuyu kulübeye alabilirsiniz'
+                      : 'Kadroya katılanlar ve yedekler burada listelenir'}
+                  </Text>
+                </View>
 
-              return (
-                <TouchableOpacity
-                  style={styles.joinReserveBtn}
-                  onPress={async () => {
-                    if (!user?.uid || !activeMatchId) {
-                      Alert.alert('Giriş Yapın', 'Yedek sırasına girmek için giriş yapmalısınız.');
-                      return;
-                    }
-                    try {
-                      await dbService.joinMatchReserve(activeMatchId, {
-                        uid: user.uid,
-                        name: user.name || 'Yedek Oyuncu',
-                        avatar: user.avatar
-                      });
-                      Alert.alert('✓ Sıraya Girildi', 'Yedek listesine eklendiniz. Asil kadrodan biri ayrıldığında öncelik sizin olacak!');
-                    } catch {
-                      Alert.alert('Hata', 'Yedek sırasına girilirken bir hata oluştu.');
-                    }
-                  }}
-                >
-                  <MaterialIcons name="person-add" size={16} color={theme.background} />
-                  <Text style={styles.joinReserveBtnText}>YEDEK SIRASINA YAZIL</Text>
-                </TouchableOpacity>
-              );
-            })()}
-          </View>
+                {/* Bench Players List */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.benchList}>
+                  {currentBench.length === 0 ? (
+                    <Text style={styles.emptyBenchText}>Bu takımın yedek kulübesinde bekleyen oyuncu yok.</Text>
+                  ) : (
+                    currentBench.map((bp) => {
+                      const { orderNumber, isSurplus } = getPlayerSquadStatus(bp.uid);
+                      const isSelected = selectedBenchPlayer?.player.uid === bp.uid;
+                      const isSelf = bp.uid === currentUid;
+                      const canManageThisPlayer = canManageActiveTeam || isSelf;
+
+                      return (
+                        <View 
+                          key={bp.uid} 
+                          style={[
+                            styles.benchCard,
+                            isSurplus && styles.benchCardSurplus,
+                            isSelected && [styles.benchCardSelected, { borderColor: teamColor }]
+                          ]}
+                        >
+                          {/* Surplus badge on top if 8th+ player */}
+                          {isSurplus ? (
+                            <View style={styles.benchSurplusBadge}>
+                              <Text style={styles.benchSurplusBadgeText}>⚡ {orderNumber}. KİŞİ (YEDEK)</Text>
+                            </View>
+                          ) : (
+                            <View style={[styles.benchOrderBadge, { backgroundColor: teamColor }]}>
+                              <Text style={[styles.benchOrderBadgeText, { color: theme.background }]}>#{orderNumber}</Text>
+                            </View>
+                          )}
+
+                          <View style={[styles.benchCardAvatarWrap, isSurplus && { borderColor: '#f59e0b' }]}>
+                            <Image 
+                              source={{ uri: bp.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100' }} 
+                              style={styles.benchCardAvatar} 
+                            />
+                          </View>
+
+                          <Text style={styles.benchCardName} numberOfLines={1}>
+                            {bp.name} {isSelf ? '(Siz)' : ''}
+                          </Text>
+
+                          {isSurplus && (
+                            <Text style={styles.benchCardSurplusNotice}>
+                              Sonradan Katıldı
+                            </Text>
+                          )}
+
+                          {/* Action button: Sahaya Al / Seçildi */}
+                          {canManageThisPlayer && (
+                            <TouchableOpacity
+                              style={[
+                                styles.benchCardBtn,
+                                isSelected ? [styles.benchCardBtnSelected, { backgroundColor: teamColor }] : { borderColor: teamColor }
+                              ]}
+                              onPress={() => {
+                                if (isSelected) {
+                                  setSelectedBenchPlayer(null);
+                                } else {
+                                  setSelectedBenchPlayer({ team: activeTeam, player: bp });
+                                }
+                              }}
+                              activeOpacity={0.8}
+                            >
+                              <Text style={[styles.benchCardBtnText, isSelected ? { color: theme.background } : { color: teamColor }]}>
+                                {isSelected ? '✓ SEÇİLDİ' : 'SAHAYA AL'}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+
+                          {/* Remove button */}
+                          {canManageThisPlayer && (
+                            <TouchableOpacity
+                              style={styles.benchCardRemoveBtn}
+                              onPress={() => handleLeaveBench(bp.uid, bp.name)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <MaterialIcons name="close" size={12} color={theme.textMuted} />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      );
+                    })
+                  )}
+                </ScrollView>
+
+                {/* User actions on Bench */}
+                {(() => {
+                  if (isUserInOtherTeam) {
+                    return (
+                      <View style={styles.benchTeamLockedNotice}>
+                        <MaterialIcons name="lock" size={16} color={theme.textMuted} />
+                        <Text style={styles.benchTeamLockedNoticeText}>
+                          Siz {myTeam} Takımındasınız. Rakip takımın yedek kulübesine katılamazsınız.
+                        </Text>
+                      </View>
+                    );
+                  }
+
+                  if (isInMyBench) {
+                    return (
+                      <TouchableOpacity
+                        style={styles.leaveBenchBtn}
+                        onPress={() => {
+                          const me = currentBench.find(p => p.uid === currentUid);
+                          if (me) handleLeaveBench(me.uid, me.name);
+                        }}
+                      >
+                        <MaterialIcons name="logout" size={15} color={theme.error} />
+                        <Text style={styles.leaveBenchBtnText}>Yedek Kulübesinden Ayrıl</Text>
+                      </TouchableOpacity>
+                    );
+                  }
+
+                  if (!myTeam && !userSlot) {
+                    return (
+                      <TouchableOpacity
+                        style={[styles.joinBenchBtn, { backgroundColor: teamColor }]}
+                        onPress={handleJoinActiveTeamBench}
+                      >
+                        <MaterialIcons name="group-add" size={16} color={theme.background} />
+                        <Text style={[styles.joinBenchBtnText, { color: theme.background }]}>
+                          + {activeTeam} TAKIMI YEDEK KULÜBESİNE KATIL
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  }
+
+                  return null;
+                })()}
+              </View>
+            );
+          })()}
 
           {/* Match Settings & Conditions - Only Captain/Organizer can edit */}
           {isOrganizer && (
@@ -3129,116 +3430,257 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontSize: 13,
     color: theme.onPrimary,
   },
-  reserveSection: {
-    backgroundColor: theme.surface,
+  // Placement Mode Guide Banner
+  placementModeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: `${theme.primary}20`,
     borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: `${theme.tertiary}4D`,
-    marginTop: 14,
-    gap: 10,
+    borderWidth: 1.5,
+    borderColor: theme.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    gap: 8,
   },
-  reserveHeader: {
+  placementAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: theme.primary,
+  },
+  placementTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 12,
+    color: theme.primary,
+  },
+  placementSub: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: theme.textMuted,
+    marginTop: 1,
+  },
+  placementCancelBtn: {
+    backgroundColor: theme.surfaceContainerHighest,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+  },
+  placementCancelBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: theme.textMuted,
+  },
+
+  // Team Bench Styles
+  benchSection: {
+    backgroundColor: theme.surface,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1.5,
+    marginHorizontal: 16,
+    marginTop: 14,
+    gap: 12,
+  },
+  benchHeader: {
     flexDirection: 'column',
     alignItems: 'flex-start',
     gap: 4,
   },
-  reserveHeaderLeft: {
+  benchHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  reserveTitle: {
+  benchTitle: {
     fontFamily: Fonts.headlineBold,
     fontSize: 12,
-    color: theme.tertiary,
     letterSpacing: 0.5,
   },
-  reserveSubHint: {
+  benchSubHint: {
     fontFamily: Fonts.body,
     fontSize: 10,
     color: theme.textMuted,
     lineHeight: 14,
   },
-  reserveList: {
-    gap: 12,
-    paddingVertical: 6,
+  benchList: {
+    gap: 10,
+    paddingVertical: 4,
   },
-  emptyReserveText: {
+  emptyBenchText: {
     fontFamily: Fonts.body,
     fontSize: 11,
     color: theme.textMuted,
     fontStyle: 'italic',
-    paddingVertical: 6,
+    paddingVertical: 10,
   },
-  reserveItem: {
+  benchCard: {
     alignItems: 'center',
-    width: 60,
+    width: 90,
+    backgroundColor: theme.surfaceContainerHigh,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderWidth: 1.5,
+    borderColor: theme.borderSubtle,
+    position: 'relative',
     gap: 4,
   },
-  reserveAvatarWrap: {
-    position: 'relative',
+  benchCardSurplus: {
+    borderColor: '#f59e0b',
+    borderWidth: 2,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+  },
+  benchCardSelected: {
+    borderWidth: 2,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  benchSurplusBadge: {
+    position: 'absolute',
+    top: -8,
+    backgroundColor: '#f59e0b',
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 6,
+    zIndex: 5,
+  },
+  benchSurplusBadgeText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 7.5,
+    color: '#000000',
+    letterSpacing: 0.2,
+  },
+  benchOrderBadge: {
+    position: 'absolute',
+    top: -6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 5,
+    zIndex: 5,
+  },
+  benchOrderBadgeText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 8,
+  },
+  benchCardAvatarWrap: {
     width: 44,
     height: 44,
     borderRadius: 22,
     borderWidth: 1.5,
-    borderColor: theme.tertiary,
+    borderColor: theme.borderSubtle,
     overflow: 'hidden',
+    marginTop: 4,
   },
-  reserveAvatar: {
+  benchCardAvatar: {
     width: '100%',
     height: '100%',
   },
-  reserveOrderBadge: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    backgroundColor: theme.tertiary,
-    paddingHorizontal: 4,
-    borderRadius: 4,
-  },
-  reserveOrderText: {
+  benchCardName: {
     fontFamily: Fonts.headlineBold,
-    fontSize: 8,
-    color: theme.background,
-  },
-  reserveName: {
-    fontFamily: Fonts.body,
     fontSize: 10,
     color: theme.text,
     textAlign: 'center',
+    maxWidth: 82,
   },
-  joinReserveBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: theme.tertiary,
-    paddingVertical: 8,
-    borderRadius: 8,
+  benchCardSurplusNotice: {
+    fontFamily: Fonts.headline,
+    fontSize: 8,
+    color: '#f59e0b',
+    textAlign: 'center',
+  },
+  benchCardBtn: {
     marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignItems: 'center',
+    width: '100%',
   },
-  joinReserveBtnText: {
+  benchCardBtnText: {
     fontFamily: Fonts.headlineBold,
-    fontSize: 11,
-    color: theme.background,
+    fontSize: 9,
   },
-  leaveReserveBtn: {
+  benchCardBtnSelected: {
+    marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignItems: 'center',
+    width: '100%',
+  },
+  benchCardRemoveBtn: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    padding: 3,
+    zIndex: 6,
+  },
+  leaveBenchBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     backgroundColor: `${theme.error}1A`,
     borderWidth: 1,
-    borderColor: `${theme.error}66`,
+    borderColor: `${theme.error}55`,
     paddingVertical: 8,
     borderRadius: 8,
-    marginTop: 4,
   },
-  leaveReserveBtnText: {
+  leaveBenchBtnText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 11,
     color: theme.error,
+  },
+  joinBenchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  joinBenchBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    letterSpacing: 0.5,
+  },
+  benchTeamLockedNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: theme.surfaceContainerHighest,
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+  },
+  benchTeamLockedNoticeText: {
+    flex: 1,
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: theme.textMuted,
+    lineHeight: 14,
+  },
+  slotSurplusPill: {
+    backgroundColor: '#f59e0b',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+    marginTop: 2,
+  },
+  slotSurplusPillText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 7,
+    color: '#000000',
   },
 
   // Slot Payment Pill Styles

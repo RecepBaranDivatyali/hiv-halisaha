@@ -22,6 +22,17 @@ import {
   deleteDoc
 } from 'firebase/firestore';
 
+export interface BenchPlayer {
+  uid: string;
+  name: string;
+  avatar?: string;
+  position?: string;
+  joinedAt: number;
+  paid?: boolean;
+  paymentStatus?: 'paid' | 'pending_approval' | 'unpaid' | 'cash_on_pitch' | 'exempt';
+  paymentMethod?: 'iban' | 'cash';
+}
+
 export interface MatchModel {
   id?: string;
   arena: string;
@@ -58,6 +69,8 @@ export interface MatchModel {
   score?: string;
   formaGoluTeam?: 'A' | 'B' | null; // Forma (yelek) golünü atan takım; berabere biterse galip sayılır
   joinTerms?: number;
+  benchA?: BenchPlayer[];
+  benchB?: BenchPlayer[];
   reserves?: {
     uid: string;
     name: string;
@@ -70,6 +83,7 @@ export interface MatchModel {
       name: string;
       avatar?: string;
       position?: string;
+      joinedAt?: any;
       paid?: boolean;
       paymentStatus?: 'paid' | 'pending_approval' | 'unpaid' | 'cash_on_pitch' | 'exempt';
       paymentMethod?: 'iban' | 'cash';
@@ -331,7 +345,7 @@ export const dbService = {
     });
   },
 
-  joinMatchSlot: async (matchId: string, slotKey: string, player: { uid: string; name: string; avatar?: string; position?: string }) => {
+  joinMatchSlot: async (matchId: string, slotKey: string, player: { uid: string; name: string; avatar?: string; position?: string; joinedAt?: number }) => {
     try {
       const matchRef = doc(db, 'matches', matchId);
       await runTransaction(db, async (transaction) => {
@@ -547,6 +561,201 @@ export const dbService = {
       return true;
     } catch (error) {
       console.error("Yedek sırasından çıkma hatası:", error);
+      throw error;
+    }
+  },
+
+  joinTeamBench: async (
+    matchId: string, 
+    team: 'A' | 'B', 
+    player: { uid: string; name: string; avatar?: string; position?: string; joinedAt?: number }
+  ) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      await runTransaction(db, async (transaction) => {
+        const matchDoc = await transaction.get(matchRef);
+        if (!matchDoc.exists()) throw new Error("Maç bulunamadı!");
+        const data = matchDoc.data();
+        const benchKey = team === 'A' ? 'benchA' : 'benchB';
+        const otherBenchKey = team === 'A' ? 'benchB' : 'benchA';
+        const currentBench: BenchPlayer[] = data[benchKey] || [];
+        const otherBench: BenchPlayer[] = data[otherBenchKey] || [];
+
+        if (currentBench.some(p => p.uid === player.uid)) return;
+
+        const currentSlots = data.slots || {};
+        const isInSlots = Object.values(currentSlots).some((s: any) => s && s.uid === player.uid);
+
+        const newBenchPlayer: BenchPlayer = {
+          uid: player.uid,
+          name: player.name,
+          avatar: player.avatar || '',
+          position: player.position || 'Yedek',
+          joinedAt: player.joinedAt || Date.now(),
+          paid: false,
+          paymentStatus: 'unpaid',
+          paymentMethod: 'cash'
+        };
+
+        const updates: Record<string, any> = {
+          [benchKey]: [...currentBench, newBenchPlayer],
+          [otherBenchKey]: otherBench.filter(p => p.uid !== player.uid),
+          updatedAt: serverTimestamp()
+        };
+
+        if (!isInSlots && !currentBench.some(p => p.uid === player.uid) && !otherBench.some(p => p.uid === player.uid)) {
+          updates.joinedPlayersCount = increment(1);
+        }
+
+        transaction.update(matchRef, updates);
+      });
+      return true;
+    } catch (error) {
+      console.error("Yedek kulübesine katılma hatası:", error);
+      throw error;
+    }
+  },
+
+  assignBenchPlayerToSlot: async (
+    matchId: string, 
+    team: 'A' | 'B', 
+    playerUid: string, 
+    targetSlotKey: string
+  ) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      await runTransaction(db, async (transaction) => {
+        const matchDoc = await transaction.get(matchRef);
+        if (!matchDoc.exists()) throw new Error("Maç bulunamadı!");
+        const data = matchDoc.data();
+        const benchKey = team === 'A' ? 'benchA' : 'benchB';
+        const currentBench: BenchPlayer[] = data[benchKey] || [];
+        const benchPlayer = currentBench.find(p => p.uid === playerUid);
+        if (!benchPlayer) throw new Error("Oyuncu yedek kulübesinde bulunamadı!");
+
+        const updates: Record<string, any> = {};
+        const existingSlotOccupant = data.slots?.[targetSlotKey];
+
+        let updatedBench = currentBench.filter(p => p.uid !== playerUid);
+        if (existingSlotOccupant && existingSlotOccupant.uid && existingSlotOccupant.uid !== playerUid) {
+          const returnToBench: BenchPlayer = {
+            uid: existingSlotOccupant.uid,
+            name: existingSlotOccupant.name,
+            avatar: existingSlotOccupant.avatar || '',
+            position: existingSlotOccupant.position || 'Yedek',
+            joinedAt: existingSlotOccupant.joinedAt || Date.now(),
+            paid: existingSlotOccupant.paid ?? false,
+            paymentStatus: existingSlotOccupant.paymentStatus ?? 'unpaid',
+            paymentMethod: existingSlotOccupant.paymentMethod ?? 'cash'
+          };
+          updatedBench.push(returnToBench);
+        }
+
+        updates[benchKey] = updatedBench;
+        updates[`slots.${targetSlotKey}`] = {
+          uid: benchPlayer.uid,
+          name: benchPlayer.name,
+          avatar: benchPlayer.avatar || '',
+          position: benchPlayer.position || targetSlotKey,
+          joinedAt: benchPlayer.joinedAt || Date.now(),
+          paid: benchPlayer.paid ?? false,
+          paymentStatus: benchPlayer.paymentStatus ?? 'unpaid',
+          paymentMethod: benchPlayer.paymentMethod ?? 'cash'
+        };
+        updates.updatedAt = serverTimestamp();
+
+        transaction.update(matchRef, updates);
+      });
+      return true;
+    } catch (error) {
+      console.error("Oyuncuyu sahaya alma hatası:", error);
+      throw error;
+    }
+  },
+
+  moveSlotToBench: async (
+    matchId: string, 
+    team: 'A' | 'B', 
+    slotKey: string
+  ) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      await runTransaction(db, async (transaction) => {
+        const matchDoc = await transaction.get(matchRef);
+        if (!matchDoc.exists()) throw new Error("Maç bulunamadı!");
+        const data = matchDoc.data();
+        const slotOccupant = data.slots?.[slotKey];
+        if (!slotOccupant) throw new Error("Mevkide oyuncu yok!");
+
+        const benchKey = team === 'A' ? 'benchA' : 'benchB';
+        const currentBench: BenchPlayer[] = data[benchKey] || [];
+
+        const benchPlayer: BenchPlayer = {
+          uid: slotOccupant.uid,
+          name: slotOccupant.name,
+          avatar: slotOccupant.avatar || '',
+          position: slotOccupant.position || 'Yedek',
+          joinedAt: slotOccupant.joinedAt || Date.now(),
+          paid: slotOccupant.paid ?? false,
+          paymentStatus: slotOccupant.paymentStatus ?? 'unpaid',
+          paymentMethod: slotOccupant.paymentMethod ?? 'cash'
+        };
+
+        const updates: Record<string, any> = {
+          [`slots.${slotKey}`]: deleteField(),
+          [benchKey]: [...currentBench.filter(p => p.uid !== slotOccupant.uid), benchPlayer],
+          updatedAt: serverTimestamp()
+        };
+
+        transaction.update(matchRef, updates);
+      });
+      return true;
+    } catch (error) {
+      console.error("Oyuncuyu kulübeye alma hatası:", error);
+      throw error;
+    }
+  },
+
+  leaveMatchSquad: async (matchId: string, playerUid: string) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      await runTransaction(db, async (transaction) => {
+        const matchDoc = await transaction.get(matchRef);
+        if (!matchDoc.exists()) throw new Error("Maç bulunamadı!");
+        const data = matchDoc.data();
+        const updates: Record<string, any> = { updatedAt: serverTimestamp() };
+
+        let removed = false;
+        if (data.slots) {
+          Object.entries(data.slots).forEach(([k, s]: [string, any]) => {
+            if (s && s.uid === playerUid) {
+              updates[`slots.${k}`] = deleteField();
+              removed = true;
+            }
+          });
+        }
+        if (data.benchA && data.benchA.some((p: any) => p.uid === playerUid)) {
+          updates.benchA = data.benchA.filter((p: any) => p.uid !== playerUid);
+          removed = true;
+        }
+        if (data.benchB && data.benchB.some((p: any) => p.uid === playerUid)) {
+          updates.benchB = data.benchB.filter((p: any) => p.uid !== playerUid);
+          removed = true;
+        }
+        if (data.reserves && data.reserves.some((p: any) => p.uid === playerUid)) {
+          updates.reserves = data.reserves.filter((p: any) => p.uid !== playerUid);
+          removed = true;
+        }
+
+        if (removed) {
+          updates.joinedPlayersCount = increment(-1);
+        }
+
+        transaction.update(matchRef, updates);
+      });
+      return true;
+    } catch (error) {
+      console.error("Kadrodan ayrılma hatası:", error);
       throw error;
     }
   },
