@@ -275,7 +275,7 @@ export default function HomeScreen() {
         )}
 
         {/* 2. Diğer Yaklaşan Kullanıcı Maçları (2., 3. vb. aktif maçlar değerlendirme satırı gibi tek satır) */}
-        {otherUserUpcomingMatches.map((m, idx) => (
+        {otherUserUpcomingMatches.map((m) => (
           <View key={`upcoming-row-${m.id}`} style={styles.compactUpcomingBanner}>
             <TouchableOpacity 
               style={styles.compactUpcomingBannerLeft}
@@ -286,16 +286,11 @@ export default function HomeScreen() {
                 <MaterialIcons name="sports-soccer" size={16} color={theme.secondary} />
               </View>
               <View style={styles.compactUpcomingTextGroup}>
-                <View style={styles.compactUpcomingTitleRow}>
-                  <Text style={styles.compactUpcomingTitle} numberOfLines={1}>
-                    {m.arena}
-                  </Text>
-                  <View style={styles.compactUpcomingTag}>
-                    <Text style={styles.compactUpcomingTagText}>{idx + 2}. MAÇ</Text>
-                  </View>
-                </View>
+                <Text style={styles.compactUpcomingTitle} numberOfLines={1}>
+                  {m.arena}
+                </Text>
                 <Text style={styles.compactUpcomingSub} numberOfLines={1}>
-                  {m.dateTime} • {m.mode || '7v7'}
+                  {m.dateTime?.split(' • ')[0] || m.dateTime}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -961,29 +956,11 @@ const useStyles = (theme: any) => StyleSheet.create({
   compactUpcomingTextGroup: {
     flex: 1,
   },
-  compactUpcomingTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
   compactUpcomingTitle: {
     fontFamily: Fonts.headlineBold,
     fontSize: 12,
     color: theme.text,
     lineHeight: 16,
-    flexShrink: 1,
-  },
-  compactUpcomingTag: {
-    backgroundColor: `${theme.secondary}25`,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  compactUpcomingTagText: {
-    fontFamily: Fonts.headlineBold,
-    fontSize: 9,
-    color: theme.secondary,
-    letterSpacing: 0.3,
   },
   compactUpcomingSub: {
     fontFamily: Fonts.body,
