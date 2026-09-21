@@ -64,13 +64,9 @@ export default function MatchesScreen() {
       <CreateMatchModal 
         visible={createModalVisible} 
         onClose={() => setCreateModalVisible(false)}
-        onSuccess={async (createdMatch: any) => {
+        onSuccess={async () => {
           await reloadMatches();
-          if (createdMatch?.id) {
-            router.push({ pathname: '/match-room', params: { matchId: createdMatch.id } });
-          } else {
-            router.push('/match-room');
-          }
+          router.replace('/(tabs)');
         }}
       />
 

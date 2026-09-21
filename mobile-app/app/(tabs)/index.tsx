@@ -190,19 +190,8 @@ export default function HomeScreen() {
       <CreateMatchModal
         visible={createMatchVisible}
         onClose={() => setCreateMatchVisible(false)}
-        onSuccess={async (createdMatch: any) => {
+        onSuccess={async () => {
           await reloadMatches();
-          setToast({
-            id: Date.now().toString(),
-            type: 'match',
-            title: 'MAÇ İLANI YAYINLANDI ⚽',
-            message: 'İlanınız başarıyla kaydedildi. Oyuncular katılabilir.',
-          });
-          if (createdMatch?.id) {
-            router.push({ pathname: '/match-room', params: { matchId: createdMatch.id } });
-          } else {
-            router.push('/match-room');
-          }
         }}
       />
       <MatchSeekingModal

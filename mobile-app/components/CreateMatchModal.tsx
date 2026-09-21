@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   StyleSheet, View, Text, TouchableOpacity,
   ScrollView, TextInput, Alert, Switch, FlatList,
-  Platform, ActivityIndicator,
+  Platform, ActivityIndicator, Animated,
 } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -43,7 +43,7 @@ export interface NewMatchData {
 interface CreateMatchModalProps {
   visible: boolean;
   onClose: () => void;
-  onSuccess?: (matchData: NewMatchData) => void;
+  onSuccess?: (matchData: any) => void;
 }
 
 const CITIES = ['Ankara', 'İstanbul', 'İzmir', 'Bursa', 'Antalya'];
@@ -294,6 +294,27 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   // ── Abonelik ──────────────────────────────────────────────
   const [isSubscription, setIsSubscription] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const scaleAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!visible) {
+      setIsSuccess(false);
+      setIsSubmitting(false);
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (isSuccess) {
+      scaleAnim.setValue(0);
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 5,
+        tension: 70,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [isSuccess, scaleAnim]);
 
   // ── Hesaplama ──────────────────────────────────────────────
   const getPlayerCount = (mode: string) => {
@@ -331,12 +352,12 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     : formatDateTR(selectedDate);
 
   const handleCreate = async () => {
-    if (isSubmitting) return;
+    if (isSubmitting || isSuccess) return;
     setIsSubmitting(true);
     const dateStr = formatDateTR(selectedDate);
     const targetDistrict = isPitchFlexible 
       ? (selectedPitch?.district || preferredDistrict || 'Merkez')
-      : selectedPitch.district;
+      : (selectedPitch?.district || 'Merkez');
 
     let fullArenaName = '';
     if (isPitchFlexible) {
@@ -344,7 +365,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
         ? `${selectedPitch.name} (Saha Aranıyor)`
         : `Saha Aranıyor (${targetDistrict})`;
     } else {
-      fullArenaName = `${selectedPitch.name} — ${selectedSubField}`;
+      fullArenaName = `${selectedPitch?.name || 'Halı Saha'} — ${selectedSubField || 'Tek Saha'}`;
     }
 
     const timeSlotStr = isTimeFlexible ? 'Saat Esnek' : selectedTimeSlot;
@@ -380,13 +401,27 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
 
     try {
       const created = await addMatch(newMatch as any, user);
-      onClose();
-      if (onSuccess) {
-        onSuccess((created || newMatch) as any);
+      if (!created || !created.id) {
+        throw new Error('Maç oluşturulamadı.');
       }
+      // Başarılı: Ekrana tik ile "Maç Oluşturuldu" geri bildirimi göster
+      setIsSuccess(true);
+      setTimeout(() => {
+        setIsSuccess(false);
+        onClose();
+        if (onSuccess) {
+          onSuccess(created);
+        }
+      }, 1400);
     } catch (err) {
       console.error('Maç oluşturma hatası:', err);
-      Alert.alert('Hata', 'Maç oluşturulurken bir sorun oluştu.');
+      // Hata durumunda: Tik çıkmaz, ana ekrana dönülmez, uyarı penceresi gösterilir
+      setIsSuccess(false);
+      Alert.alert(
+        'Maç Oluşturulamadı ⚠️',
+        'Maç ilanı oluşturulurken bir sorun meydana geldi. Lütfen bilgilerinizi kontrol edip tekrar deneyin.',
+        [{ text: 'Tamam' }]
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -395,12 +430,23 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={() => { if (!isSuccess && !isSubmitting) onClose(); }}>
       <View style={styles.overlay}>
         <View style={styles.modalContent}>
-
-          {/* ── HEADER ── */}
-          <View style={styles.header}>
+          {isSuccess ? (
+            <View style={styles.successContainer}>
+              <Animated.View style={[styles.successIconCircle, { transform: [{ scale: scaleAnim }] }]}>
+                <MaterialIcons name="check" size={56} color={theme.onPrimary} />
+              </Animated.View>
+              <Text style={styles.successTitle}>MAÇ OLUŞTURULDU!</Text>
+              <Text style={styles.successSub}>
+                İlanınız başarıyla kaydedildi.{"\n"}Ana ekrana dönülüyor...
+              </Text>
+            </View>
+          ) : (
+            <>
+              {/* ── HEADER ── */}
+              <View style={styles.header}>
             <View style={styles.headerTitleRow}>
               <MaterialIcons name="sports-soccer" size={24} color={theme.primary} />
               <View>
@@ -935,6 +981,8 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
             </TouchableOpacity>
 
           </ScrollView>
+            </>
+          )}
         </View>
       </View>
 
@@ -1385,4 +1433,41 @@ const useStyles = (theme: any) => StyleSheet.create({
   formatWarningText: { flex: 1, fontFamily: Fonts.body, fontSize: 11, lineHeight: 15 },
   formatWarningTextYellow: { color: '#f59e0b' },
   formatWarningTextRed: { color: '#ef4444', fontWeight: 'bold' },
+
+  // Başarılı Oluşturuldu Geri Bildirimi (Tik Ekranı)
+  successContainer: {
+    paddingVertical: 80,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successIconCircle: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    backgroundColor: theme.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+    shadowColor: theme.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  successTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 22,
+    color: theme.text,
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  successSub: {
+    fontFamily: Fonts.body,
+    fontSize: 14,
+    color: theme.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
 });
