@@ -12,7 +12,7 @@ import Animated, { FadeInRight } from 'react-native-reanimated';
 import { NotificationCenterModal } from '@/components/NotificationCenterModal';
 import { Skeleton } from '@/components/Skeleton';
 import { useTheme } from '@/context/ThemeContext';
-import { isMatchPast } from '@/services/dateUtils';
+import { isMatchPast, parseTargetTimestamp } from '@/services/dateUtils';
 import { AppGuideModal } from '@/components/AppGuideModal';
 
 export default function MatchesScreen() {
@@ -22,11 +22,16 @@ export default function MatchesScreen() {
   const { theme } = useTheme();
   const styles = useStyles(theme);
 
-  const actualActiveMatches = matches.filter(m => !isMatchPast(m.dateTime));
+  const actualActiveMatches = matches
+    .filter(m => !isMatchPast(m.dateTime) && m.status !== 'completed' && m.status !== 'cancelled')
+    .sort((a, b) => parseTargetTimestamp(a.dateTime) - parseTargetTimestamp(b.dateTime));
+
   const actualPastMatches = [
     ...pastMatches,
-    ...matches.filter(m => isMatchPast(m.dateTime))
-  ].filter((m, i, arr) => arr.findIndex(x => x.id === m.id) === i);
+    ...matches.filter(m => isMatchPast(m.dateTime) || m.status === 'completed')
+  ]
+    .filter((m, i, arr) => arr.findIndex(x => x.id === m.id) === i)
+    .sort((a, b) => parseTargetTimestamp(b.dateTime) - parseTargetTimestamp(a.dateTime));
 
   const [activeTab, setActiveTab] = useState<'AKTİF MAÇLARIM' | 'GEÇMİŞ MAÇLAR'>('AKTİF MAÇLARIM');
   const [menuVisible, setMenuVisible] = useState(false);
