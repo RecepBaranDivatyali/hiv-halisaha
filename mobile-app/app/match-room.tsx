@@ -1430,9 +1430,12 @@ export default function MatchRoomScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* 2. Live Weather Forecast Alert */}
+          {/* 2. Live Weather Forecast Alert (Tesis Konumu & Maç Günü/Saatine Özel Tahmin) */}
           <WeatherAlertCard 
             city={matchCity}
+            district={matchDistrict}
+            arena={matchArena}
+            dateTime={matchDateTime}
             isOpenField={!matchArena.toLowerCase().includes('kapalı')} 
           />
           
