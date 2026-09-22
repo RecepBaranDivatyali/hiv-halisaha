@@ -85,7 +85,6 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
     { label: 'PROFİL', icon: 'person', route: '/(tabs)/profile', active: pathname?.includes('profile') },
     { label: 'BİLDİRİMLER', icon: 'notifications', action: 'notifications' },
     { label: 'AYARLAR', icon: 'settings', route: '/settings', active: pathname?.includes('settings') },
-    ...(isUserAdmin ? [{ label: 'YÖNETİCİ PANELİ', icon: 'admin-panel-settings', action: 'admin' }] : []),
     ...(!isInstalled ? [{ label: 'UYGULAMAYI YÜKLE', icon: 'get-app', action: 'install' }] : []),
     { label: 'NASIL KULLANILIR?', icon: 'help', action: 'guide' },
   ];
@@ -192,7 +191,6 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
                     style={[
                       styles.navItem, 
                       item.active && { backgroundColor: theme.surface, borderLeftWidth: 3, borderLeftColor: theme.primary },
-                      item.action === 'admin' && styles.adminNavItem
                     ]}
                     onPress={() => handleNavigate(item)}
                     activeOpacity={0.7}
@@ -200,19 +198,14 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
                     <MaterialIcons 
                       name={item.icon as any} 
                       size={18} 
-                      color={item.action === 'admin' ? theme.primary : (item.active || item.action === 'guide' ? theme.primary : theme.textMuted)} 
+                      color={item.active || item.action === 'guide' ? theme.primary : theme.textMuted} 
                     />
                     <Text style={[
                       styles.navLabel, 
-                      { color: item.action === 'admin' ? theme.primary : (item.active || item.action === 'guide' ? theme.primary : theme.textMuted) }
+                      { color: item.active || item.action === 'guide' ? theme.primary : theme.textMuted }
                     ]}>
                       {item.label}
                     </Text>
-                    {item.action === 'admin' && (
-                      <View style={styles.adminBadge}>
-                        <Text style={styles.adminBadgeText}>PANEL</Text>
-                      </View>
-                    )}
                     {item.soon && (
                       <View style={styles.soonBadge}>
                         <Text style={styles.soonBadgeText}>YAKINDA</Text>
@@ -225,6 +218,18 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
 
             {/* Footer */}
             <View style={styles.footer}>
+              {isUserAdmin && (
+                <TouchableOpacity 
+                  style={styles.adminFooterBtn} 
+                  onPress={() => handleNavigate({ label: 'YÖNETİCİ PANELİ', icon: 'admin-panel-settings', action: 'admin' })}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="admin-panel-settings" size={18} color={theme.textMuted} />
+                  <Text style={styles.adminFooterLabel}>YÖNETİCİ PANELİ</Text>
+                  <MaterialIcons name="open-in-new" size={14} color={theme.textMuted} style={{ marginLeft: 'auto' }} />
+                </TouchableOpacity>
+              )}
+
               <TouchableOpacity style={styles.logoutBtn} onPress={async () => {
                 try {
                   await logout();
@@ -324,22 +329,21 @@ const useStyles = (theme: any) => StyleSheet.create({
   version: { fontSize: 8, fontFamily: Fonts.headlineBold, letterSpacing: 0.8, opacity: 0.5, color: theme.textMuted },
   soonBadge: { marginLeft: 'auto', backgroundColor: `${theme.secondary}26`, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 },
   soonBadgeText: { fontSize: 8, fontFamily: Fonts.headlineBold, color: theme.secondary, letterSpacing: 0.5 },
-  adminNavItem: {
-    backgroundColor: `${theme.primary}12`,
-    borderLeftWidth: 3,
-    borderLeftColor: theme.primary,
+  adminFooterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    backgroundColor: theme.surface,
+    borderColor: theme.borderSubtle,
   },
-  adminBadge: {
-    marginLeft: 'auto',
-    backgroundColor: theme.primary,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  adminBadgeText: {
-    fontSize: 8,
+  adminFooterLabel: {
+    fontSize: 11,
     fontFamily: Fonts.headlineBold,
-    color: theme.background,
-    letterSpacing: 0.5,
+    letterSpacing: 1,
+    color: theme.textMuted,
   },
 });

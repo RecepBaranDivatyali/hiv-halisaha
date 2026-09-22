@@ -173,9 +173,18 @@ export default function ClubsScreen() {
             onPress={() => router.push('/my-club')}
           >
             <View style={styles.myClubLeft}>
-              <View style={styles.myClubIconBox}>
-                <MaterialIcons name="shield" size={30} color={theme.primary} />
-              </View>
+              {(() => {
+                const foundClub = clubsList.find(c => c.id === user.clubId);
+                const logoUri = foundClub?.logo || (user as any).clubLogo;
+                if (logoUri) {
+                  return <Image source={{ uri: logoUri }} style={styles.myClubLogoImage} />;
+                }
+                return (
+                  <View style={styles.myClubIconBox}>
+                    <MaterialIcons name="shield" size={30} color={theme.primary} />
+                  </View>
+                );
+              })()}
               <View style={{ flex: 1 }}>
                 <View style={styles.myClubBadge}>
                   <Text style={styles.myClubBadgeText}>KULÜBÜNÜZ</Text>
@@ -463,6 +472,14 @@ const useStyles = (theme: any) => StyleSheet.create({
     backgroundColor: `${theme.primary}1A`,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  myClubLogoImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: theme.surfaceContainerHighest,
+    borderWidth: 1.5,
+    borderColor: theme.primary,
   },
   myClubBadge: {
     alignSelf: 'flex-start',

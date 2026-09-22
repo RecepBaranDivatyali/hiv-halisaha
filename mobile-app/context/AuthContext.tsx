@@ -31,6 +31,7 @@ export interface UserSession {
   hasSeenOnboarding?: boolean;
   clubId?: string | null;
   clubName?: string | null;
+  clubLogo?: string | null;
   role?: 'user' | 'admin';
   bio?: string;
   iban?: string;

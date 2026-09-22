@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, TextInput, Alert, ActivityIndicator, ScrollView } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/use-auth';
 import { dbService } from '@/services/dbService';
+import { PITCH_DATABASE } from '@/config/pitches';
 
 interface MatchSeekingModalProps {
   visible: boolean;
@@ -14,6 +15,17 @@ interface MatchSeekingModalProps {
 }
 
 const DATE_OPTIONS = ['Bugün', 'Yarın', 'Hafta Sonu', 'Bu Hafta'];
+
+const CITIES_LIST = ['İstanbul', 'Ankara', 'İzmir', 'Bursa', 'Antalya', 'Adana', 'Kocaeli', 'Gaziantep', 'Konya', 'Eskişehir', 'Trabzon', 'Samsun'];
+const DISTRICTS_MAP: Record<string, string[]> = {
+  'İstanbul': ['Kadıköy', 'Beşiktaş', 'Şişli', 'Üsküdar', 'Bakırköy', 'Maltepe', 'Ataşehir'],
+  'Ankara': ['Çankaya', 'Dikmen', 'Yenimahalle', 'Keçiören', 'Etimesgut', 'Mamak'],
+  'İzmir': ['Karşıyaka', 'Bornova', 'Konak', 'Alsancak', 'Buca'],
+  'Bursa': ['Nilüfer', 'Osmangazi', 'Yıldırım'],
+  'Antalya': ['Muratpaşa', 'Konyaaltı', 'Kepez'],
+  'Trabzon': ['Ortahisar', 'Akçaabat', 'Yomra'],
+  'Samsun': ['Atakum', 'İlkadım', 'Canik'],
+};
 
 export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
   visible,
@@ -25,42 +37,60 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
   const { user, saveUser } = useAuth();
 
   const [availableDate, setAvailableDate] = useState('Bugün');
-  const [district, setDistrict] = useState(user?.district || user?.preferredDistrict || 'Çankaya');
+  const [selectedCity, setSelectedCity] = useState(user?.city || 'İstanbul');
+  const [selectedDistrict, setSelectedDistrict] = useState(user?.preferredDistrict || 'Tüm İlçeler');
+  const [selectedPitch, setSelectedPitch] = useState('Tüm Sahalar');
   const [note, setNote] = useState(user?.availableNote || '');
   const [loading, setLoading] = useState(false);
+
+  const [cityModalVisible, setCityModalVisible] = useState(false);
+  const [districtModalVisible, setDistrictModalVisible] = useState(false);
+  const [pitchModalVisible, setPitchModalVisible] = useState(false);
 
   useEffect(() => {
     if (visible && user) {
       setAvailableDate(user.availableDate || 'Bugün');
-      setDistrict(user.preferredDistrict || user.district || 'Merkez');
+      setSelectedCity(user.city || 'İstanbul');
+      setSelectedDistrict(user.preferredDistrict || 'Tüm İlçeler');
+      setSelectedPitch((user as any).preferredPitch || 'Tüm Sahalar');
       setNote(user.availableNote || '');
     }
   }, [visible, user]);
+
+  const availableDistricts = ['Tüm İlçeler', ...(DISTRICTS_MAP[selectedCity] || ['Merkez'])];
+  const cityPitches = PITCH_DATABASE.filter(p => p.city === selectedCity);
 
   const handleActivate = async () => {
     if (!user) return;
     setLoading(true);
     try {
+      const finalDistrict = selectedDistrict === 'Tüm İlçeler' ? '' : selectedDistrict;
+      const finalPitch = selectedPitch === 'Tüm Sahalar' ? '' : selectedPitch;
+
       const updatedUser = {
         ...user,
         isLookingForMatch: true,
         availableDate,
-        preferredDistrict: district.trim(),
+        city: selectedCity,
+        preferredDistrict: finalDistrict,
+        preferredPitch: finalPitch,
         availableNote: note.trim(),
       };
-      await saveUser(updatedUser);
+      await saveUser(updatedUser as any);
 
       if (user.uid) {
         await dbService.setUserLookingForMatch(user.uid, true, {
           availableDate,
-          district: district.trim(),
+          city: selectedCity,
+          district: finalDistrict,
+          preferredPitch: finalPitch,
           availableNote: note.trim(),
         });
       }
 
       Alert.alert(
         '🟢 Maç Arama Sinyali Açıldı!',
-        `Durumunuz "${availableDate}" için aktif edildi. Maç ayarlayan kaptanlar ve rakipler sizi Oyuncu Arama listesinde en üstte görebilecek.`
+        `Durumunuz "${availableDate}" (${selectedCity}${finalDistrict ? ` - ${finalDistrict}` : ''}) için aktif edildi. Kaptanlar sizi Oyuncu Arama listesinde en üstte görebilecek.`
       );
       if (onSuccess) onSuccess();
       onClose();
@@ -119,7 +149,7 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <View style={styles.body}>
+          <ScrollView style={styles.scrollView} contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
             {/* Status Card */}
             <View style={[styles.statusCard, isCurrentlyActive ? styles.statusCardActive : styles.statusCardInactive]}>
               <MaterialIcons
@@ -159,19 +189,57 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
               </View>
             </View>
 
-            {/* Semt / Bölge */}
+            {/* Konum & Tesis Filtreleri */}
             <View style={styles.section}>
-              <Text style={styles.sectionLabel}>TERCİH EDİLEN BÖLGE / İLÇE</Text>
-              <View style={styles.inputWrap}>
-                <MaterialIcons name="place" size={18} color={theme.primary} />
-                <TextInput
-                  style={styles.textInput}
-                  value={district}
-                  onChangeText={setDistrict}
-                  placeholder="Örn: Çankaya, Kadıköy, Nilüfer..."
-                  placeholderTextColor="#adaaaa"
-                />
-              </View>
+              <Text style={styles.sectionLabel}>LOKASYON VE SAHA TERCİHİ</Text>
+
+              {/* 1. İl / Şehir (ZORUNLU) */}
+              <TouchableOpacity 
+                style={styles.pickerSelector} 
+                onPress={() => setCityModalVisible(true)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.pickerLeft}>
+                  <MaterialIcons name="location-city" size={20} color={theme.primary} />
+                  <View>
+                    <Text style={styles.pickerFieldLabel}>ŞEHİR <Text style={{ color: theme.primary }}>* (Zorunlu)</Text></Text>
+                    <Text style={styles.pickerFieldValue}>{selectedCity}</Text>
+                  </View>
+                </View>
+                <MaterialIcons name="keyboard-arrow-down" size={22} color={theme.textMuted} />
+              </TouchableOpacity>
+
+              {/* 2. İlçe (İSTEĞE BAĞLI) */}
+              <TouchableOpacity 
+                style={styles.pickerSelector} 
+                onPress={() => setDistrictModalVisible(true)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.pickerLeft}>
+                  <MaterialIcons name="place" size={20} color={theme.secondary} />
+                  <View>
+                    <Text style={styles.pickerFieldLabel}>İLÇE / BÖLGE (İsteğe Bağlı)</Text>
+                    <Text style={styles.pickerFieldValue}>{selectedDistrict}</Text>
+                  </View>
+                </View>
+                <MaterialIcons name="keyboard-arrow-down" size={22} color={theme.textMuted} />
+              </TouchableOpacity>
+
+              {/* 3. Tesis / Halısaha (İSTEĞE BAĞLI) */}
+              <TouchableOpacity 
+                style={styles.pickerSelector} 
+                onPress={() => setPitchModalVisible(true)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.pickerLeft}>
+                  <MaterialIcons name="sports-soccer" size={20} color="#f59e0b" />
+                  <View>
+                    <Text style={styles.pickerFieldLabel}>TESİS / SAHA (İsteğe Bağlı)</Text>
+                    <Text style={styles.pickerFieldValue} numberOfLines={1}>{selectedPitch}</Text>
+                  </View>
+                </View>
+                <MaterialIcons name="keyboard-arrow-down" size={22} color={theme.textMuted} />
+              </TouchableOpacity>
             </View>
 
             {/* İsteğe Bağlı Not */}
@@ -222,7 +290,127 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
                 )}
               </TouchableOpacity>
             </View>
-          </View>
+          </ScrollView>
+
+          {/* City Modal Picker */}
+          {cityModalVisible && (
+            <TouchableOpacity 
+              style={styles.pickerModalOverlay}
+              activeOpacity={1}
+              onPress={() => setCityModalVisible(false)}
+            >
+              <TouchableOpacity activeOpacity={1} style={styles.pickerModalBox}>
+                <Text style={styles.pickerModalHeader}>ŞEHİR SEÇİN</Text>
+                <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 300 }}>
+                  {CITIES_LIST.map((city) => (
+                    <TouchableOpacity
+                      key={city}
+                      style={[styles.pickerModalItem, selectedCity === city && styles.pickerModalItemActive]}
+                      onPress={() => {
+                        setSelectedCity(city);
+                        setSelectedDistrict('Tüm İlçeler');
+                        setSelectedPitch('Tüm Sahalar');
+                        setCityModalVisible(false);
+                      }}
+                    >
+                      <Text style={[styles.pickerModalItemText, selectedCity === city && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                        {city}
+                      </Text>
+                      {selectedCity === city && <MaterialIcons name="check" size={18} color={theme.primary} />}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <TouchableOpacity style={styles.pickerModalClose} onPress={() => setCityModalVisible(false)}>
+                  <Text style={styles.pickerModalCloseText}>KAPAT</Text>
+                </TouchableOpacity>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          )}
+
+          {/* District Modal Picker */}
+          {districtModalVisible && (
+            <TouchableOpacity 
+              style={styles.pickerModalOverlay}
+              activeOpacity={1}
+              onPress={() => setDistrictModalVisible(false)}
+            >
+              <TouchableOpacity activeOpacity={1} style={styles.pickerModalBox}>
+                <Text style={styles.pickerModalHeader}>{selectedCity.toUpperCase()} - İLÇE SEÇİN</Text>
+                <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 300 }}>
+                  {availableDistricts.map((dist) => (
+                    <TouchableOpacity
+                      key={dist}
+                      style={[styles.pickerModalItem, selectedDistrict === dist && styles.pickerModalItemActive]}
+                      onPress={() => {
+                        setSelectedDistrict(dist);
+                        setDistrictModalVisible(false);
+                      }}
+                    >
+                      <Text style={[styles.pickerModalItemText, selectedDistrict === dist && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                        {dist}
+                      </Text>
+                      {selectedDistrict === dist && <MaterialIcons name="check" size={18} color={theme.primary} />}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <TouchableOpacity style={styles.pickerModalClose} onPress={() => setDistrictModalVisible(false)}>
+                  <Text style={styles.pickerModalCloseText}>KAPAT</Text>
+                </TouchableOpacity>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          )}
+
+          {/* Pitch Modal Picker */}
+          {pitchModalVisible && (
+            <TouchableOpacity 
+              style={styles.pickerModalOverlay}
+              activeOpacity={1}
+              onPress={() => setPitchModalVisible(false)}
+            >
+              <TouchableOpacity activeOpacity={1} style={styles.pickerModalBox}>
+                <Text style={styles.pickerModalHeader}>{selectedCity.toUpperCase()} - SAHA SEÇİN</Text>
+                <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 300 }}>
+                  <TouchableOpacity
+                    style={[styles.pickerModalItem, selectedPitch === 'Tüm Sahalar' && styles.pickerModalItemActive]}
+                    onPress={() => {
+                      setSelectedPitch('Tüm Sahalar');
+                      setPitchModalVisible(false);
+                    }}
+                  >
+                    <Text style={[styles.pickerModalItemText, selectedPitch === 'Tüm Sahalar' && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                      🏟️ Tüm Sahalar (Filtresiz)
+                    </Text>
+                    {selectedPitch === 'Tüm Sahalar' && <MaterialIcons name="check" size={18} color={theme.primary} />}
+                  </TouchableOpacity>
+
+                  {cityPitches.map((pitch) => (
+                    <TouchableOpacity
+                      key={pitch.id}
+                      style={[styles.pickerModalItem, selectedPitch === pitch.name && styles.pickerModalItemActive]}
+                      onPress={() => {
+                        setSelectedPitch(pitch.name);
+                        if (pitch.district) setSelectedDistrict(pitch.district);
+                        setPitchModalVisible(false);
+                      }}
+                    >
+                      <View>
+                        <Text style={[styles.pickerModalItemText, selectedPitch === pitch.name && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                          {pitch.name}
+                        </Text>
+                        <Text style={{ fontFamily: Fonts.body, fontSize: 11, color: theme.textMuted }}>
+                          {pitch.district} • ★ {pitch.rating}
+                        </Text>
+                      </View>
+                      {selectedPitch === pitch.name && <MaterialIcons name="check" size={18} color={theme.primary} />}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <TouchableOpacity style={styles.pickerModalClose} onPress={() => setPitchModalVisible(false)}>
+                  <Text style={styles.pickerModalCloseText}>KAPAT</Text>
+                </TouchableOpacity>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </Modal>
@@ -240,16 +428,19 @@ const useStyles = (theme: any) =>
       backgroundColor: theme.background,
       borderTopLeftRadius: 24,
       borderTopRightRadius: 24,
-      paddingBottom: 30,
+      maxHeight: '90%',
       borderTopWidth: 1,
       borderColor: theme.borderSubtle,
+    },
+    scrollView: {
+      maxHeight: '85%',
     },
     header: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 24,
-      paddingVertical: 18,
+      paddingHorizontal: 20,
+      paddingVertical: 16,
       borderBottomWidth: 1,
       borderBottomColor: theme.border,
     },
@@ -288,7 +479,8 @@ const useStyles = (theme: any) =>
     },
     body: {
       padding: 20,
-      gap: 18,
+      gap: 16,
+      paddingBottom: 34,
     },
     statusCard: {
       flexDirection: 'row',
@@ -355,6 +547,35 @@ const useStyles = (theme: any) =>
       color: '#ffffff',
       fontWeight: 'bold',
     },
+    pickerSelector: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: theme.surfaceContainer,
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderWidth: 1,
+      borderColor: theme.borderSubtle,
+    },
+    pickerLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      flex: 1,
+    },
+    pickerFieldLabel: {
+      fontFamily: Fonts.body,
+      fontSize: 10,
+      color: theme.textMuted,
+      textTransform: 'uppercase',
+    },
+    pickerFieldValue: {
+      fontFamily: Fonts.headlineBold,
+      fontSize: 13,
+      color: theme.text,
+      marginTop: 2,
+    },
     inputWrap: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -375,7 +596,7 @@ const useStyles = (theme: any) =>
     actionsRow: {
       flexDirection: 'row',
       gap: 10,
-      marginTop: 4,
+      marginTop: 6,
     },
     deactivateBtn: {
       flexDirection: 'row',
@@ -410,5 +631,62 @@ const useStyles = (theme: any) =>
       fontSize: 13,
       color: '#ffffff',
       letterSpacing: 0.3,
+    },
+    pickerModalOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.7)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
+      zIndex: 99,
+    },
+    pickerModalBox: {
+      width: '100%',
+      backgroundColor: theme.surface,
+      borderRadius: 16,
+      padding: 18,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    pickerModalHeader: {
+      fontFamily: Fonts.headlineBold,
+      fontSize: 13,
+      color: theme.primary,
+      letterSpacing: 0.5,
+      marginBottom: 12,
+    },
+    pickerModalItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 12,
+      paddingHorizontal: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.borderSubtle,
+    },
+    pickerModalItemActive: {
+      backgroundColor: `${theme.primary}15`,
+      borderRadius: 8,
+    },
+    pickerModalItemText: {
+      fontFamily: Fonts.body,
+      fontSize: 14,
+      color: theme.text,
+    },
+    pickerModalClose: {
+      marginTop: 14,
+      paddingVertical: 10,
+      alignItems: 'center',
+      backgroundColor: theme.surfaceContainerHighest,
+      borderRadius: 8,
+    },
+    pickerModalCloseText: {
+      fontFamily: Fonts.headlineBold,
+      fontSize: 12,
+      color: theme.text,
     },
   });

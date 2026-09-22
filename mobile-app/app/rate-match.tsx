@@ -433,25 +433,15 @@ export default function RateMatchScreen() {
                 </Text>
               </TouchableOpacity>
 
-              {canEditScore && formaGoluTeam && (
-                <TouchableOpacity
-                  style={styles.formaGoluClearBtn}
-                  onPress={() => handleFormaGoluSelect(formaGoluTeam)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <MaterialIcons name="close" size={13} color={theme.textMuted} />
-                </TouchableOpacity>
-              )}
-
               {/* Inline tiebreaker note */}
               {scoreA === scoreB && (scoreA > 0 || scoreB > 0) && !formaGoluTeam && (
                 <Text style={[styles.formaGoluStatusNoteText, { flex: 1, color: '#f59e0b' }]}>
                   ⚠️ Berabere!
                 </Text>
               )}
-              {formaGoluTeam && (
-                <Text style={[styles.formaGoluStatusNoteText, { flex: 1, color: scoreA === scoreB ? '#22c55e' : theme.textMuted }]}>
-                  {scoreA === scoreB ? `🏆 ${formaGoluTeam === 'A' ? 'A' : 'B'} Kazandı` : `🎽 ${formaGoluTeam === 'A' ? 'A' : 'B'} ilk golü attı`}
+              {scoreA === scoreB && formaGoluTeam && (
+                <Text style={[styles.formaGoluStatusNoteText, { flex: 1, color: '#22c55e' }]}>
+                  🏆 {formaGoluTeam === 'A' ? 'A' : 'B'} Kazandı
                 </Text>
               )}
             </View>

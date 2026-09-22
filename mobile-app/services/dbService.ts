@@ -909,6 +909,7 @@ export const dbService = {
     district?: string; 
     position?: string; 
     level?: string;
+    minRating?: number;
     onlyLookingForMatch?: boolean;
     timeFrame?: string;
   }) => {
@@ -934,23 +935,37 @@ export const dbService = {
       if (criteria.position) {
         players = players.filter((p: any) => p.position && p.position.toUpperCase().includes(criteria.position!.toUpperCase()));
       }
-      if (criteria.level) {
-        const selectedLevelList = criteria.level.split(',').map(s => s.trim()).filter(Boolean);
-        if (selectedLevelList.length > 0) {
+      if (criteria.minRating !== undefined && !isNaN(criteria.minRating) && criteria.minRating > 0) {
+        players = players.filter((p: any) => {
+          const ratingNum = typeof p.rating === 'number' ? p.rating : parseFloat(p.rating);
+          return !isNaN(ratingNum) && ratingNum >= criteria.minRating!;
+        });
+      } else if (criteria.level) {
+        const matchNumeric = criteria.level.match(/^(\d+(\.\d+)?)/);
+        if (matchNumeric && parseFloat(matchNumeric[1]) > 0) {
+          const minNum = parseFloat(matchNumeric[1]);
           players = players.filter((p: any) => {
-            if (p.level && selectedLevelList.includes(p.level)) return true;
             const ratingNum = typeof p.rating === 'number' ? p.rating : parseFloat(p.rating);
-            if (!isNaN(ratingNum)) {
-              return selectedLevelList.some(lvl => {
-                if (lvl === '0-3.9') return ratingNum >= 0 && ratingNum <= 3.9;
-                if (lvl === '4.0-5.9') return ratingNum >= 4.0 && ratingNum <= 5.9;
-                if (lvl === '6.0-7.9') return ratingNum >= 6.0 && ratingNum <= 7.9;
-                if (lvl === '8.0+' || lvl === '8.0-10') return ratingNum >= 8.0;
-                return false;
-              });
-            }
-            return false;
+            return !isNaN(ratingNum) && ratingNum >= minNum;
           });
+        } else {
+          const selectedLevelList = criteria.level.split(',').map(s => s.trim()).filter(Boolean);
+          if (selectedLevelList.length > 0) {
+            players = players.filter((p: any) => {
+              if (p.level && selectedLevelList.includes(p.level)) return true;
+              const ratingNum = typeof p.rating === 'number' ? p.rating : parseFloat(p.rating);
+              if (!isNaN(ratingNum)) {
+                return selectedLevelList.some(lvl => {
+                  if (lvl === '0-3.9') return ratingNum >= 0 && ratingNum <= 3.9;
+                  if (lvl === '4.0-5.9') return ratingNum >= 4.0 && ratingNum <= 5.9;
+                  if (lvl === '6.0-7.9') return ratingNum >= 6.0 && ratingNum <= 7.9;
+                  if (lvl === '8.0+' || lvl === '8.0-10') return ratingNum >= 8.0;
+                  return false;
+                });
+              }
+              return false;
+            });
+          }
         }
       }
       if (criteria.onlyLookingForMatch) {
@@ -1182,17 +1197,21 @@ export const dbService = {
   setUserLookingForMatch: async (
     userId: string, 
     isLooking: boolean, 
-    availableDateOrDetails?: string | { availableDate?: string; district?: string; availableNote?: string }, 
+    availableDateOrDetails?: string | { availableDate?: string; city?: string; district?: string; preferredPitch?: string; availableNote?: string }, 
     preferredDistrict?: string, 
     note?: string
   ) => {
     let dateStr = 'Bugün';
+    let cityStr = '';
     let distStr = '';
+    let pitchStr = '';
     let noteStr = '';
 
     if (typeof availableDateOrDetails === 'object' && availableDateOrDetails !== null) {
       dateStr = availableDateOrDetails.availableDate || 'Bugün';
+      cityStr = availableDateOrDetails.city || '';
       distStr = availableDateOrDetails.district || '';
+      pitchStr = availableDateOrDetails.preferredPitch || '';
       noteStr = availableDateOrDetails.availableNote || '';
     } else {
       dateStr = availableDateOrDetails || 'Bugün';
@@ -1202,13 +1221,18 @@ export const dbService = {
 
     try {
       const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, {
+      const updateData: Record<string, any> = {
         isLookingForMatch: isLooking,
         availableDate: isLooking ? dateStr : deleteField(),
         preferredDistrict: isLooking ? (distStr || null) : deleteField(),
+        preferredPitch: isLooking ? (pitchStr || null) : deleteField(),
         availableNote: isLooking ? (noteStr || null) : deleteField(),
         updatedAt: serverTimestamp()
-      });
+      };
+      if (isLooking && cityStr) {
+        updateData.city = cityStr;
+      }
+      await updateDoc(userRef, updateData);
       return true;
     } catch (error) {
       console.error("Maç arama durumu güncelleme hatası:", error);

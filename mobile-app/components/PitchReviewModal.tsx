@@ -75,10 +75,6 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
   const liveFormAverage = ((surfaceRating + showerRating + lightingRating + parkingRating) / 4).toFixed(1);
 
   const handleAddReview = async () => {
-    if (!userComment.trim()) {
-      Alert.alert('Eksik Bilgi', 'Lütfen bir yorum yazın.');
-      return;
-    }
     setSubmitting(true);
     try {
       const avgNum = parseFloat(liveFormAverage);
@@ -89,6 +85,7 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
         parking: parkingRating,
       };
 
+      const finalComment = userComment.trim();
       const reviewPayload = {
         pitchName,
         userId: user?.uid || 'anon',
@@ -96,7 +93,7 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
         userAvatar: user?.avatar,
         rating: avgNum,
         criteria: criteriaObj,
-        comment: userComment.trim(),
+        comment: finalComment,
       };
       await dbService.addPitchReview(pitchName, reviewPayload);
 
@@ -105,14 +102,14 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
         name: user?.name || 'Siz (Oyuncu)',
         rating: avgNum,
         criteria: criteriaObj,
-        comment: userComment.trim(),
+        comment: finalComment,
         date: 'Az önce',
         avatar: user?.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG',
       };
       setReviews(prev => [newRev, ...prev]);
       setUserComment('');
       setShowAddForm(false);
-      Alert.alert('✅ Değerlendirme Kaydedildi', 'Tesis puanınız ve yorumunuz başarıyla kaydedildi.');
+      Alert.alert('✅ Değerlendirme Kaydedildi', 'Tesis puanınız başarıyla kaydedildi.');
     } catch (e) {
       console.error('Yorum ekleme hatası:', e);
       Alert.alert('Hata', 'Değerlendirmeniz kaydedilirken bir sorun oluştu.');
@@ -247,7 +244,7 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
 
                 <TextInput
                   style={styles.commentInput}
-                  placeholder="Zemin, soyunma odası veya tesis hakkında yorum yapın..."
+                  placeholder="Zemin, soyunma odası veya tesis hakkında yorum yapın (İsteğe bağlı)..."
                   placeholderTextColor={theme.textMuted}
                   multiline
                   value={userComment}
@@ -300,7 +297,7 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
                       </View>
                     )}
 
-                    <Text style={styles.revComment}>{rev.comment}</Text>
+                    {Boolean(rev.comment) && <Text style={styles.revComment}>{rev.comment}</Text>}
                   </View>
                 </View>
               ))}

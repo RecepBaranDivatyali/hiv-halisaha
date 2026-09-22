@@ -9,6 +9,7 @@ import { PitchReviewModal } from '@/components/PitchReviewModal';
 import { useTheme } from '@/context/ThemeContext';
 import { Skeleton } from '@/components/Skeleton';
 import { PITCH_DATABASE } from '@/config/pitches';
+import Slider from '@react-native-community/slider';
 
 type Tab = 'Maç' | 'Oyuncu' | 'Rakip';
 
@@ -56,6 +57,7 @@ export default function SearchScreen() {
   const [dateModalVisible, setDateModalVisible] = useState(false);
 
   const [pos, setPos] = useState('KL');
+  const [minRating, setMinRating] = useState<number>(0);
   const [selectedLevels, setSelectedLevels] = useState<string[]>(['0-3.9']);
   const [difficulty, setDifficulty] = useState('Eğlence');
   const [selectedTimeFrames, setSelectedTimeFrames] = useState<string[]>([]);
@@ -124,10 +126,16 @@ export default function SearchScreen() {
           if (parsed.city) setSelectedCity(parsed.city);
           if (parsed.district) setSelectedDistrict(parsed.district);
           if (parsed.pos) setPos(parsed.pos);
-          if (parsed.selectedLevels && Array.isArray(parsed.selectedLevels)) {
+          if (parsed.minRating !== undefined) {
+            setMinRating(Number(parsed.minRating));
+          } else if (parsed.selectedLevels && Array.isArray(parsed.selectedLevels)) {
             setSelectedLevels(parsed.selectedLevels);
+            if (parsed.selectedLevels.includes('8.0+')) setMinRating(8.0);
+            else if (parsed.selectedLevels.includes('6.0-7.9')) setMinRating(6.0);
+            else if (parsed.selectedLevels.includes('4.0-5.9')) setMinRating(4.0);
           } else if (parsed.level) {
-            setSelectedLevels(typeof parsed.level === 'string' ? parsed.level.split(',').map((s: string) => s.trim()).filter(Boolean) : [parsed.level]);
+            const num = parseFloat(parsed.level);
+            if (!isNaN(num)) setMinRating(num);
           }
           if (parsed.difficulty) setDifficulty(parsed.difficulty);
           if (parsed.timeFrames && Array.isArray(parsed.timeFrames)) {
@@ -157,8 +165,8 @@ export default function SearchScreen() {
         city: selectedCity,
         district: selectedDistrict,
         pos,
-        selectedLevels,
-        level: selectedLevels.join(','),
+        minRating,
+        level: minRating > 0 ? `${minRating.toFixed(1)}+` : undefined,
         difficulty,
         timeFrames: selectedTimeFrames,
         timeFrame: selectedTimeFrames.join(','),
@@ -171,7 +179,8 @@ export default function SearchScreen() {
         tab: activeTab, 
         pos: pos, 
         difficulty: difficulty, 
-        level: selectedLevels.length > 0 ? selectedLevels.join(',') : undefined, 
+        level: minRating > 0 ? `${minRating.toFixed(1)}+` : undefined, 
+        minRating: minRating > 0 ? minRating.toString() : undefined,
         city: selectedCity, 
         district: selectedDistrict,
         arena: selectedPitch !== 'Tüm Sahalar' ? selectedPitch : undefined,
@@ -209,7 +218,8 @@ export default function SearchScreen() {
             setSelectedDistrict('Kadıköy');
             setSelectedPitch('Tüm Sahalar');
             setPos('KL');
-            setSelectedLevels(['0-3.9']);
+            setMinRating(0);
+            setSelectedLevels([]);
             setDifficulty('Eğlence');
             setSelectedTimeFrames([]);
             Alert.alert('Filtreler Sıfırlandı', 'Arama kriterleri varsayılan değerlere döndürüldü.');
@@ -500,33 +510,35 @@ export default function SearchScreen() {
             {activeTab === 'Oyuncu' && (
               <View style={styles.sectionBox}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>OYUNCU SEVİYESİ</Text>
-                  {selectedLevels.length > 0 ? (
-                    <Text style={{ fontFamily: Fonts.body, fontSize: 10, color: theme.primary }}>
-                      {selectedLevels.length} Seviye Seçili
+                  <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>OYUNCU PUAN SEVİYESİ</Text>
+                  <View style={styles.ratingBadge}>
+                    <Text style={styles.ratingBadgeText}>
+                      {minRating === 0 ? 'Tüm Puanlar (0.0 - 10.0)' : `${minRating.toFixed(1)} ve Üzeri`}
                     </Text>
-                  ) : (
-                    <Text style={{ fontFamily: Fonts.body, fontSize: 10, color: theme.textMuted }}>
-                      Tüm Seviyeler
-                    </Text>
-                  )}
+                  </View>
                 </View>
-                <View style={styles.levelGrid}>
-                  {['0-3.9', '4.0-5.9', '6.0-7.9', '8.0+'].map((lv) => {
-                    const active = selectedLevels.includes(lv);
-                    return (
-                      <TouchableOpacity
-                        key={lv}
-                        style={levelBtnStyle(active)}
-                        onPress={() => toggleLevel(lv)}
-                        activeOpacity={0.8}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: active }}
-                      >
-                        <Text style={[styles.levelText, active && styles.levelTextActive]}>{lv}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+                <View style={styles.sliderContainer}>
+                  <Slider
+                    style={styles.sliderBar}
+                    minimumValue={0}
+                    maximumValue={10}
+                    step={0.5}
+                    value={minRating}
+                    onValueChange={(val) => setMinRating(Math.round(val * 10) / 10)}
+                    minimumTrackTintColor={theme.primary}
+                    maximumTrackTintColor={theme.surfaceContainerHighest}
+                    thumbTintColor={theme.primary}
+                  />
+                  <View style={styles.sliderLabelsRow}>
+                    <Text style={styles.sliderMinMaxText}>0.0</Text>
+                    <View style={styles.sliderCurrentPill}>
+                      <MaterialIcons name="star" size={13} color={theme.background} />
+                      <Text style={styles.sliderCurrentText}>
+                        {minRating === 0 ? 'Filtresiz (0-10)' : `${minRating.toFixed(1)} +`}
+                      </Text>
+                    </View>
+                    <Text style={styles.sliderMinMaxText}>10.0</Text>
+                  </View>
                 </View>
               </View>
             )}
@@ -977,6 +989,53 @@ const useStyles = (theme: any) => StyleSheet.create({
   },
   levelTextActive: {
     color: theme.primary
+  },
+  sliderContainer: {
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  sliderBar: {
+    width: '100%',
+    height: 40,
+  },
+  ratingBadge: {
+    backgroundColor: `${theme.primary}18`,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: `${theme.primary}40`,
+  },
+  ratingBadgeText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.primary,
+  },
+  sliderLabelsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    marginTop: 4,
+  },
+  sliderMinMaxText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 12,
+    color: theme.textMuted,
+  },
+  sliderCurrentPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: theme.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  sliderCurrentText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.background,
   },
   toggleBox: {
     flexDirection: 'row',

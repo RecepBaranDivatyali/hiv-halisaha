@@ -47,6 +47,7 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
   
   // Create Club State
   const [clubName, setClubName] = useState('');
+  const [nameError, setNameError] = useState('');
   const [clubDesc, setClubDesc] = useState('');
   const [selectedCity, setSelectedCity] = useState(user?.city || 'İstanbul');
   const [citySelectorOpen, setCitySelectorOpen] = useState(false);
@@ -60,6 +61,7 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
     if (visible) {
       setActiveTab(initialTab);
       if (user?.city) setSelectedCity(user.city);
+      setNameError('');
     }
   }, [visible, initialTab, user?.city]);
 
@@ -77,9 +79,11 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
   const handleSubmit = async () => {
     if (activeTab === 'create') {
       if (!clubName.trim()) {
+        setNameError('Lütfen kulüp adını giriniz.');
         Alert.alert('Eksik Bilgi', 'Lütfen kulüp adını girin.');
         return;
       }
+      setNameError('');
       setIsSubmitting(true);
       try {
         const newClub = await dbService.createClub({
@@ -99,7 +103,11 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
         });
 
         if (newClub?.id) {
-          await saveUser({ clubId: newClub.id, clubName: newClub.name });
+          await saveUser({ 
+            clubId: newClub.id, 
+            clubName: newClub.name, 
+            clubLogo: newClub.logo || selectedLogo || PRESET_LOGOS[0].uri 
+          });
         }
 
         Alert.alert(
@@ -111,6 +119,7 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
               onPress: () => {
                 setClubName('');
                 setClubDesc('');
+                setNameError('');
                 setSelectedLogo(PRESET_LOGOS[0].uri);
                 onClose();
                 if (onSuccess) onSuccess();
@@ -218,14 +227,22 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
 
                 {/* Form Fields */}
                 <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Takım Adı</Text>
+                  <Text style={styles.inputLabel}>Takım Adı *</Text>
                   <TextInput
-                    style={styles.input}
+                    style={[styles.input, Boolean(nameError) && { borderColor: theme.error, borderWidth: 1 }]}
                     placeholder="Örn: Boğaziçi United"
                     placeholderTextColor={theme.textMuted}
                     value={clubName}
-                    onChangeText={setClubName}
+                    onChangeText={(t) => {
+                      setClubName(t);
+                      if (nameError) setNameError('');
+                    }}
                   />
+                  {Boolean(nameError) && (
+                    <Text style={{ color: theme.error, fontSize: 11, fontFamily: Fonts.body, marginTop: 4 }}>
+                      {nameError}
+                    </Text>
+                  )}
                 </View>
 
                 <View style={styles.inputGroup}>
@@ -298,19 +315,26 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
 
           {/* Footer */}
           <View style={styles.footer}>
-            <Bouncable 
-              style={[styles.submitBtn, isSubmitting && { opacity: 0.6 }]} 
+            <TouchableOpacity 
+              style={[styles.submitBtn, isSubmitting && { opacity: 0.7 }]} 
               onPress={handleSubmit}
               disabled={isSubmitting}
+              activeOpacity={0.8}
             >
               {isSubmitting ? (
-                <ActivityIndicator size="small" color={theme.background} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <ActivityIndicator size="small" color={theme.background} />
+                  <Text style={styles.submitBtnText}>KURULUYOR...</Text>
+                </View>
               ) : (
-                <Text style={styles.submitBtnText}>
-                  {activeTab === 'create' ? 'KULÜBÜ KUR' : 'KATILMA İSTEĞİ GÖNDER'}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <MaterialIcons name={activeTab === 'create' ? "add-circle" : "send"} size={20} color={theme.background} />
+                  <Text style={styles.submitBtnText}>
+                    {activeTab === 'create' ? 'KULÜBÜ KUR' : 'KATILMA İSTEĞİ GÖNDER'}
+                  </Text>
+                </View>
               )}
-            </Bouncable>
+            </TouchableOpacity>
           </View>
 
         </View>

@@ -26,6 +26,7 @@ export default function ResultsScreen() {
     timeFrame?: string;
     reservationStatus?: string;
     playerStatus?: string;
+    minRating?: string;
   }>();
   const searchTab = (params.tab || 'Oyuncu') as string;
   const posName = params.pos ? `(${params.pos})` : '';
@@ -47,6 +48,7 @@ export default function ResultsScreen() {
           district: params.district,
           position: params.pos,
           level: params.level,
+          minRating: params.minRating ? parseFloat(params.minRating) : undefined,
           onlyLookingForMatch: params.playerStatus === 'looking',
           timeFrame: params.timeFrame,
         });
