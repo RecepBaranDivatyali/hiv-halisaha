@@ -440,35 +440,7 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* HIZLI İŞLEMLER */}
-        <View style={styles.sectionHeaderBox}>
-          <Text style={[styles.sectionTitle, { color: theme.primary }]}>HIZLI İŞLEMLER</Text>
-        </View>
 
-        <Bouncable style={styles.createMatchBtn} onPress={() => setCreateMatchVisible(true)}>
-          <View>
-            <Text style={styles.createMatchTitle}>MAÇ OLUŞTUR</Text>
-            <Text style={styles.createMatchSub}>KENDİ EKİBİNİ KUR, SAHAYA İN</Text>
-          </View>
-          <View style={styles.createMatchIconBox}>
-            <MaterialIcons name="add" size={24} color={theme.primary} />
-          </View>
-        </Bouncable>
-
-        <View style={styles.quickActionsGrid}>
-          <Bouncable style={styles.quickActionBox} onPress={() => router.push({ pathname: '/(tabs)/search', params: { tab: 'Maç' } })}>
-            <MaterialIcons name="search" size={24} color={theme.secondary} />
-            <Text style={styles.quickActionText}>MAÇ BUL</Text>
-          </Bouncable>
-          <Bouncable style={styles.quickActionBox} onPress={() => router.push({ pathname: '/(tabs)/search', params: { tab: 'Oyuncu' } })}>
-            <MaterialIcons name="person-search" size={24} color={theme.secondary} />
-            <Text style={styles.quickActionText}>OYUNCU BUL</Text>
-          </Bouncable>
-          <Bouncable style={styles.quickActionBox} onPress={() => router.push({ pathname: '/(tabs)/search', params: { tab: 'Rakip' } })}>
-            <MaterialIcons name="sports-mma" size={24} color={theme.secondary} />
-            <Text style={styles.quickActionText}>RAKİP BUL</Text>
-          </Bouncable>
-        </View>
 
         {/* ── PLAYER MATCH SEEKING BEACON (OYUNCU MAÇ ARIYORUM SİNYALİ) ── */}
         {user?.isLookingForMatch ? (
@@ -646,50 +618,7 @@ const useStyles = (theme: any) => StyleSheet.create({
     color: theme.text,
     letterSpacing: -0.5,
   },
-  seeAllBtn: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-  },
-  seeAllText: {
-    fontFamily: Fonts.headlineBold,
-    fontSize: 12,
-    color: theme.primary,
-  },
-  createMatchBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: theme.surfaceContainer,
-    padding: 20,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: theme.borderSubtle,
-    marginBottom: 16,
-  },
-  createMatchTitle: {
-    fontFamily: Fonts.headlineBold,
-    fontSize: 18,
-    color: theme.text,
-    marginBottom: 4,
-  },
-  createMatchSub: {
-    fontFamily: Fonts.headlineBold,
-    fontSize: 11,
-    color: theme.textMuted,
-    letterSpacing: 1,
-  },
-  createMatchIconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: `${theme.primary}15`,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
-  quickActionsGrid: { flexDirection: 'row', gap: 12, marginBottom: 24 },
-  quickActionBox: { flex: 1, backgroundColor: theme.surface, paddingVertical: 20, borderRadius: 12, alignItems: 'center', gap: 12, borderWidth: 1, borderColor: theme.borderSubtle },
-  quickActionText: { fontFamily: Fonts.headlineBold, fontSize: 10, color: theme.secondary, letterSpacing: 0.5 },
 
   guideBannerCard: {
     flexDirection: 'row',

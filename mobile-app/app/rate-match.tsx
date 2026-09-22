@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, Alert } from 'react-native'
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
@@ -7,6 +7,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MatchStoryModal } from '@/components/MatchStoryModal';
 import { NotificationCenterModal } from '@/components/NotificationCenterModal';
 import { PitchReviewModal } from '@/components/PitchReviewModal';
+import { AppModal } from '@/components/AppModal';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/use-auth';
 import { dbService } from '@/services/dbService';
@@ -22,12 +23,7 @@ interface RosterPlayer {
   team?: 'A' | 'B';
 }
 
-const DEFAULT_PLAYERS: RosterPlayer[] = [
-  { id: '1', name: 'Burak Kaleci', position: 'Kaleci', number: '#1', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG' },
-  { id: '2', name: 'Ege Kaptan', position: 'Orta Saha', number: '#10', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCGEgY_XdNWMIj9yAYPG31RfO-rUvIt9prSpOqQHShIufOnkDbrYIlyKE5OZY68gsCgDSnwxHtMW-j19KupMZmC1tNOq2QEesdu0Hh1zinr1P_g8cyWt1cHFNPGGmiuhIZPaOmTY8ssYbYKbbtC1nP9RVOEgPKgWBYWiA4E6WPsGYKqCpqU3aMljt6lAwmwmmFRefyWbWiaAfQTMPcUlEPjZEzau9MIBiNfLMhzwyqoMX1Po75F4qVfsV9hLp3_uervSUefQPNM33cr' },
-  { id: '3', name: 'Hızlı Forvet', position: 'Forvet', number: '#9', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB3zN4BMEVqYUF3QeCqfMmUKmw5cBXxBSRW3VsxvUV-KXfxcfUNy6Y82Uw5RqW42gjFGsQrYA81GzfjxHDInaql-eBPtBAeWIzYvIo5IstQNOYNqQ8g3WQjb_WA4gUlWI3jtxS0-dZvcC5Az1uvxxCDgdHFIH9RwA7ZsebYxmMiF16BfI2i_Ms9TkF9YUXKDArXyw9YMuFV1_yUlUT27aKrZhO--9EpUrIuSs9PmeIxM6YUFzjuQBP3bjtPS29-G09qbUuQ9_U0i825' },
-  { id: '4', name: 'Mert Defans', position: 'Defans', number: '#4', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG' },
-];
+const DEFAULT_AVATAR = 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG';
 
 export default function RateMatchScreen() {
   const router = useRouter();
@@ -35,16 +31,25 @@ export default function RateMatchScreen() {
   const { user } = useAuth();
   const styles = useStyles(theme);
   const params = useLocalSearchParams<{ matchId?: string; playerName?: string; playerAvatar?: string; matchScore?: string; isOrganizer?: string }>();
-  const [scoreA, setScoreA] = useState(7);
-  const [scoreB, setScoreB] = useState(5);
+  const [scoreA, setScoreA] = useState(0);
+  const [scoreB, setScoreB] = useState(0);
   const [evaluatedPlayers, setEvaluatedPlayers] = useState<Record<string, number>>({});
 
-  const [roster, setRoster] = useState<RosterPlayer[]>(DEFAULT_PLAYERS);
-  const [selectedPlayer, setSelectedPlayer] = useState<RosterPlayer>(DEFAULT_PLAYERS[1]);
+  const [loading, setLoading] = useState(Boolean(params.matchId));
+  const [roster, setRoster] = useState<RosterPlayer[]>([]);
+  const [selectedPlayer, setSelectedPlayer] = useState<RosterPlayer | null>(null);
   const [pitchReviewVisible, setPitchReviewVisible] = useState(false);
-  const [matchArena, setMatchArena] = useState<string>('Beşiktaş Arena');
+  const [matchArena, setMatchArena] = useState<string>('');
   const [matchData, setMatchData] = useState<any>(null);
   const [formaGoluTeam, setFormaGoluTeam] = useState<'A' | 'B' | null>(null);
+  const [successModalVisible, setSuccessModalVisible] = useState(false);
+  const [successData, setSuccessData] = useState<{
+    playerName: string;
+    playerAvatar: string;
+    rating: number;
+    isMvp: boolean;
+    score: string;
+  } | null>(null);
 
   const isOrganizer = Boolean(
     params.isOrganizer === 'true' || 
@@ -68,6 +73,7 @@ export default function RateMatchScreen() {
 
   useEffect(() => {
     if (params.matchId) {
+      setLoading(true);
       // Önce bu maça ait değerlendirilen oyuncuları depodan yükle
       const storageKey = `@hiv_evaluated_${params.matchId}`;
       AsyncStorage.getItem(storageKey).then(raw => {
@@ -94,7 +100,7 @@ export default function RateMatchScreen() {
               .map(([slotKey, s], idx) => ({
                 id: s.uid || `slot-${slotKey}`,
                 name: s.name,
-                avatar: s.avatar || DEFAULT_PLAYERS[0].avatar,
+                avatar: s.avatar || DEFAULT_AVATAR,
                 position: s.position || (slotKey.includes('OS') ? 'Orta Saha' : slotKey.includes('FORVET') ? 'Forvet' : slotKey.includes('DEF') || slotKey.includes('DF') ? 'Defans' : slotKey.includes('KL') ? 'Kaleci' : 'Oyuncu'),
                 number: `#${idx + 1}`,
                 team: slotKey.startsWith('B_') ? 'B' : 'A',
@@ -126,7 +132,13 @@ export default function RateMatchScreen() {
             }
           }
         }
+      }).catch((err) => {
+        console.log('Maç bilgisi alınamadı:', err);
+      }).finally(() => {
+        setLoading(false);
       });
+    } else {
+      setLoading(false);
     }
   }, [params.matchId, params.playerName, user?.uid, user?.name]);
 
@@ -196,6 +208,10 @@ export default function RateMatchScreen() {
 
   const handleSaveRating = async () => {
     if (saving) return;
+    if (!selectedPlayer) {
+      Alert.alert('Oyuncu Seçin', 'Lütfen değerlendirmek istediğiniz oyuncuyu yukarıdaki kadro listesinden seçin.');
+      return;
+    }
     if (selectedPlayer?.id === user?.uid) {
       Alert.alert('Centilmenlik Kuralı', 'Kendinizi puanlayamazsınız. Lütfen takım arkadaşlarınızı veya rakiplerinizi değerlendirin.');
       return;
@@ -239,14 +255,14 @@ export default function RateMatchScreen() {
         }
       }
 
-      Alert.alert(
-        '✓ Değerlendirme Kaydedildi',
-        `${selectedPlayer?.name} için puanınız: ${rating.toFixed(1)}/10${isMvp ? ' • MVP adayı eklendi' : ''}\nMaç Skoru: ${finalScoreStr}`,
-        [
-          { text: 'Tamam', onPress: () => router.back() },
-          { text: 'Story Oluştur', onPress: () => setStoryVisible(true) },
-        ]
-      );
+      setSuccessData({
+        playerName: selectedPlayer?.name || 'Oyuncu',
+        playerAvatar: selectedPlayer?.avatar || DEFAULT_AVATAR,
+        rating,
+        isMvp,
+        score: finalScoreStr
+      });
+      setSuccessModalVisible(true);
     } catch (e) {
       console.log('Puan kaydetme hatası:', e);
       Alert.alert('Hata', 'Değerlendirme kaydedilirken bir sorun oluştu.');
@@ -282,6 +298,12 @@ export default function RateMatchScreen() {
         </TouchableOpacity>
       </View>
 
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={styles.loadingText}>Maç ve kadro bilgileri yükleniyor...</Text>
+        </View>
+      ) : (
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Match Score Section */}
         <View style={styles.scoreSectionCard}>
@@ -524,7 +546,7 @@ export default function RateMatchScreen() {
           <View style={styles.avatarWrap}>
             <View style={styles.avatarBorder}>
               <Image 
-                source={{ uri: selectedPlayer?.avatar }} 
+                source={{ uri: selectedPlayer?.avatar || DEFAULT_AVATAR }} 
                 style={styles.avatarImg} 
               />
             </View>
@@ -533,10 +555,10 @@ export default function RateMatchScreen() {
             </View>
           </View>
           <View style={styles.playerInfo}>
-            <Text style={styles.playerName}>{selectedPlayer?.name}</Text>
+            <Text style={styles.playerName}>{selectedPlayer?.name || 'Oyuncu Seçin'}</Text>
             <View style={styles.statusRow}>
               <View style={styles.pulseDot} />
-              <Text style={styles.statusText}>{selectedPlayer?.position} • Maç Sonu Değerlendirmesi</Text>
+              <Text style={styles.statusText}>{selectedPlayer?.position || 'Mevki'} • Maç Sonu Değerlendirmesi</Text>
             </View>
           </View>
         </View>
@@ -619,15 +641,21 @@ export default function RateMatchScreen() {
 
         {/* Action Buttons */}
         <TouchableOpacity 
-          style={[styles.submitBtn, (saving || selectedPlayer?.id === user?.uid) && { opacity: 0.6 }]} 
+          style={[styles.submitBtn, (saving || !selectedPlayer || selectedPlayer?.id === user?.uid) && { opacity: 0.6 }]} 
           activeOpacity={0.9} 
           onPress={handleSaveRating}
-          disabled={saving || selectedPlayer?.id === user?.uid}
+          disabled={saving || !selectedPlayer || selectedPlayer?.id === user?.uid}
         >
-          <MaterialIcons name="check" size={20} color={theme.background} />
-          <Text style={styles.submitBtnText}>
-            {selectedPlayer?.id === user?.uid ? 'KENDİNİZİ PUANLAYAMAZSINIZ' : 'DEĞERLENDİRMEYİ GÖNDER'}
-          </Text>
+          {saving ? (
+            <ActivityIndicator size="small" color={theme.background} />
+          ) : (
+            <>
+              <MaterialIcons name="check" size={20} color={theme.background} />
+              <Text style={styles.submitBtnText}>
+                {!selectedPlayer ? 'OYUNCU SEÇİN' : selectedPlayer?.id === user?.uid ? 'KENDİNİZİ PUANLAYAMAZSINIZ' : 'DEĞERLENDİRMEYİ GÖNDER'}
+              </Text>
+            </>
+          )}
         </TouchableOpacity>
 
         {/* Saha / Tesis Puanlama Butonu */}
@@ -637,9 +665,75 @@ export default function RateMatchScreen() {
           activeOpacity={0.85}
         >
           <MaterialIcons name="stadium" size={18} color={theme.secondary} />
-          <Text style={styles.pitchReviewBtnText}>SAHAYI / TESİSİ DEĞERLENDİR ({matchArena})</Text>
+          <Text style={styles.pitchReviewBtnText}>SAHAYI / TESİSİ DEĞERLENDİR ({matchArena || 'Saha'})</Text>
         </TouchableOpacity>
       </ScrollView>
+      )}
+
+      {/* Değerlendirme Başarılı Modalı */}
+      <AppModal
+        visible={successModalVisible}
+        onRequestClose={() => setSuccessModalVisible(false)}
+        animationType="fade"
+        transparent
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.successIconCircle}>
+              <MaterialIcons name="check" size={36} color="#090B10" />
+            </View>
+
+            <Text style={styles.successTitle}>DEĞERLENDİRME KAYDEDİLDİ</Text>
+            <Text style={styles.successSub}>
+              Puanınız ve geri bildiriminiz başarıyla iletildi.
+            </Text>
+
+            {successData && (
+              <View style={styles.successPlayerCard}>
+                <Image
+                  source={{ uri: successData.playerAvatar || DEFAULT_AVATAR }}
+                  style={styles.successPlayerAvatar}
+                />
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text style={styles.successPlayerName}>{successData.playerName}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.successRatingText}>★ {successData.rating.toFixed(1)} / 10</Text>
+                    {successData.isMvp && (
+                      <View style={styles.successMvpPill}>
+                        <Text style={styles.successMvpText}>👑 MVP</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.successScoreText}>Maç Skoru: {successData.score}</Text>
+                </View>
+              </View>
+            )}
+
+            <View style={styles.modalActionsRow}>
+              <TouchableOpacity
+                style={styles.storyActionBtn}
+                onPress={() => {
+                  setSuccessModalVisible(false);
+                  setStoryVisible(true);
+                }}
+              >
+                <MaterialIcons name="auto-awesome" size={18} color={theme.background} />
+                <Text style={styles.storyActionBtnText}>Story Oluştur</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.doneActionBtn}
+                onPress={() => {
+                  setSuccessModalVisible(false);
+                  router.back();
+                }}
+              >
+                <Text style={styles.doneActionBtnText}>Tamam / Geri Dön</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </AppModal>
 
 
     </SafeAreaView>
@@ -1149,5 +1243,135 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontSize: 12,
     color: theme.secondary,
     letterSpacing: 0.5,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 120,
+    gap: 16,
+  },
+  loadingText: {
+    fontFamily: Fonts.headlineBold,
+    color: theme.textMuted,
+    fontSize: 14,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: theme.surfaceContainer,
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+  },
+  successIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#22c55e',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  successTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 18,
+    color: theme.text,
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  successSub: {
+    fontFamily: Fonts.body,
+    fontSize: 13,
+    color: theme.textMuted,
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 20,
+  },
+  successPlayerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    width: '100%',
+    backgroundColor: theme.background,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: `${theme.primary}33`,
+    marginBottom: 20,
+  },
+  successPlayerAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: theme.primary,
+  },
+  successPlayerName: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 15,
+    color: theme.text,
+  },
+  successRatingText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 13,
+    color: theme.primary,
+  },
+  successMvpPill: {
+    backgroundColor: 'rgba(234, 179, 8, 0.2)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  successMvpText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: '#eab308',
+  },
+  successScoreText: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: theme.textMuted,
+  },
+  modalActionsRow: {
+    width: '100%',
+    gap: 10,
+  },
+  storyActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: theme.primary,
+  },
+  storyActionBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 14,
+    color: theme.background,
+  },
+  doneActionBtn: {
+    height: 46,
+    borderRadius: 12,
+    backgroundColor: theme.surfaceContainerHighest,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+  },
+  doneActionBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 13,
+    color: theme.text,
   },
 });

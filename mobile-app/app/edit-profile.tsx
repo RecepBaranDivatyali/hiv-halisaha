@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Image, Alert } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Image, Alert, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
@@ -10,6 +10,51 @@ import { useAuth } from '@/hooks/use-auth';
 import { useImagePicker } from '@/hooks/use-image-picker';
 import { ToastMessage, ToastNotification } from '@/components/ToastNotification';
 import { CustomInput } from '@/components/CustomInput';
+import { AppModal } from '@/components/AppModal';
+
+const TURKISH_BANKS = [
+  'Ziraat Bankası',
+  'Türkiye İş Bankası',
+  'Garanti BBVA',
+  'Yapı Kredi',
+  'Akbank',
+  'QNB Finansbank',
+  'VakıfBank',
+  'Halkbank',
+  'Enpara.com',
+  'Papara',
+  'DenizBank',
+  'TEB (Türk Ekonomi Bankası)',
+  'Kuveyt Türk',
+  'Fibabanka',
+  'ING Bank',
+  'Şekerbank',
+  'Albaraka Türk',
+  'Türkiye Finans',
+  'Odeabank',
+  'Diğer',
+];
+
+const formatTurkishIban = (raw: string): string => {
+  let clean = raw.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  if (clean.length > 0 && !clean.startsWith('TR')) {
+    if (/^\d/.test(clean)) {
+      clean = 'TR' + clean;
+    }
+  }
+  clean = clean.slice(0, 26);
+  const parts: string[] = [];
+  for (let i = 0; i < clean.length; i += 4) {
+    parts.push(clean.slice(i, i + 4));
+  }
+  return parts.join(' ');
+};
+
+const isValidTurkishIban = (formattedIban: string): boolean => {
+  const clean = formattedIban.replace(/\s+/g, '').toUpperCase();
+  if (!clean) return true;
+  return /^TR\d{24}$/.test(clean);
+};
 
 export default function EditProfileScreen() {
   const router = useRouter();
@@ -24,9 +69,11 @@ export default function EditProfileScreen() {
   const [city, setCity] = useState(user?.city || 'İSTANBUL');
   const [bio, setBio] = useState(user?.bio || 'Futbol tutkunu, takım oyuncusu.');
   const [avatar, setAvatar] = useState(user?.avatar || '');
-  const [iban, setIban] = useState(user?.iban || '');
+  const [iban, setIban] = useState(formatTurkishIban(user?.iban || ''));
   const [ibanName, setIbanName] = useState(user?.ibanName || user?.name || '');
   const [bankName, setBankName] = useState(user?.bankName || '');
+  const [bankModalVisible, setBankModalVisible] = useState(false);
+  const [bankSearch, setBankSearch] = useState('');
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -44,6 +91,25 @@ export default function EditProfileScreen() {
   };
 
   const handleSave = async () => {
+    const cleanIban = iban.trim();
+    if (cleanIban) {
+      if (!isValidTurkishIban(cleanIban)) {
+        Alert.alert(
+          'Geçersiz IBAN',
+          'IBAN "TR" ile başlamalı ve toplam 26 karakter (TR + 24 rakam) olmalıdır.\nÖrn: TR00 0000 0000 0000 0000 0000 00'
+        );
+        return;
+      }
+      if (!bankName.trim()) {
+        Alert.alert('Banka Seçimi Gerekli', 'Lütfen IBAN hesabınızın ait olduğu bankayı listeden seçin.');
+        return;
+      }
+      if (!ibanName.trim()) {
+        Alert.alert('Hesap Sahibi Gerekli', 'Lütfen IBAN hesabının ait olduğu ad ve soyadı girin.');
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       await saveUser({
@@ -52,7 +118,7 @@ export default function EditProfileScreen() {
         city,
         bio,
         avatar,
-        iban,
+        iban: cleanIban,
         ibanName,
         bankName,
       });
@@ -157,12 +223,22 @@ export default function EditProfileScreen() {
 
           <View style={styles.formGroup}>
             <Text style={styles.label}>BANKA ADI</Text>
-            <CustomInput
-              icon="account-balance"
-              value={bankName}
-              onChangeText={setBankName}
-              placeholder="Örn: Ziraat Bankası, Garanti BBVA"
-            />
+            <TouchableOpacity 
+              style={styles.selectorBtn} 
+              onPress={() => {
+                setBankSearch('');
+                setBankModalVisible(true);
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <MaterialIcons name="account-balance" size={20} color={bankName ? theme.primary : theme.textMuted} />
+                <Text style={[styles.selectorBtnText, !bankName && { color: theme.textMuted }]} numberOfLines={1}>
+                  {bankName || 'Banka Seçiniz...'}
+                </Text>
+              </View>
+              <MaterialIcons name="arrow-drop-down" size={24} color={theme.textMuted} />
+            </TouchableOpacity>
           </View>
 
           <View style={styles.formGroup}>
@@ -180,10 +256,16 @@ export default function EditProfileScreen() {
             <CustomInput
               icon="credit-card"
               value={iban}
-              onChangeText={(t) => setIban(t.toUpperCase())}
+              onChangeText={(t) => setIban(formatTurkishIban(t))}
               placeholder="TR00 0000 0000 0000 0000 0000 00"
               autoCapitalize="characters"
+              maxLength={32}
             />
+            {Boolean(iban.trim()) && !isValidTurkishIban(iban) && (
+              <Text style={{ fontFamily: Fonts.body, fontSize: 11, color: theme.error, marginTop: 2 }}>
+                ⚠️ IBAN 26 hane olmalıdır ({iban.replace(/\s+/g, '').length}/26)
+              </Text>
+            )}
           </View>
         </View>
 
@@ -194,6 +276,74 @@ export default function EditProfileScreen() {
           <Text style={styles.saveBtnText}>{saving ? 'KAYDEDİLİYOR...' : 'KAYDET'}</Text>
         </Bouncable>
       </View>
+
+      {/* Banka Seçim Modalı */}
+      <AppModal
+        visible={bankModalVisible}
+        onRequestClose={() => setBankModalVisible(false)}
+        animationType="slide"
+        transparent
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <MaterialIcons name="account-balance" size={22} color={theme.primary} />
+                <Text style={styles.modalTitle}>BANKA SEÇİNİZ</Text>
+              </View>
+              <TouchableOpacity onPress={() => setBankModalVisible(false)} style={styles.closeBtn}>
+                <MaterialIcons name="close" size={22} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.searchWrap}>
+              <MaterialIcons name="search" size={20} color={theme.textMuted} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Banka ara..."
+                placeholderTextColor={theme.textMuted}
+                value={bankSearch}
+                onChangeText={setBankSearch}
+              />
+              {Boolean(bankSearch) && (
+                <TouchableOpacity onPress={() => setBankSearch('')}>
+                  <MaterialIcons name="close" size={18} color={theme.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <ScrollView style={{ maxHeight: 350 }} showsVerticalScrollIndicator={false}>
+              {TURKISH_BANKS
+                .filter(b => b.toLowerCase().includes(bankSearch.toLowerCase().trim()))
+                .map((bank) => {
+                  const isSelected = bankName === bank;
+                  return (
+                    <TouchableOpacity
+                      key={bank}
+                      style={[styles.bankItem, isSelected && styles.bankItemActive]}
+                      onPress={() => {
+                        setBankName(bank);
+                        setBankModalVisible(false);
+                      }}
+                    >
+                      <MaterialIcons 
+                        name="account-balance" 
+                        size={18} 
+                        color={isSelected ? theme.primary : theme.textMuted} 
+                      />
+                      <Text style={[styles.bankItemText, isSelected && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                        {bank}
+                      </Text>
+                      {isSelected && (
+                        <MaterialIcons name="check" size={20} color={theme.primary} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+            </ScrollView>
+          </View>
+        </View>
+      </AppModal>
     </SafeAreaView>
   );
 }
@@ -286,5 +436,91 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontSize: 15,
     color: theme.onPrimary,
     letterSpacing: 1,
+  },
+  selectorBtn: {
+    height: 52,
+    backgroundColor: theme.surfaceContainer,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+  },
+  selectorBtnText: {
+    fontFamily: Fonts.body,
+    fontSize: 14,
+    color: theme.text,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: theme.surfaceContainer,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    maxHeight: '80%',
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.borderSubtle,
+  },
+  modalTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 16,
+    color: theme.text,
+    letterSpacing: 0.5,
+  },
+  closeBtn: {
+    padding: 4,
+  },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.background,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 44,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    height: '100%',
+    fontFamily: Fonts.body,
+    fontSize: 14,
+    color: theme.text,
+  },
+  bankItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: `${theme.borderSubtle}40`,
+  },
+  bankItemActive: {
+    backgroundColor: `${theme.primary}15`,
+  },
+  bankItemText: {
+    flex: 1,
+    fontFamily: Fonts.body,
+    fontSize: 14,
+    color: theme.text,
   },
 });

@@ -170,31 +170,35 @@ export default function MatchesScreen() {
               return (
                 <Animated.View key={match.id || idx} entering={FadeInRight.delay(idx * 100).springify()}>
                   <View style={[styles.matchCard, { borderLeftColor: cardBorder }]}>
-                    <View style={[styles.matchStatusBadge, { backgroundColor: badgeBg }]}>
-                      <Text style={[styles.matchStatusText, { color: badgeColor }]}>
-                        {badgeText}
-                      </Text>
+                    {/* Üst Başlık Satırı: Saha Rozeti (Sol) ve Durum Rozeti (Sağ) */}
+                    <View style={styles.matchCardTopHeader}>
+                      <View style={styles.matchCardTopBadges}>
+                        {match.hasReservation ? (
+                          <View style={styles.resMiniBadge}>
+                            <MaterialIcons name="verified" size={11} color="#22c55e" />
+                            <Text style={styles.resMiniBadgeText}>Sahası Hazır</Text>
+                          </View>
+                        ) : match.isPitchFlexible ? (
+                          <View style={styles.flexMiniBadge}>
+                            <MaterialIcons name="location-searching" size={11} color="#f59e0b" />
+                            <Text style={styles.flexMiniBadgeText}>Saha Aranıyor</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <View style={[styles.matchStatusBadge, { backgroundColor: badgeBg }]}>
+                        <Text style={[styles.matchStatusText, { color: badgeColor }]}>
+                          {badgeText}
+                        </Text>
+                      </View>
                     </View>
+
                     <View style={styles.matchCardBody}>
                       <View style={styles.matchInfoRow}>
                         <View style={styles.matchIconWrap}>
                           <MaterialIcons name="sports-soccer" size={32} color={iconColor} />
                         </View>
                         <View style={{ flex: 1 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                            <Text style={styles.matchTitle}>{match.arena}</Text>
-                            {match.hasReservation ? (
-                              <View style={styles.resMiniBadge}>
-                                <MaterialIcons name="verified" size={11} color="#22c55e" />
-                                <Text style={styles.resMiniBadgeText}>Sahası Hazır</Text>
-                              </View>
-                            ) : match.isPitchFlexible ? (
-                              <View style={styles.flexMiniBadge}>
-                                <MaterialIcons name="location-searching" size={11} color="#f59e0b" />
-                                <Text style={styles.flexMiniBadgeText}>Saha Aranıyor</Text>
-                              </View>
-                            ) : null}
-                          </View>
+                          <Text style={styles.matchTitle} numberOfLines={2}>{match.arena}</Text>
                           <Text style={styles.matchSubtitle}>{match.dateTime} • {match.mode}</Text>
                         </View>
                       </View>
@@ -240,8 +244,11 @@ export default function MatchesScreen() {
             ) : actualPastMatches.map((match, idx) => (
               <Animated.View key={match.id || idx} entering={FadeInRight.delay(idx * 100).springify()}>
                 <View style={[styles.matchCard, { borderLeftColor: theme.secondary }]}>
-                  <View style={[styles.matchStatusBadge, { backgroundColor: `${theme.secondary}22` }]}>
-                    <Text style={[styles.matchStatusText, { color: theme.secondary }]}>TAMAMLANDI</Text>
+                  <View style={styles.matchCardTopHeader}>
+                    <View />
+                    <View style={[styles.matchStatusBadge, { backgroundColor: `${theme.secondary}22` }]}>
+                      <Text style={[styles.matchStatusText, { color: theme.secondary }]}>TAMAMLANDI</Text>
+                    </View>
                   </View>
                   <View style={styles.matchCardBody}>
                     <View style={styles.matchInfoRow}>
@@ -249,7 +256,7 @@ export default function MatchesScreen() {
                         <MaterialIcons name="sports-soccer" size={32} color={theme.secondary} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.matchTitle}>{match.arena}</Text>
+                        <Text style={styles.matchTitle} numberOfLines={2}>{match.arena}</Text>
                         <Text style={styles.matchSubtitle}>{match.dateTime} • {match.mode}</Text>
                       </View>
                     </View>
@@ -375,25 +382,38 @@ const useStyles = (theme: any) => StyleSheet.create({
   },
   matchCard: {
     backgroundColor: theme.surface,
-    borderRadius: 8,
-    padding: 20,
+    borderRadius: 12,
+    padding: 16,
     borderLeftWidth: 4,
-    position: 'relative',
-    overflow: 'hidden'
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    overflow: 'hidden',
+    gap: 10,
+  },
+  matchCardTopHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    minHeight: 24,
+  },
+  matchCardTopBadges: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
   },
   matchStatusBadge: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 4
+    borderRadius: 6,
+    alignSelf: 'flex-start',
   },
   matchStatusText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 10,
     textTransform: 'uppercase',
-    letterSpacing: 1.5
+    letterSpacing: 1.2,
   },
   matchCardBody: {
     gap: 16

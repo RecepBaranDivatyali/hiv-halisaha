@@ -43,7 +43,20 @@ service cloud.firestore {
       allow update: if isAuthenticated() && (
         isAdmin() || 
         resource.data.organizerId == request.auth.uid ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['slots', 'joinedPlayersCount', 'reserves', 'updatedAt'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'slots', 
+          'joinedPlayersCount', 
+          'reserves', 
+          'benchA', 
+          'benchB', 
+          'captainAId', 
+          'captainBId', 
+          'captainBName', 
+          'score', 
+          'formaGoluTeam', 
+          'status', 
+          'updatedAt'
+        ])
       );
       // Maç silme: Yalnızca organizatör veya Admin
       allow delete: if isAdmin() || (
@@ -103,22 +116,14 @@ service cloud.firestore {
 
     // ─── SOHBETLER & MESAJLAŞMA (CONVERSATIONS) ───
     match /conversations/{conversationId} {
-      allow read: if isAuthenticated() && (
-        conversationId.matches('match_.*') ||
-        (resource.data.participants != null && request.auth.uid in resource.data.participants) ||
-        isAdmin()
-      );
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && (
-        conversationId.matches('match_.*') ||
-        (resource.data.participants != null && request.auth.uid in resource.data.participants) ||
-        isAdmin()
-      );
+      allow update: if isAuthenticated();
       
       // Alt koleksiyon: Mesajlar
       match /messages/{messageId} {
         allow read: if isAuthenticated();
-        allow create: if isAuthenticated() && request.resource.data.senderId == request.auth.uid;
+        allow create: if isAuthenticated();
         allow update, delete: if isAdmin() || (
           isAuthenticated() && resource.data.senderId == request.auth.uid
         );

@@ -95,6 +95,18 @@ export default function MatchRoomScreen() {
   const [pitchReviewVisible, setPitchReviewVisible] = useState(false);
   const [storyModalVisible, setStoryModalVisible] = useState(false);
   const [formationModalVisible, setFormationModalVisible] = useState(false);
+  const [slotActionModalVisible, setSlotActionModalVisible] = useState(false);
+  const [slotActionData, setSlotActionData] = useState<{
+    slotKey: string;
+    slotLabel: string;
+    penalty: number;
+  } | null>(null);
+  const [teamSwitchModalVisible, setTeamSwitchModalVisible] = useState(false);
+  const [teamSwitchData, setTeamSwitchData] = useState<{
+    targetSlotKey: string;
+    targetSlotLabel: string;
+    targetTeam: 'A' | 'B';
+  } | null>(null);
 
   // Tactical Formations (2-3-1, 3-2-1, 2-2-2, 3-1-2)
   // Bench state from active match
@@ -560,14 +572,15 @@ export default function MatchRoomScreen() {
   // Firestore live general chat subscription
   React.useEffect(() => {
     if (!activeMatchId) return;
+    const effUid = auth.currentUser?.uid || user?.uid;
     const unsubChat = dbService.subscribeMessages(`match_${activeMatchId}`, (msgs) => {
       if (msgs) {
         setChatMessages(msgs.map(m => ({
           id: m.id || Math.random().toString(),
           name: m.senderName,
           text: m.text,
-          color: m.senderId === user?.uid ? theme.secondary : theme.primary,
-          isSelf: m.senderId === user?.uid
+          color: (effUid && m.senderId === effUid) ? theme.secondary : theme.primary,
+          isSelf: Boolean(effUid && m.senderId === effUid)
         })));
       }
     });
@@ -582,14 +595,15 @@ export default function MatchRoomScreen() {
       setTeamChatMessages([]);
       return;
     }
+    const effUid = auth.currentUser?.uid || user?.uid;
     const unsubTeamChat = dbService.subscribeMessages(`match_${activeMatchId}_team_${myTeam}`, (msgs) => {
       if (msgs) {
         setTeamChatMessages(msgs.map(m => ({
           id: m.id || Math.random().toString(),
           name: m.senderName,
           text: m.text,
-          color: m.senderId === user?.uid ? theme.secondary : theme.primary,
-          isSelf: m.senderId === user?.uid
+          color: (effUid && m.senderId === effUid) ? theme.secondary : theme.primary,
+          isSelf: Boolean(effUid && m.senderId === effUid)
         })));
       }
     });
@@ -605,28 +619,31 @@ export default function MatchRoomScreen() {
 
     const isTeam = chatChannel === 'team' && myTeam;
     const targetRoomId = isTeam ? `match_${activeMatchId}_team_${myTeam}` : `match_${activeMatchId}`;
+    const effUid = auth.currentUser?.uid || user?.uid || 'user';
+
+    const optimisticMsg = {
+      id: `temp_${Date.now()}`,
+      name: user?.name || auth.currentUser?.displayName || 'Ben',
+      text: text,
+      color: theme.secondary,
+      isSelf: true
+    };
+
+    if (isTeam) {
+      setTeamChatMessages((prev) => [...prev, optimisticMsg]);
+    } else {
+      setChatMessages((prev) => [...prev, optimisticMsg]);
+    }
 
     try {
       await dbService.sendMessage(targetRoomId, {
-        senderId: user?.uid || 'anon',
-        senderName: user?.name || 'Ben',
-        senderAvatar: user?.avatar,
+        senderId: effUid,
+        senderName: user?.name || auth.currentUser?.displayName || 'Ben',
+        senderAvatar: user?.avatar || auth.currentUser?.photoURL || '',
         text: text
       });
-    } catch {
-      console.log('Mesaj gönderme hatası');
-      const newMsg = {
-        id: Date.now().toString(),
-        name: user?.name || 'Ben',
-        text: text,
-        color: theme.secondary,
-        isSelf: true
-      };
-      if (isTeam) {
-        setTeamChatMessages((prev) => [...prev, newMsg]);
-      } else {
-        setChatMessages((prev) => [...prev, newMsg]);
-      }
+    } catch (e) {
+      console.log('Mesaj gönderme hatası:', e);
     }
   };
 
@@ -746,37 +763,18 @@ export default function MatchRoomScreen() {
       const isMySlot = existingOccupant.uid === effUid || userSlot === slotKey;
 
       if (isMySlot) {
-        // My own slot -> options to move to bench or leave match
-        Alert.alert(
-          'Mevki İşlemleri',
-          `${slotLabel} mevkisindesiniz. Ne yapmak istersiniz?`,
-          [
-            { text: 'Vazgeç', style: 'cancel' },
-            {
-              text: '🔄 Yedek Kulübesine Geç',
-              onPress: async () => {
-                try {
-                  await dbService.moveSlotToBench(targetMatchId, activeTeam, slotKey);
-                  Alert.alert('Yedek Kulübesine Geçtiniz', 'Sahadan çıkıp yedek kulübesine geçtiniz.');
-                } catch {
-                  Alert.alert('Hata', 'Yedek kulübesine geçilirken bir sorun oluştu.');
-                }
-              }
-            },
-            {
-              text: '🚪 Kadrodan Ayrıl',
-              style: 'destructive',
-              onPress: () => {
-                const hoursLeft = calculateHoursUntilMatch(matchDateTime);
-                let penalty = 0;
-                if (hoursLeft <= 2) penalty = 15;
-                else if (hoursLeft <= 6) penalty = 8;
-                else if (hoursLeft <= 24) penalty = 3;
-                executeLeaveSlot(slotKey, slotLabel, penalty);
-              }
-            }
-          ]
-        );
+        const hoursLeft = calculateHoursUntilMatch(matchDateTime);
+        let penalty = 0;
+        if (hoursLeft <= 2) penalty = 15;
+        else if (hoursLeft <= 6) penalty = 8;
+        else if (hoursLeft <= 24) penalty = 3;
+
+        setSlotActionData({
+          slotKey,
+          slotLabel,
+          penalty
+        });
+        setSlotActionModalVisible(true);
         return;
       }
 
@@ -821,9 +819,14 @@ export default function MatchRoomScreen() {
     }
 
     // 3. Slot is EMPTY:
-    // Check team lock: can user take this slot?
+    // Check if user is in another team -> Offer team switch
     if (myTeam && myTeam !== activeTeam) {
-      Alert.alert('Farklı Takımdasınız', `Siz ${myTeam} Takımındasınız. ${activeTeam} Takımının mevkisine geçemez veya takım değiştiremezsiniz.`);
+      setTeamSwitchData({
+        targetSlotKey: slotKey,
+        targetSlotLabel: slotLabel,
+        targetTeam: activeTeam
+      });
+      setTeamSwitchModalVisible(true);
       return;
     }
 
@@ -832,6 +835,7 @@ export default function MatchRoomScreen() {
     if (isInThisTeamBench) {
       try {
         await dbService.assignBenchPlayerToSlot(targetMatchId, activeTeam, effUid, slotKey);
+        setUserSlot(slotKey);
         Alert.alert('✓ Kadroya Girildi', `${slotLabel} mevkisine yerleştiniz.`);
       } catch {
         Alert.alert('Hata', 'Mevkiye yerleşirken bir sorun oluştu.');
@@ -850,7 +854,8 @@ export default function MatchRoomScreen() {
           position: slotLabel,
           joinedAt: Date.now()
         });
-        Alert.alert('Mevki Değiştirildi', `${slotLabel} mevkiine geçtiniz.`);
+        setUserSlot(slotKey);
+        Alert.alert('✓ Mevki Değiştirildi', `${slotLabel} mevkiine geçtiniz.`);
       } catch {
         Alert.alert('Hata', 'Mevki değiştirilirken bir sorun oluştu.');
       }
@@ -858,18 +863,57 @@ export default function MatchRoomScreen() {
     }
 
     // If user is not yet in the team at all:
-    // Joining bench then placing into slot:
     try {
-      await dbService.joinTeamBench(targetMatchId, activeTeam, {
+      await dbService.joinMatchSlot(targetMatchId, slotKey, {
         uid: effUid,
         name: user?.name || auth.currentUser?.displayName || 'Oyuncu',
         avatar: user?.avatar || auth.currentUser?.photoURL || '',
+        position: slotLabel,
         joinedAt: Date.now()
       });
-      await dbService.assignBenchPlayerToSlot(targetMatchId, activeTeam, effUid, slotKey);
+      setUserSlot(slotKey);
       Alert.alert('✓ Takıma Katıldınız', `${activeTeam} Takımı ${slotLabel} mevkisine yerleştiniz.`);
     } catch {
       Alert.alert('Hata', 'Takıma katılırken bir sorun oluştu.');
+    }
+  };
+
+  const handleConfirmTeamSwitch = async () => {
+    if (!teamSwitchData) return;
+    const { targetSlotKey, targetSlotLabel, targetTeam } = teamSwitchData;
+    const effUid = user?.uid || auth.currentUser?.uid;
+    const targetMatchId = params.matchId || fallbackMatch?.id;
+    if (!effUid || !targetMatchId) return;
+
+    setTeamSwitchModalVisible(false);
+    try {
+      if (userSlot) {
+        await dbService.leaveMatchSlot(targetMatchId, userSlot, effUid);
+      }
+      if (myTeam) {
+        const oldBenchKey = myTeam === 'A' ? 'benchA' : 'benchB';
+        const currentOldBench = myTeam === 'A' ? benchA : benchB;
+        if (currentOldBench.some(p => p.uid === effUid)) {
+          await dbService.updateMatch(targetMatchId, {
+            [oldBenchKey]: currentOldBench.filter(p => p.uid !== effUid)
+          });
+        }
+      }
+      await dbService.joinMatchSlot(targetMatchId, targetSlotKey, {
+        uid: effUid,
+        name: user?.name || auth.currentUser?.displayName || 'Oyuncu',
+        avatar: user?.avatar || auth.currentUser?.photoURL || '',
+        position: targetSlotLabel,
+        joinedAt: Date.now()
+      });
+      setUserSlot(targetSlotKey);
+      setActiveTeam(targetTeam);
+      Alert.alert('✓ Takım Değiştirildi', `${targetTeam} Takımı ${targetSlotLabel} mevkisine geçtiniz.`);
+    } catch (err) {
+      console.error('Takım değiştirme hatası:', err);
+      Alert.alert('Hata', 'Takım değiştirilirken bir sorun oluştu.');
+    } finally {
+      setTeamSwitchData(null);
     }
   };
 
@@ -2617,6 +2661,129 @@ export default function MatchRoomScreen() {
                 >
                   <Text style={styles.scoreSubmitText}>
                     {submittingScore ? 'Kaydediliyor...' : 'Maçı Bitir ve Kaydet'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Mevki İşlemleri Modalı */}
+        <Modal
+          visible={slotActionModalVisible}
+          onRequestClose={() => setSlotActionModalVisible(false)}
+          animationType="slide"
+          transparent
+        >
+          <View style={styles.scoreModalOverlay}>
+            <View style={styles.scoreModalContent}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <MaterialIcons name="sports-soccer" size={24} color={theme.primary} />
+                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 16, color: theme.text }}>
+                    MEVKİ İŞLEMLERİ
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setSlotActionModalVisible(false)} style={styles.closeBtn}>
+                  <MaterialIcons name="close" size={22} color={theme.text} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={{ fontFamily: Fonts.body, fontSize: 13, color: theme.textMuted, marginBottom: 20, textAlign: 'center' }}>
+                {activeTeam} Takımı <Text style={{ fontFamily: Fonts.headlineBold, color: theme.text }}>{slotActionData?.slotLabel}</Text> mevkisindesiniz. Ne yapmak istersiniz?
+              </Text>
+
+              <View style={{ width: '100%', gap: 10 }}>
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 48, borderRadius: 12, backgroundColor: `${theme.secondary}20`, borderWidth: 1, borderColor: `${theme.secondary}40` }}
+                  onPress={async () => {
+                    if (!slotActionData) return;
+                    const targetMatchId = params.matchId || fallbackMatch?.id;
+                    setSlotActionModalVisible(false);
+                    if (targetMatchId && targetMatchId !== 'demo-match') {
+                      try {
+                        await dbService.moveSlotToBench(targetMatchId, activeTeam, slotActionData.slotKey);
+                        setUserSlot(null);
+                        Alert.alert('✓ Yedek Kulübesine Geçtiniz', 'Sahadan çıkıp yedek kulübesine geçtiniz.');
+                      } catch {
+                        Alert.alert('Hata', 'Yedek kulübesine geçilirken bir sorun oluştu.');
+                      }
+                    }
+                  }}
+                >
+                  <MaterialIcons name="swap-vert" size={20} color={theme.secondary} />
+                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.secondary }}>
+                    Yedek Kulübesine Geç
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 48, borderRadius: 12, backgroundColor: 'rgba(239, 68, 68, 0.15)', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.3)' }}
+                  onPress={() => {
+                    if (!slotActionData) return;
+                    setSlotActionModalVisible(false);
+                    executeLeaveSlot(slotActionData.slotKey, slotActionData.slotLabel, slotActionData.penalty);
+                  }}
+                >
+                  <MaterialIcons name="logout" size={20} color="#ef4444" />
+                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 13, color: "#ef4444" }}>
+                    Kadrodan Ayrıl
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{ height: 44, borderRadius: 12, backgroundColor: theme.surfaceContainerHighest, justifyContent: 'center', alignItems: 'center', marginTop: 4 }}
+                  onPress={() => setSlotActionModalVisible(false)}
+                >
+                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.textMuted }}>
+                    Vazgeç
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Takım Değiştirme Onay Modalı */}
+        <Modal
+          visible={teamSwitchModalVisible}
+          onRequestClose={() => setTeamSwitchModalVisible(false)}
+          animationType="slide"
+          transparent
+        >
+          <View style={styles.scoreModalOverlay}>
+            <View style={styles.scoreModalContent}>
+              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: `${theme.primary}20`, justifyContent: 'center', alignItems: 'center', marginBottom: 12 }}>
+                <MaterialIcons name="swap-horiz" size={32} color={theme.primary} />
+              </View>
+
+              <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 16, color: theme.text, textAlign: 'center', marginBottom: 6 }}>
+                TAKIM DEĞİŞTİR
+              </Text>
+
+              <Text style={{ fontFamily: Fonts.body, fontSize: 13, color: theme.textMuted, textAlign: 'center', marginBottom: 20 }}>
+                Şu anda <Text style={{ fontFamily: Fonts.headlineBold, color: theme.text }}>{myTeam} Takımındasınız</Text>. {teamSwitchData?.targetTeam} Takımı <Text style={{ fontFamily: Fonts.headlineBold, color: theme.text }}>{teamSwitchData?.targetSlotLabel}</Text> mevkisine geçmek istiyor musunuz?
+              </Text>
+
+              <View style={{ width: '100%', gap: 10 }}>
+                <TouchableOpacity
+                  style={{ height: 48, borderRadius: 12, backgroundColor: theme.primary, justifyContent: 'center', alignItems: 'center' }}
+                  onPress={handleConfirmTeamSwitch}
+                >
+                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 14, color: theme.background }}>
+                    Evet, Takım Değiştir ve Geç
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{ height: 44, borderRadius: 12, backgroundColor: theme.surfaceContainerHighest, justifyContent: 'center', alignItems: 'center' }}
+                  onPress={() => {
+                    setTeamSwitchModalVisible(false);
+                    setTeamSwitchData(null);
+                  }}
+                >
+                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.textMuted }}>
+                    Vazgeç
                   </Text>
                 </TouchableOpacity>
               </View>

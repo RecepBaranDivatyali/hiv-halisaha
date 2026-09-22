@@ -58,7 +58,7 @@ export default function SearchScreen() {
   const [pos, setPos] = useState('KL');
   const [selectedLevels, setSelectedLevels] = useState<string[]>(['0-3.9']);
   const [difficulty, setDifficulty] = useState('Eğlence');
-  const [selectedTimeFrame, setSelectedTimeFrame] = useState('Tümü');
+  const [selectedTimeFrames, setSelectedTimeFrames] = useState<string[]>([]);
   const [reservationStatus, setReservationStatus] = useState<'all' | 'reserved' | 'no_reservation'>('all');
   const [playerStatus, setPlayerStatus] = useState<'all' | 'looking'>('looking');
   const [remember, setRemember] = useState(true);
@@ -70,6 +70,20 @@ export default function SearchScreen() {
         return prev.filter(item => item !== lv);
       } else {
         return [...prev, lv];
+      }
+    });
+  };
+
+  const toggleTimeFrame = (tf: string) => {
+    if (tf === 'Tümü') {
+      setSelectedTimeFrames([]);
+      return;
+    }
+    setSelectedTimeFrames(prev => {
+      if (prev.includes(tf)) {
+        return prev.filter(item => item !== tf);
+      } else {
+        return [...prev, tf];
       }
     });
   };
@@ -116,7 +130,11 @@ export default function SearchScreen() {
             setSelectedLevels(typeof parsed.level === 'string' ? parsed.level.split(',').map((s: string) => s.trim()).filter(Boolean) : [parsed.level]);
           }
           if (parsed.difficulty) setDifficulty(parsed.difficulty);
-          if (parsed.timeFrame) setSelectedTimeFrame(parsed.timeFrame);
+          if (parsed.timeFrames && Array.isArray(parsed.timeFrames)) {
+            setSelectedTimeFrames(parsed.timeFrames);
+          } else if (parsed.timeFrame && parsed.timeFrame !== 'Tümü') {
+            setSelectedTimeFrames(parsed.timeFrame.split(',').map((s: string) => s.trim()).filter(Boolean));
+          }
         } catch (e) {
           console.error('AsyncStorage error:', e);
         }
@@ -142,7 +160,8 @@ export default function SearchScreen() {
         selectedLevels,
         level: selectedLevels.join(','),
         difficulty,
-        timeFrame: selectedTimeFrame,
+        timeFrames: selectedTimeFrames,
+        timeFrame: selectedTimeFrames.join(','),
       })).catch((e) => { console.error('AsyncStorage error:', e); });
     }
 
@@ -156,7 +175,7 @@ export default function SearchScreen() {
         city: selectedCity, 
         district: selectedDistrict,
         arena: selectedPitch !== 'Tüm Sahalar' ? selectedPitch : undefined,
-        timeFrame: selectedTimeFrame !== 'Tümü' ? selectedTimeFrame : undefined,
+        timeFrame: selectedTimeFrames.length > 0 ? selectedTimeFrames.join(',') : undefined,
         reservationStatus: (activeTab === 'Maç' || activeTab === 'Rakip') && reservationStatus !== 'all' ? reservationStatus : undefined,
         playerStatus: activeTab === 'Oyuncu' ? playerStatus : undefined,
       }
@@ -192,7 +211,7 @@ export default function SearchScreen() {
             setPos('KL');
             setSelectedLevels(['0-3.9']);
             setDifficulty('Eğlence');
-            setSelectedTimeFrame('Tümü');
+            setSelectedTimeFrames([]);
             Alert.alert('Filtreler Sıfırlandı', 'Arama kriterleri varsayılan değerlere döndürüldü.');
           }} 
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -317,17 +336,24 @@ export default function SearchScreen() {
 
             {/* 1. Tarih / Zaman Filtresi (Maç, Oyuncu ve Rakip - TÜMÜ) */}
             <View style={styles.sectionBox}>
-              <Text style={styles.sectionTitle}>
-                {activeTab === 'Maç' ? 'MAÇ ZAMANI' : activeTab === 'Oyuncu' ? 'OYUNCU İÇİN GÜN / ZAMAN' : 'MAÇ GÜNÜ / ZAMAN'}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                <Text style={styles.sectionTitle}>
+                  {activeTab === 'Maç' ? 'MAÇ ZAMANI' : activeTab === 'Oyuncu' ? 'OYUNCU İÇİN GÜN / ZAMAN' : 'MAÇ GÜNÜ / ZAMAN'}
+                </Text>
+                {selectedTimeFrames.length > 0 && (
+                  <TouchableOpacity onPress={() => setSelectedTimeFrames([])}>
+                    <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 11, color: theme.primary }}>Temizle</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
               <View style={styles.levelGrid}>
                 {['Tümü', 'Bugün', 'Yarın'].map((tf) => {
-                  const active = selectedTimeFrame === tf;
+                  const active = tf === 'Tümü' ? selectedTimeFrames.length === 0 : selectedTimeFrames.includes(tf);
                   return (
                     <TouchableOpacity
                       key={tf}
                       style={levelBtnStyle(active)}
-                      onPress={() => setSelectedTimeFrame(tf)}
+                      onPress={() => toggleTimeFrame(tf)}
                       activeOpacity={0.8}
                       accessibilityRole="button"
                       accessibilityState={{ selected: active }}
@@ -339,7 +365,13 @@ export default function SearchScreen() {
 
                 {/* 4. Buton: Tarih Seçici */}
                 {(() => {
-                  const isCustomDate = selectedTimeFrame !== 'Tümü' && selectedTimeFrame !== 'Bugün' && selectedTimeFrame !== 'Yarın';
+                  const customDates = selectedTimeFrames.filter(tf => tf !== 'Bugün' && tf !== 'Yarın');
+                  const isCustomDate = customDates.length > 0;
+                  const label = customDates.length === 1 
+                    ? customDates[0].toUpperCase() 
+                    : customDates.length > 1 
+                      ? `${customDates.length} TARİH` 
+                      : 'TARİH SEÇ';
                   return (
                     <TouchableOpacity
                       style={[
@@ -364,7 +396,7 @@ export default function SearchScreen() {
                         ]}
                         numberOfLines={1}
                       >
-                        {isCustomDate ? selectedTimeFrame.toUpperCase() : 'TARİH SEÇ'}
+                        {label}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -384,8 +416,8 @@ export default function SearchScreen() {
                 <View style={styles.levelGrid}>
                   {[
                     { key: 'all', label: 'TÜMÜ' },
-                    { key: 'reserved', label: '✓ SAHASI HAZIR' },
-                    { key: 'no_reservation', label: '⚠️ SAHA ARANIYOR' },
+                    { key: 'reserved', label: 'SAHASI HAZIR' },
+                    { key: 'no_reservation', label: 'SAHA ARANIYOR' },
                   ].map((item) => {
                     const active = reservationStatus === item.key;
                     return (
@@ -673,9 +705,9 @@ export default function SearchScreen() {
           <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { maxHeight: 500, paddingBottom: 16 }]}>
             <View style={styles.modalHeaderRow}>
               <View>
-                <Text style={styles.modalTitle}>MAÇ TARİHİ SEÇİN</Text>
+                <Text style={styles.modalTitle}>MAÇ TARİHİ SEÇİN (ÇOKLU SEÇİM)</Text>
                 <Text style={styles.modalSubtitle}>
-                  Aramak istediğiniz günü listeden seçin
+                  Birden fazla gün seçebilirsiniz
                 </Text>
               </View>
               <TouchableOpacity 
@@ -691,20 +723,17 @@ export default function SearchScreen() {
             <TouchableOpacity 
               style={[
                 styles.modalQuickOption,
-                selectedTimeFrame === 'Bu Hafta Sonu' && { borderColor: theme.primary, backgroundColor: `${theme.primary}18` }
+                selectedTimeFrames.includes('Bu Hafta Sonu') && { borderColor: theme.primary, backgroundColor: `${theme.primary}18` }
               ]}
-              onPress={() => {
-                setSelectedTimeFrame('Bu Hafta Sonu');
-                setDateModalVisible(false);
-              }}
+              onPress={() => toggleTimeFrame('Bu Hafta Sonu')}
               activeOpacity={0.8}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={[styles.modalDateIconBox, selectedTimeFrame === 'Bu Hafta Sonu' && { backgroundColor: `${theme.primary}33` }]}>
-                  <MaterialIcons name="weekend" size={18} color={selectedTimeFrame === 'Bu Hafta Sonu' ? theme.primary : theme.textMuted} />
+                <View style={[styles.modalDateIconBox, selectedTimeFrames.includes('Bu Hafta Sonu') && { backgroundColor: `${theme.primary}33` }]}>
+                  <MaterialIcons name="weekend" size={18} color={selectedTimeFrames.includes('Bu Hafta Sonu') ? theme.primary : theme.textMuted} />
                 </View>
                 <View>
-                  <Text style={[styles.modalItemText, selectedTimeFrame === 'Bu Hafta Sonu' && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                  <Text style={[styles.modalItemText, selectedTimeFrames.includes('Bu Hafta Sonu') && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
                     Bu Hafta Sonu
                   </Text>
                   <Text style={{ fontFamily: Fonts.body, fontSize: 10, color: theme.textMuted }}>
@@ -712,22 +741,19 @@ export default function SearchScreen() {
                   </Text>
                 </View>
               </View>
-              {selectedTimeFrame === 'Bu Hafta Sonu' && (
-                <MaterialIcons name="check" size={20} color={theme.primary} />
+              {selectedTimeFrames.includes('Bu Hafta Sonu') && (
+                <MaterialIcons name="check-box" size={22} color={theme.primary} />
               )}
             </TouchableOpacity>
 
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 290, marginTop: 4 }}>
               {upcomingDateOptions.map((item) => {
-                const isSelected = selectedTimeFrame === item.label;
+                const isSelected = selectedTimeFrames.includes(item.label);
                 return (
                   <TouchableOpacity 
                     key={item.label}
                     style={[styles.modalDateItem, isSelected && { borderColor: theme.primary, backgroundColor: `${theme.primary}12` }]}
-                    onPress={() => {
-                      setSelectedTimeFrame(item.label);
-                      setDateModalVisible(false);
-                    }}
+                    onPress={() => toggleTimeFrame(item.label)}
                     activeOpacity={0.7}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -749,19 +775,29 @@ export default function SearchScreen() {
                         )}
                       </View>
                     </View>
-                    {isSelected && (
-                      <MaterialIcons name="check" size={20} color={theme.primary} />
-                    )}
+                    <MaterialIcons 
+                      name={isSelected ? "check-box" : "check-box-outline-blank"} 
+                      size={22} 
+                      color={isSelected ? theme.primary : theme.textMuted} 
+                    />
                   </TouchableOpacity>
                 );
               })}
             </ScrollView>
 
             <TouchableOpacity 
-              style={styles.modalCloseBtn}
+              style={[
+                styles.modalCloseBtn, 
+                selectedTimeFrames.length > 0 && { backgroundColor: theme.primary, borderColor: theme.primary }
+              ]}
               onPress={() => setDateModalVisible(false)}
             >
-              <Text style={styles.modalCloseText}>KAPAT</Text>
+              <Text style={[
+                styles.modalCloseText, 
+                selectedTimeFrames.length > 0 && { color: theme.background, fontFamily: Fonts.headlineBold }
+              ]}>
+                {selectedTimeFrames.length > 0 ? `UYGULA (${selectedTimeFrames.length} GÜN SEÇİLDİ)` : 'KAPAT'}
+              </Text>
             </TouchableOpacity>
           </TouchableOpacity>
         </TouchableOpacity>

@@ -957,11 +957,15 @@ export const dbService = {
         players = players.filter((p: any) => p.isLookingForMatch === true);
       }
       if (criteria.timeFrame && criteria.timeFrame !== 'Tümü' && criteria.timeFrame !== 'all') {
-        const tf = criteria.timeFrame.toLocaleLowerCase('tr').trim();
-        players = players.filter((p: any) => {
-          if (!p.availableDate) return !criteria.onlyLookingForMatch;
-          return p.availableDate.toLocaleLowerCase('tr').includes(tf);
-        });
+        const rawFrames = criteria.timeFrame.split(',').map(f => f.toLocaleLowerCase('tr').trim()).filter(Boolean);
+        const tfList = rawFrames.filter(f => f !== 'tümü' && f !== 'all');
+        if (tfList.length > 0) {
+          players = players.filter((p: any) => {
+            if (!p.availableDate) return !criteria.onlyLookingForMatch;
+            const availLower = p.availableDate.toLocaleLowerCase('tr');
+            return tfList.some(tf => availLower.includes(tf));
+          });
+        }
       }
 
       // Aktif maç arayan oyuncuları her zaman en üstte göster
@@ -1017,53 +1021,56 @@ export const dbService = {
         }
       }
       if (criteria.timeFrame && criteria.timeFrame !== 'Tümü' && criteria.timeFrame !== 'all') {
-        const tf = criteria.timeFrame.toLocaleLowerCase('tr').trim();
-        if (tf.includes('bugün')) {
-          list = list.filter(m => m.dateTime && m.dateTime.toLocaleLowerCase('tr').includes('bugün'));
-        } else if (tf.includes('yarın')) {
-          list = list.filter(m => m.dateTime && m.dateTime.toLocaleLowerCase('tr').includes('yarın'));
-        } else if (tf.includes('hafta sonu') || tf.includes('haftasonu')) {
+        const rawFrames = criteria.timeFrame.split(',').map(f => f.toLocaleLowerCase('tr').trim()).filter(Boolean);
+        const tfList = rawFrames.filter(f => f !== 'tümü' && f !== 'all');
+        if (tfList.length > 0) {
           list = list.filter(m => {
             if (!m.dateTime) return false;
             const mLower = m.dateTime.toLocaleLowerCase('tr');
-            if (mLower.includes('cumartesi') || mLower.includes('pazar')) return true;
-            try {
-              const mDate = new Date(parseTargetTimestamp(m.dateTime));
-              const day = mDate.getDay();
-              return day === 0 || day === 6;
-            } catch {
-              return false;
-            }
-          });
-        } else {
-          // Özel Seçilen Tarih (Örn: "24 Eylül", "19 Eylül 2026", GG.AA.YYYY)
-          list = list.filter(m => {
-            if (!m.dateTime) return false;
-            const mLower = m.dateTime.toLocaleLowerCase('tr');
-            if (mLower.includes(tf)) return true;
 
-            try {
-              const mTs = parseTargetTimestamp(m.dateTime);
-              const mDate = new Date(mTs);
-              const dayMatch = tf.match(/(\d{1,2})/);
-              if (dayMatch) {
-                const targetDay = parseInt(dayMatch[1], 10);
-                if (mDate.getDate() === targetDay) {
-                  for (const [monthName, monthIndex] of Object.entries(TURKISH_MONTHS)) {
-                    if (tf.includes(monthName)) {
-                      return mDate.getMonth() === monthIndex;
-                    }
-                  }
-                  return true;
+            return tfList.some(tf => {
+              if (tf.includes('bugün')) {
+                return mLower.includes('bugün');
+              }
+              if (tf.includes('yarın')) {
+                return mLower.includes('yarın');
+              }
+              if (tf.includes('hafta sonu') || tf.includes('haftasonu')) {
+                if (mLower.includes('cumartesi') || mLower.includes('pazar')) return true;
+                try {
+                  const mDate = new Date(parseTargetTimestamp(m.dateTime));
+                  const day = mDate.getDay();
+                  return day === 0 || day === 6;
+                } catch {
+                  return false;
                 }
               }
-            } catch {
-              // yoksay
-            }
-            return false;
+              // Özel Seçilen Tarih (Örn: "24 Eylül", "19 Eylül 2026", GG.AA.YYYY)
+              if (mLower.includes(tf)) return true;
+              try {
+                const mTs = parseTargetTimestamp(m.dateTime);
+                const mDate = new Date(mTs);
+                const dayMatch = tf.match(/(\d{1,2})/);
+                if (dayMatch) {
+                  const targetDay = parseInt(dayMatch[1], 10);
+                  if (mDate.getDate() === targetDay) {
+                    for (const [monthName, monthIndex] of Object.entries(TURKISH_MONTHS)) {
+                      if (tf.includes(monthName)) {
+                        return mDate.getMonth() === monthIndex;
+                      }
+                    }
+                    return true;
+                  }
+                }
+              } catch {
+                return false;
+              }
+              return false;
+            });
           });
         }
       }
+
 
       return list;
     } catch (error) {
@@ -1151,8 +1158,11 @@ export const dbService = {
         list = list.filter(c => c.hasReservation === criteria.hasReservation);
       }
       if (criteria?.timeFrame && criteria.timeFrame !== 'Tümü' && criteria.timeFrame !== 'all') {
-        const tf = criteria.timeFrame.toLocaleLowerCase('tr').trim();
-        list = list.filter(c => !c.availableDate || c.availableDate.toLocaleLowerCase('tr').includes(tf));
+        const rawFrames = criteria.timeFrame.split(',').map(f => f.toLocaleLowerCase('tr').trim()).filter(Boolean);
+        const tfList = rawFrames.filter(f => f !== 'tümü' && f !== 'all');
+        if (tfList.length > 0) {
+          list = list.filter(c => !c.availableDate || tfList.some(tf => c.availableDate?.toLocaleLowerCase('tr').includes(tf)));
+        }
       }
 
       // Sahası hazır olan rakipleri öne çıkar
