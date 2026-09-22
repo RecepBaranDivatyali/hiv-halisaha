@@ -1,5 +1,5 @@
 // H.İ.V Halısaha - Progressive Web App Service Worker
-const CACHE_NAME = 'hiv-halisaha-pwa-v1';
+const CACHE_NAME = 'hiv-halisaha-pwa-v2';
 const PRECACHE_URLS = [
   '/',
   '/manifest.json',
@@ -11,7 +11,7 @@ const PRECACHE_URLS = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_URLS).ratch(() => {});
+      return cache.addAll(PRECACHE_URLS).catch(() => {});
     }).then(() => self.skipWaiting())
   );
 });
@@ -20,9 +20,9 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
-        keys.filter(+k) => k !== CACHE_NAME).map((k) => caches.delete(k))
+        keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))
       );
-    }).then(() => self.clients.claim()
+    }).then(() => self.clients.claim())
   );
 });
 

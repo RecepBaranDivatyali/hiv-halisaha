@@ -15,9 +15,10 @@ import { MatchSeekingModal } from '@/components/MatchSeekingModal';
 import { useMatches } from '@/hooks/use-matches';
 import { useAuth } from '@/hooks/use-auth';
 import { Bouncable } from '@/components/Bouncable';
-import Animated, { FadeIn, FadeOut, ZoomIn, ZoomOut, FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, ZoomIn, ZoomOut } from 'react-native-reanimated';
 import { useTheme } from '@/context/ThemeContext';
 import { isMatchPast, parseTargetTimestamp } from '@/services/dateUtils';
+import { auth } from '@/services/firebaseConfig';
 
 const GUIDE_STORAGE_KEY = '@hiv_guide_viewed';
 
@@ -119,36 +120,67 @@ export default function HomeScreen() {
 
   // Helper: Kullanıcı bu maçta yer alıyor mu? (Organizatör, kaptan, kadro, yedek kulübesi)
   const isUserInMatch = useCallback((m: any): boolean => {
-    if (!user?.uid && !user?.name) return false;
+    if (!user) return false;
+    const uid = user.uid || auth.currentUser?.uid;
+    const name = user.name || auth.currentUser?.displayName;
+    const nameClean = name?.trim().toLowerCase();
+
+    // 1. Organizatör kontrolü
     if (m.organizer?.toLowerCase().includes('siz')) return true;
-    if (user?.uid && m.organizerId === user.uid) return true;
-    if (user?.name && m.organizer?.toLowerCase().includes(user.name.toLowerCase())) return true;
-    if (user?.uid && (m.captainAId === user.uid || m.captainBId === user.uid)) return true;
-    if (user?.uid && m.slots && Object.values(m.slots).some((s: any) => s?.uid === user.uid)) return true;
-    if (user?.uid && m.benchA && Array.isArray(m.benchA) && m.benchA.some((b: any) => b?.uid === user.uid)) return true;
-    if (user?.uid && m.benchB && Array.isArray(m.benchB) && m.benchB.some((b: any) => b?.uid === user.uid)) return true;
-    if (user?.uid && m.reserves && Array.isArray(m.reserves) && m.reserves.some((r: any) => r?.uid === user.uid)) return true;
+    if (uid && m.organizerId === uid) return true;
+    if (nameClean && nameClean.length >= 2 && m.organizer?.toLowerCase() === nameClean) return true;
+
+    // 2. Kaptan kontrolü
+    if (uid && (m.captainAId === uid || m.captainBId === uid)) return true;
+    if (nameClean && nameClean.length >= 2) {
+      if (m.captainAName?.toLowerCase() === nameClean || m.captainBName?.toLowerCase() === nameClean) return true;
+    }
+
+    // 3. Kadro slotları kontrolü
+    if (m.slots && typeof m.slots === 'object') {
+      const slotValues = Object.values(m.slots) as any[];
+      const inSlot = slotValues.some((s: any) => {
+        if (!s) return false;
+        if (uid && s.uid === uid) return true;
+        if (nameClean && nameClean.length >= 2 && s.name?.trim().toLowerCase() === nameClean) return true;
+        return false;
+      });
+      if (inSlot) return true;
+    }
+
+    // 4. Yedek kulübesi (Bench & Reserves) kontrolü
+    const checkBench = (arr: any[]) => {
+      if (!Array.isArray(arr)) return false;
+      return arr.some((b: any) => {
+        if (!b) return false;
+        if (uid && b.uid === uid) return true;
+        if (nameClean && nameClean.length >= 2 && b.name?.trim().toLowerCase() === nameClean) return true;
+        return false;
+      });
+    };
+
+    if (checkBench(m.benchA) || checkBench(m.benchB) || checkBench(m.reserves)) {
+      return true;
+    }
+
     return false;
-  }, [user?.uid, user?.name]);
+  }, [user]);
 
   // Kullanıcının kendi oluşturduğu maçlar (organizatör)
   const myMatches = matches.filter(m => 
     m.organizer?.toLowerCase().includes('siz') || (user?.uid && m.organizerId === user.uid)
   );
 
-  // Kullanıcının oynadığı / organize ettiği tüm maçlar (aktif + geçmiş)
-  const userAllMatches = [
-    ...matches,
-    ...pastMatches
-  ].filter(isUserInMatch);
-
-  // 1. Bitmiş ama kullanıcı tarafından HENÜZ değerlendirilmemiş tüm maçlar (Yemeksepeti / Getir modeli)
-  const allCandidateMatches = [...userAllMatches, ...pastMatches];
+  // 1. Bitmiş ama kullanıcı tarafından HENÜZ değerlendirilmemiş maçlar (YALNIZCA kullanıcının bizzat dahil olduğu maçlar)
+  const userFinishedMatches = [
+    ...matches.filter(m => isUserInMatch(m) && (isMatchPast(m.dateTime) || m.status === 'completed')),
+    ...pastMatches.filter(isUserInMatch),
+  ];
   const seenMatchIds = new Set<string>();
-  const unratedFinishedMatches = allCandidateMatches.filter(m => {
+  const unratedFinishedMatches = userFinishedMatches.filter(m => {
     if (!m.id || seenMatchIds.has(m.id)) return false;
     seenMatchIds.add(m.id);
-    return (isMatchPast(m.dateTime) || m.status === 'completed') && !ratedMatches.includes(m.id);
+    return !ratedMatches.includes(m.id);
   });
 
   // 2. Kullanıcının gerçekten yaklaşan (gelecek) aktif maçları - Kronolojik en yakından uzağa sıralı
@@ -166,28 +198,11 @@ export default function HomeScreen() {
     })
     .sort((a, b) => parseTargetTimestamp(a.dateTime) - parseTargetTimestamp(b.dateTime));
 
-  // 3. Genel yaklaşan aktif maç (kullanıcı maçı yoksa vitrin)
-  const upcomingGeneralMatch = matches
-    .filter(m => !isMatchPast(m.dateTime) && m.status !== 'completed' && m.status !== 'cancelled')
-    .sort((a, b) => parseTargetTimestamp(a.dateTime) - parseTargetTimestamp(b.dateTime))[0];
-
-  // En yakın aktif maç (Kullanıcının en yakın maçı, yoksa genel en yakın aktif maç)
-  const countdownMatch = userActiveUpcomingMatches[0] || upcomingGeneralMatch;
+  // En yakın aktif maç (YALNIZCA kullanıcının kendi yaklaşan maçı)
+  const countdownMatch = userActiveUpcomingMatches[0] || null;
 
   // Kullanıcının 2., 3. vb. diğer yaklaşan aktif maçları (geri sayım kartının altında tek satır gösterilir)
   const otherUserUpcomingMatches = userActiveUpcomingMatches.slice(1);
-
-  // Diğer genel yaklaşan maçlar (Alt kısımdaki yatay listede gösterilir, üsttekiler hariç tutulur)
-  const otherUpcomingMatches = matches
-    .filter(m => 
-      !isMatchPast(m.dateTime) && 
-      m.status !== 'completed' && 
-      m.status !== 'cancelled' && 
-      (!countdownMatch || m.id !== countdownMatch.id) &&
-      !otherUserUpcomingMatches.some(um => um.id === m.id)
-    )
-    .sort((a, b) => parseTargetTimestamp(a.dateTime) - parseTargetTimestamp(b.dateTime))
-    .slice(0, 5);
 
   // Kullanıcı istatistikleri — Firestore'dan çekilen gerçek değerler
   const weeklyGoals = user?.stats?.goals ?? 0;
@@ -271,51 +286,75 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
       >
-        {/* 1. Live Match Countdown for Upcoming Active Match (En yakın aktif maç her zaman en üstte) */}
-        {countdownMatch && (!unratedFinishedMatches.some(m => m.id === countdownMatch.id)) && (
-          <MatchCountdownCard 
-            key={`upcoming-${countdownMatch.id}`}
-            matchId={countdownMatch.id} 
-            arena={countdownMatch.arena}
-            dateTime={countdownMatch.dateTime}
-            mode={countdownMatch.mode}
-            onMatchPast={() => reloadMatches()}
-          />
-        )}
+        {/* 1. Yaklaşan Maçlar Alanı (Kullanıcının maçı varsa sayaç + diğer maçları, yoksa boş durum kartı DAİMA EN ÜSTTE) */}
+        {countdownMatch && (!unratedFinishedMatches.some(m => m.id === countdownMatch.id)) ? (
+          <>
+            <MatchCountdownCard 
+              key={`upcoming-${countdownMatch.id}`}
+              matchId={countdownMatch.id} 
+              arena={countdownMatch.arena}
+              dateTime={countdownMatch.dateTime}
+              mode={countdownMatch.mode}
+              onMatchPast={() => reloadMatches()}
+            />
 
-        {/* 2. Diğer Yaklaşan Kullanıcı Maçları (2., 3. vb. aktif maçlar değerlendirme satırı gibi tek satır) */}
-        {otherUserUpcomingMatches.map((m) => (
-          <View key={`upcoming-row-${m.id}`} style={styles.compactUpcomingBanner}>
-            <TouchableOpacity 
-              style={styles.compactUpcomingBannerLeft}
-              activeOpacity={0.8}
-              onPress={() => router.push({ pathname: '/match-room', params: { matchId: m.id } })}
-            >
-              <View style={styles.compactUpcomingIconBadge}>
-                <MaterialIcons name="sports-soccer" size={16} color={theme.secondary} />
-              </View>
-              <View style={styles.compactUpcomingTextGroup}>
-                <Text style={styles.compactUpcomingTitle} numberOfLines={1}>
-                  {m.arena}
-                </Text>
-                <Text style={styles.compactUpcomingSub} numberOfLines={1}>
-                  {m.dateTime?.split(' • ')[0] || m.dateTime}
-                </Text>
-              </View>
-            </TouchableOpacity>
+            {/* Diğer Yaklaşan Kullanıcı Maçları (2., 3. vb. aktif maçlar değerlendirme satırı gibi tek satır) */}
+            {otherUserUpcomingMatches.map((m) => (
+              <View key={`upcoming-row-${m.id}`} style={styles.compactUpcomingBanner}>
+                <TouchableOpacity 
+                  style={styles.compactUpcomingBannerLeft}
+                  activeOpacity={0.8}
+                  onPress={() => router.push({ pathname: '/match-room', params: { matchId: m.id } })}
+                >
+                  <View style={styles.compactUpcomingIconBadge}>
+                    <MaterialIcons name="sports-soccer" size={16} color={theme.secondary} />
+                  </View>
+                  <View style={styles.compactUpcomingTextGroup}>
+                    <Text style={styles.compactUpcomingTitle} numberOfLines={1}>
+                      {m.arena}
+                    </Text>
+                    <Text style={styles.compactUpcomingSub} numberOfLines={1}>
+                      {m.dateTime?.split(' • ')[0] || m.dateTime}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
 
-            <View style={styles.compactUpcomingRight}>
-              <TouchableOpacity 
-                style={styles.compactUpcomingBtn}
-                activeOpacity={0.85}
-                onPress={() => router.push({ pathname: '/match-room', params: { matchId: m.id } })}
-              >
-                <Text style={styles.compactUpcomingBtnText}>ODAYA GİT</Text>
-                <MaterialIcons name="chevron-right" size={14} color={theme.background} />
-              </TouchableOpacity>
+                <View style={styles.compactUpcomingRight}>
+                  <TouchableOpacity 
+                    style={styles.compactUpcomingBtn}
+                    activeOpacity={0.85}
+                    onPress={() => router.push({ pathname: '/match-room', params: { matchId: m.id } })}
+                  >
+                    <Text style={styles.compactUpcomingBtnText}>ODAYA GİT</Text>
+                    <MaterialIcons name="chevron-right" size={14} color={theme.background} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </>
+        ) : (
+          <View style={styles.emptyUpcomingTopCard}>
+            <View style={styles.emptyUpcomingTopLeft}>
+              <View style={styles.emptyUpcomingIconCircle}>
+                <MaterialIcons name="event-available" size={22} color={theme.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.emptyUpcomingTopTitle}>YAKLAŞAN MAÇIN YOK</Text>
+                <Text style={styles.emptyUpcomingTopSub} numberOfLines={2}>
+                  Henüz planlanmış bir maçın bulunmuyor. Yeni bir maç oluştur veya maç ara.
+                </Text>
+              </View>
             </View>
+            <TouchableOpacity 
+              style={styles.emptyUpcomingTopBtn} 
+              activeOpacity={0.85} 
+              onPress={() => setCreateMatchVisible(true)}
+            >
+              <MaterialIcons name="add" size={16} color={theme.background} />
+              <Text style={styles.emptyUpcomingTopBtnText}>MAÇ KUR</Text>
+            </TouchableOpacity>
           </View>
-        ))}
+        )}
 
         {/* 2. Kompakt Maç Değerlendirme Teşvikleri (Tüm değerlendirilmemiş biten maçlar listelenir) */}
         {unratedFinishedMatches.map((m) => (
@@ -479,95 +518,7 @@ export default function HomeScreen() {
           </Bouncable>
         )}
 
-        {/* ── DİĞER YAKLAŞAN MAÇLAR (Üstteki geri sayım maçı haricindeki diğer maçlar) ── */}
-        {otherUpcomingMatches.length > 0 && (
-          <>
-            <View style={styles.sectionHeaderBox}>
-              <Text style={styles.sectionTitle}>
-                {userActiveUpcomingMatches.length > 0 ? 'DİĞER YAKLAŞAN MAÇLAR' : 'KATILABİLECEĞİN MAÇLAR'}
-              </Text>
-              <TouchableOpacity style={styles.seeAllBtn} onPress={() => router.push('/(tabs)/matches')}>
-                <Text style={styles.seeAllText}>TÜMÜ</Text>
-              </TouchableOpacity>
-            </View>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.matchesScroll}>
-              {otherUpcomingMatches.map((match, index) => {
-                const isMatchOrg = match.organizer?.toLowerCase().includes('siz') || (user?.uid && match.organizerId === user.uid);
-                const isMatchCapB = Boolean(user?.uid && match.captainBId === user.uid);
-                const isUserJoined = Boolean(user?.uid && match.slots && Object.values(match.slots).some(s => s?.uid === user.uid));
-                const badgeText = isMatchOrg ? '👑 ORGANİZATÖR' : isMatchCapB ? '⭐ B KAPTANI' : isUserJoined ? 'KATILIYORUM' : 'KATILIMA AÇIK';
-                const badgeColor = isMatchOrg ? theme.primary : isMatchCapB ? theme.secondary : isUserJoined ? theme.secondary : theme.textMuted;
-                const badgeBg = isMatchOrg ? `${theme.primary}20` : isMatchCapB ? `${theme.secondary}20` : isUserJoined ? `${theme.secondary}20` : `${theme.border}33`;
-
-                return (
-                  <Animated.View key={match.id} entering={FadeInDown.delay(index * 100).springify()}>
-                    <Bouncable
-                      style={styles.upcomingMatchCard}
-                      onPress={() => router.push({ pathname: '/match-room', params: { matchId: match.id } })}
-                    >
-                      {/* Üst Satır: Rozetler */}
-                      <View style={styles.matchCardTop}>
-                        <View style={[styles.matchBadge, { backgroundColor: badgeBg }]}>
-                          <Text style={[styles.matchBadgeText, { color: badgeColor }]}>
-                            {badgeText}
-                          </Text>
-                        </View>
-                        {match.hasReservation ? (
-                          <View style={styles.resMiniBadge}>
-                            <MaterialIcons name="verified" size={11} color="#22c55e" />
-                            <Text style={styles.resMiniBadgeText}>Sahası Hazır</Text>
-                          </View>
-                        ) : match.isPitchFlexible ? (
-                          <View style={styles.flexMiniBadge}>
-                            <MaterialIcons name="location-searching" size={11} color="#f59e0b" />
-                            <Text style={styles.flexMiniBadgeText}>Saha Aranıyor</Text>
-                          </View>
-                        ) : null}
-                      </View>
-
-                      {/* Halısaha Adı (2 satıra kadar tam gösterilir) */}
-                      <Text style={styles.upcomingArena} numberOfLines={2}>
-                        {match.arena}
-                      </Text>
-
-                      {/* Maç Tarihi & Saati */}
-                      <View style={styles.matchDateTime}>
-                        <MaterialIcons name="event" size={14} color={theme.primary} />
-                        <Text style={styles.matchDateText}>{match.dateTime}</Text>
-                      </View>
-
-                      {/* Meta Bilgileri */}
-                      <View style={styles.upcomingMeta}>
-                        <Text style={styles.upcomingMetaText}>{match.mode}</Text>
-                        <Text style={styles.upcomingMetaDot}>•</Text>
-                        <Text style={styles.upcomingMetaText}>{match.fee} ₺/kişi</Text>
-                        <Text style={styles.upcomingMetaDot}>•</Text>
-                        <Text style={styles.upcomingMetaText}>{match.joinedPlayersCount}/{match.totalRequiredPlayers} Oyuncu</Text>
-                      </View>
-                    </Bouncable>
-                  </Animated.View>
-                );
-              })}
-            </ScrollView>
-          </>
-        )}
-
-        {/* Hiçbir maç yoksa (ne üstte geri sayım ne de açık maç) */}
-        {!countdownMatch && otherUpcomingMatches.length === 0 && (
-          <>
-            <View style={styles.sectionHeaderBox}>
-              <Text style={styles.sectionTitle}>YAKLAŞAN MAÇLAR</Text>
-            </View>
-            <View style={styles.emptyMatchCard}>
-              <MaterialIcons name="sports-soccer" size={36} color={theme.surfaceContainerHighest} />
-              <Text style={styles.emptyMatchText}>Henüz aktif maçın yok</Text>
-              <TouchableOpacity style={styles.emptyMatchBtn} onPress={() => setCreateMatchVisible(true)}>
-                <Text style={styles.emptyMatchBtnText}>İlk Maçı Oluştur</Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
 
         <View style={styles.sectionHeaderBox}>
           <Text style={styles.sectionTitle}>HAFTALIK ETKİ</Text>
@@ -804,12 +755,62 @@ const useStyles = (theme: any) => StyleSheet.create({
     marginLeft: 4,
   },
 
-  emptyMatchCard: { backgroundColor: theme.surface, borderRadius: 12, padding: 32, alignItems: 'center', gap: 12, marginBottom: 24, borderWidth: 1, borderColor: theme.borderSubtle },
-  emptyMatchText: { fontFamily: Fonts.body, fontSize: 14, color: theme.textMuted, textAlign: 'center' },
-  emptyMatchBtn: { backgroundColor: `${theme.primary}15`, borderRadius: 8, paddingHorizontal: 20, paddingVertical: 10, borderWidth: 1, borderColor: theme.primary },
-  emptyMatchBtnText: { fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.primary },
-
-  matchesScroll: { gap: 16, paddingRight: 20, marginBottom: 8 },
+  emptyUpcomingTopCard: {
+    backgroundColor: theme.surfaceContainer,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    marginBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  emptyUpcomingTopLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyUpcomingIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: `${theme.primary}18`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: `${theme.primary}33`,
+  },
+  emptyUpcomingTopTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 13,
+    color: theme.text,
+    letterSpacing: 0.5,
+  },
+  emptyUpcomingTopSub: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: theme.textMuted,
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  emptyUpcomingTopBtn: {
+    backgroundColor: theme.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  emptyUpcomingTopBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.background,
+    letterSpacing: 0.5,
+  },
   statCard: {
     flex: 1,
     minWidth: '45%',
@@ -835,56 +836,12 @@ const useStyles = (theme: any) => StyleSheet.create({
   statInfo: { gap: 4 },
   statVal: { fontFamily: Fonts.headlineBold, fontSize: 20, color: theme.text },
   statLabel: { fontFamily: Fonts.headlineBold, fontSize: 10, color: theme.textMuted },
-  upcomingMatchCard: {
-    width: 320,
-    backgroundColor: theme.surface,
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: theme.borderSubtle,
-    gap: 8,
-  },
-  upcomingArena: { fontFamily: Fonts.headlineBold, fontSize: 16, color: theme.text, lineHeight: 22 },
-  upcomingMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  upcomingMetaText: { fontFamily: Fonts.body, fontSize: 11, color: theme.textMuted },
-  upcomingMetaDot: { fontFamily: Fonts.body, fontSize: 11, color: theme.border },
+
   
   impactCard: { backgroundColor: theme.surface, padding: 24, borderRadius: 12, borderWidth: 1, borderColor: theme.borderSubtle, marginBottom: 20 },
   impactEmptyBox: { alignItems: 'center', gap: 10, paddingVertical: 12 },
   impactEmptyText: { fontFamily: Fonts.body, fontSize: 13, color: theme.textMuted, textAlign: 'center', lineHeight: 20 },
-  matchCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  matchDateTime: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  matchDateText: { fontFamily: Fonts.bodySemiBold, fontSize: 12, color: theme.text },
-  matchBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  matchBadgeText: { fontFamily: Fonts.headlineBold, fontSize: 10 },
-  resMiniBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: 'rgba(34, 197, 94, 0.15)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  resMiniBadgeText: {
-    fontFamily: Fonts.headlineBold,
-    fontSize: 9,
-    color: '#22c55e',
-  },
-  flexMiniBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  flexMiniBadgeText: {
-    fontFamily: Fonts.headlineBold,
-    fontSize: 9,
-    color: '#f59e0b',
-  },
+
   progressBarBg: { height: 8, backgroundColor: theme.surfaceContainerHighest, borderRadius: 4, marginBottom: 16, overflow: 'hidden', marginTop: 16 },
   progressBarFill: { height: '100%', backgroundColor: theme.secondary, borderRadius: 4 },
   impactFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
