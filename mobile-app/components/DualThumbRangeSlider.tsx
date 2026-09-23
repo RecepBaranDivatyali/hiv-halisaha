@@ -20,9 +20,9 @@ interface DualThumbRangeSliderProps {
   onChange: (min: number, max: number) => void;
 }
 
-const THUMB_SIZE = 26;
-const TRACK_HEIGHT = 6;
-const HIT_AREA = 48;
+const THUMB_SIZE = 22;
+const TRACK_HEIGHT = 4;
+const HIT_AREA = 36;
 
 function snap(value: number, min: number, step: number): number {
   return Math.round((value - min) / step) * step + min;
@@ -48,8 +48,7 @@ export function DualThumbRangeSlider({
   maxRef.current = maxValue;
 
   const activeThumb = useRef<'min' | 'max' | null>(null);
-  const dragStartTouch = useRef(0);   // pageX at gesture start
-  const dragStartValue = useRef(0);   // value of thumb at gesture start
+  const dragStartValue = useRef(0);
 
   const rangeSpan = max - min;
 
@@ -58,15 +57,6 @@ export function DualThumbRangeSlider({
       const w = trackWidthRef.current;
       if (!w) return 0;
       return ((val - min) / rangeSpan) * (w - THUMB_SIZE);
-    },
-    [min, rangeSpan]
-  );
-
-  const xToValue = useCallback(
-    (x: number) => {
-      const w = trackWidthRef.current;
-      if (!w) return min;
-      return min + (x / (w - THUMB_SIZE)) * rangeSpan;
     },
     [min, rangeSpan]
   );
@@ -97,7 +87,6 @@ export function DualThumbRangeSlider({
         }
 
         activeThumb.current = which;
-        dragStartTouch.current = evt.nativeEvent.pageX;
         dragStartValue.current = which === 'min' ? curMin : curMax;
       },
 
@@ -146,49 +135,13 @@ export function DualThumbRangeSlider({
   const activeLeft = leftMin + THUMB_SIZE / 2;
   const activeWidth = Math.max(0, leftMax - leftMin);
 
-  const isAllRange = minValue === min && maxValue === max;
-
   return (
     <View style={styles.wrapper}>
-
-      {/* Value Display Row */}
-      <View style={styles.valueRow}>
-        {/* Min Badge */}
-        <View style={[styles.valueBadge, { backgroundColor: `${theme.primary}18`, borderColor: `${theme.primary}40` }]}>
-          <Text style={[styles.valueBadgeLabel, { color: theme.textMuted }]}>EN AZ</Text>
-          <Text style={[styles.valueBadgeNum, { color: theme.primary }]}>
-            {minValue.toFixed(1)}
-          </Text>
-        </View>
-
-        {/* Center Range Indicator */}
-        <View style={styles.centerLabel}>
-          {isAllRange ? (
-            <Text style={[styles.centerLabelAll, { color: theme.textMuted }]}>TÜM PUANLAR</Text>
-          ) : (
-            <>
-              <Text style={[styles.centerLabelRange, { color: theme.text }]}>
-                {minValue.toFixed(1)} – {maxValue.toFixed(1)}
-              </Text>
-              <Text style={[styles.centerLabelSub, { color: theme.textMuted }]}>puan aralığı</Text>
-            </>
-          )}
-        </View>
-
-        {/* Max Badge */}
-        <View style={[styles.valueBadge, { backgroundColor: `${theme.primary}18`, borderColor: `${theme.primary}40` }]}>
-          <Text style={[styles.valueBadgeLabel, { color: theme.textMuted }]}>EN ÇOK</Text>
-          <Text style={[styles.valueBadgeNum, { color: theme.primary }]}>
-            {maxValue.toFixed(1)}
-          </Text>
-        </View>
-      </View>
-
-      {/* Slider Track Area */}
+      {/* Slider Interactive Track Area */}
       <View
         style={[
           styles.trackHitArea,
-          Platform.OS === 'web' ? ({ userSelect: 'none' } as any) : null,
+          Platform.OS === 'web' ? ({ userSelect: 'none', cursor: 'pointer' } as any) : null,
         ]}
         onLayout={handleLayout}
         {...panResponder.panHandlers}
@@ -217,37 +170,29 @@ export function DualThumbRangeSlider({
           ]}
         />
 
-        {/* Min Thumb */}
+        {/* Min Thumb (Sleek minimalist white knob) */}
         <View
           style={[
             styles.thumb,
             {
               left: leftMin,
-              backgroundColor: '#ffffff',
-              borderColor: theme.primary,
-              shadowColor: theme.primary,
+              backgroundColor: '#FFFFFF',
             },
           ]}
           pointerEvents="none"
-        >
-          <View style={[styles.thumbCore, { backgroundColor: theme.primary }]} />
-        </View>
+        />
 
-        {/* Max Thumb */}
+        {/* Max Thumb (Sleek minimalist white knob) */}
         <View
           style={[
             styles.thumb,
             {
               left: leftMax,
-              backgroundColor: '#ffffff',
-              borderColor: theme.primary,
-              shadowColor: theme.primary,
+              backgroundColor: '#FFFFFF',
             },
           ]}
           pointerEvents="none"
-        >
-          <View style={[styles.thumbCore, { backgroundColor: theme.primary }]} />
-        </View>
+        />
       </View>
 
       {/* Scale Labels */}
@@ -265,56 +210,9 @@ export function DualThumbRangeSlider({
 const styles = StyleSheet.create({
   wrapper: {
     width: '100%',
-    paddingTop: 2,
-    paddingBottom: 4,
+    paddingTop: 4,
+    paddingBottom: 2,
   },
-
-  // Value display
-  valueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-    gap: 6,
-  },
-  valueBadge: {
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-    minWidth: 72,
-  },
-  valueBadgeLabel: {
-    fontFamily: Fonts.body,
-    fontSize: 9,
-    letterSpacing: 0.8,
-    marginBottom: 1,
-  },
-  valueBadgeNum: {
-    fontFamily: Fonts.headlineBold,
-    fontSize: 16,
-  },
-  centerLabel: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  centerLabelAll: {
-    fontFamily: Fonts.headlineBold,
-    fontSize: 11,
-    letterSpacing: 0.5,
-  },
-  centerLabelRange: {
-    fontFamily: Fonts.headlineBold,
-    fontSize: 15,
-  },
-  centerLabelSub: {
-    fontFamily: Fonts.body,
-    fontSize: 10,
-    marginTop: 1,
-  },
-
-  // Track
   trackHitArea: {
     width: '100%',
     height: HIT_AREA,
@@ -337,21 +235,12 @@ const styles = StyleSheet.create({
     width: THUMB_SIZE,
     height: THUMB_SIZE,
     borderRadius: THUMB_SIZE / 2,
-    borderWidth: 2.5,
-    alignItems: 'center',
-    justifyContent: 'center',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.5,
-    shadowRadius: 4,
-    elevation: 6,
+    shadowOpacity: 0.35,
+    shadowRadius: 3,
+    elevation: 4,
   },
-  thumbCore: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-
-  // Scale
   scaleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
