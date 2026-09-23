@@ -68,20 +68,22 @@ service cloud.firestore {
     match /clubs/{clubId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() || isAdmin();
-      // Kulüp güncelleme: Admin, kulüp lideri veya üye katılım güncellemesi
-      allow update: if isAdmin() || (
-        isAuthenticated() && (
-          resource.data.leaderId == request.auth.uid ||
-          resource.data.captainId == request.auth.uid ||
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['membersCount', 'members', 'updatedAt'])
-        )
+      // Kulüp güncelleme: Admin, kulüp lideri/kaptanı veya üye katılım/ayrılma/devretme güncellemesi
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        resource.data.leaderId == request.auth.uid ||
+        resource.data.captainId == request.auth.uid ||
+        (resource.data.members != null && request.auth.uid in resource.data.members) ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'membersCount', 'members', 'updatedAt', 'captainId', 'captainName'
+        ])
       );
-      // Kulüp silme: Admin veya kulüp lideri / kaptanı
-      allow delete: if isAdmin() || (
-        isAuthenticated() && (
-          resource.data.leaderId == request.auth.uid ||
-          resource.data.captainId == request.auth.uid
-        )
+      // Kulüp silme: Admin, kulüp lideri / kaptanı veya kulübün üyesi (özellikle tek üyeli kulüpler)
+      allow delete: if isAuthenticated() && (
+        isAdmin() || 
+        resource.data.leaderId == request.auth.uid ||
+        resource.data.captainId == request.auth.uid ||
+        (resource.data.members != null && request.auth.uid in resource.data.members)
       );
     }
 

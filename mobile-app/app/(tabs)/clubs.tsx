@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/Skeleton';
 import { useAuth } from '@/hooks/use-auth';
 import { dbService, ClubModel } from '@/services/dbService';
 import { AppGuideModal } from '@/components/AppGuideModal';
+import Animated, { FadeInRight } from 'react-native-reanimated';
 
 export default function ClubsScreen() {
   const { theme } = useTheme();
@@ -334,50 +335,68 @@ export default function ClubsScreen() {
                     </TouchableOpacity>
                   )}
                 </View>
-              ) : filteredClubs.map((club) => (
-                <View key={club.id || club.name} style={styles.clubCard}>
-                  <View style={styles.clubCardTop}>
-                    {club.logo ? (
-                      <Image source={{ uri: club.logo }} style={styles.clubLogoImg} />
-                    ) : (
-                      <View style={[styles.clubIconCircle, { backgroundColor: `${club.color || theme.primary}20` }]}>
-                        <MaterialIcons name="shield" size={28} color={club.color || theme.primary} />
+              ) : filteredClubs.map((club, idx) => (
+                <Animated.View key={club.id || club.name} entering={FadeInRight.delay(idx * 70).springify()}>
+                  <TouchableOpacity 
+                    style={styles.clubCard}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      if (club.id) {
+                        router.push({ pathname: '/my-club', params: { clubId: club.id } });
+                      }
+                    }}
+                  >
+                    <View style={styles.clubCardTop}>
+                      {club.logo ? (
+                        <Image source={{ uri: club.logo }} style={styles.clubLogoImg} />
+                      ) : (
+                        <View style={[styles.clubIconCircle, { backgroundColor: `${club.color || theme.primary}20` }]}>
+                          <MaterialIcons name="shield" size={28} color={club.color || theme.primary} />
+                        </View>
+                      )}
+                      <View style={styles.clubTitleWrap}>
+                        <Text style={styles.clubNameTitle}>{club.name}</Text>
+                        <Text style={styles.clubDesc}>{club.desc}</Text>
                       </View>
-                    )}
-                    <View style={styles.clubTitleWrap}>
-                      <Text style={styles.clubNameTitle}>{club.name}</Text>
-                      <Text style={styles.clubDesc}>{club.desc}</Text>
+                      <MaterialIcons name="chevron-right" size={22} color={theme.textMuted} />
                     </View>
-                  </View>
-                  <View style={styles.clubCardFooter}>
-                    <View>
-                      <Text style={styles.clubPointsText}>{club.points || 100} PK</Text>
-                      <Text style={styles.clubRankSub}>{club.rank || 'LİG TAKIMI'}</Text>
-                    </View>
-                    {user?.clubId && user.clubId !== club.id ? (
-                      <TouchableOpacity 
-                        style={[styles.actionJoinBtn, { backgroundColor: 'rgba(255, 115, 81, 0.12)', borderColor: theme.error }]} 
-                        onPress={() => {
-                          setSelectedClubForChallenge(club);
-                          setChallengeModalVisible(true);
-                        }}
-                      >
-                        <Text style={[styles.actionJoinBtnText, { color: theme.error }]}>MEYDAN OKU</Text>
-                        <MaterialIcons name="sports-mma" size={14} color={theme.error} />
-                      </TouchableOpacity>
-                    ) : user?.clubId === club.id ? (
-                      <View style={[styles.actionJoinBtn, { opacity: 0.6, borderColor: theme.borderSubtle }]}>
-                        <Text style={[styles.actionJoinBtnText, { color: theme.textMuted }]}>KULÜBÜNÜZ</Text>
-                        <MaterialIcons name="check" size={14} color={theme.textMuted} />
+                    <View style={styles.clubCardFooter}>
+                      <View>
+                        <Text style={styles.clubPointsText}>{club.points || 100} PK</Text>
+                        <Text style={styles.clubRankSub}>{club.rank || 'LİG TAKIMI'}</Text>
                       </View>
-                    ) : (
-                      <TouchableOpacity style={styles.actionJoinBtn} onPress={() => handleJoinClub(club)}>
-                        <Text style={styles.actionJoinBtnText}>KATIL</Text>
-                        <MaterialIcons name="person-add" size={14} color={theme.primary} />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
+                      {user?.clubId && user.clubId !== club.id ? (
+                        <TouchableOpacity 
+                          style={[styles.actionJoinBtn, { backgroundColor: 'rgba(255, 115, 81, 0.12)', borderColor: theme.error }]} 
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            setSelectedClubForChallenge(club);
+                            setChallengeModalVisible(true);
+                          }}
+                        >
+                          <Text style={[styles.actionJoinBtnText, { color: theme.error }]}>MEYDAN OKU</Text>
+                          <MaterialIcons name="sports-mma" size={14} color={theme.error} />
+                        </TouchableOpacity>
+                      ) : user?.clubId === club.id ? (
+                        <View style={[styles.actionJoinBtn, { opacity: 0.6, borderColor: theme.borderSubtle }]}>
+                          <Text style={[styles.actionJoinBtnText, { color: theme.textMuted }]}>KULÜBÜNÜZ</Text>
+                          <MaterialIcons name="check" size={14} color={theme.textMuted} />
+                        </View>
+                      ) : (
+                        <TouchableOpacity 
+                          style={styles.actionJoinBtn} 
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleJoinClub(club);
+                          }}
+                        >
+                          <Text style={styles.actionJoinBtnText}>KATIL</Text>
+                          <MaterialIcons name="person-add" size={14} color={theme.primary} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                </Animated.View>
               ))}
             </View>
           </View>
