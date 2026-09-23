@@ -9,7 +9,7 @@ import { PitchReviewModal } from '@/components/PitchReviewModal';
 import { useTheme } from '@/context/ThemeContext';
 import { Skeleton } from '@/components/Skeleton';
 import { PITCH_DATABASE } from '@/config/pitches';
-import Slider from '@react-native-community/slider';
+import { DualThumbRangeSlider } from '@/components/DualThumbRangeSlider';
 
 type Tab = 'Maç' | 'Oyuncu' | 'Rakip';
 
@@ -538,29 +538,27 @@ export default function SearchScreen() {
               </View>
             )}
 
-            {/* Level filter for Oyuncu tab (Tekil Puan Bileşeni: Hazır Seviye Çipleri + Tek Slider) */}
+            {/* Level filter for Oyuncu tab (Tek Çubukta Çift Toplu Aralık Kaydırıcı) */}
             {activeTab === 'Oyuncu' && (
               <View style={styles.sectionBox}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>OYUNCU PUANI</Text>
+                  <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>OYUNCU PUANI ARALIĞI</Text>
                   <View style={styles.ratingBadge}>
                     <Text style={styles.ratingBadgeText}>
                       {minRating === 0 && maxRating === 10
                         ? 'Tüm Puanlar (0.0 - 10.0)'
-                        : minRating > 0 && maxRating === 10
-                          ? `${minRating.toFixed(1)} ★ ve Üzeri`
-                          : `${minRating.toFixed(1)} - ${maxRating.toFixed(1)} Puan`}
+                        : `${minRating.toFixed(1)} - ${maxRating.toFixed(1)} Puan`}
                     </Text>
                   </View>
                 </View>
 
-                {/* 1. Hızlı Puan Aralıkları (Tek Dokunuşlu Çipler) */}
-                <View style={[styles.levelGrid, { marginBottom: 14 }]}>
+                {/* 1. Hızlı Puan Aralıkları (Kullanıcının talep ettiği 4-6, 5-9 ve diğer hızlı butonlar) */}
+                <View style={[styles.levelGrid, { marginBottom: 12 }]}>
                   {[
-                    { key: 'all', label: 'TÜMÜ', min: 0, max: 10 },
-                    { key: 'amateur', label: '0-5 (AMATÖR)', min: 0, max: 5.0 },
-                    { key: 'mid', label: '5-7.5 (ORTA)', min: 5.0, max: 7.5 },
-                    { key: 'pro', label: '7.5+ (YILDIZ)', min: 7.5, max: 10.0 },
+                    { key: 'all', label: 'TÜMÜ (0-10)', min: 0, max: 10 },
+                    { key: '4-6', label: '4.0 - 6.0', min: 4.0, max: 6.0 },
+                    { key: '5-9', label: '5.0 - 9.0', min: 5.0, max: 9.0 },
+                    { key: '7-10', label: '7.0 - 10.0', min: 7.0, max: 10.0 },
                   ].map((preset) => {
                     const isActive = activeRatingPreset === preset.key || (minRating === preset.min && maxRating === preset.max);
                     return (
@@ -568,7 +566,7 @@ export default function SearchScreen() {
                         key={preset.key}
                         style={[
                           styles.levelBtn,
-                          { flex: preset.key === 'all' ? 0.7 : 1 },
+                          { flex: preset.key === 'all' ? 1.1 : 1 },
                           isActive && { borderColor: theme.primary, backgroundColor: `${theme.primary}20` }
                         ]}
                         onPress={() => {
@@ -586,41 +584,20 @@ export default function SearchScreen() {
                   })}
                 </View>
 
-                {/* 2. Tek Slider Çubuğu (Minimum Hedef Puan) */}
-                <View>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 11, color: theme.textMuted }}>MİNİMUM PUAN (EN AZ)</Text>
-                    <View style={styles.sliderCurrentPill}>
-                      <MaterialIcons name="star" size={12} color={theme.background} />
-                      <Text style={styles.sliderCurrentText}>
-                        {minRating === 0 ? 'Filtresiz' : `${minRating.toFixed(1)} ★ +`}
-                      </Text>
-                    </View>
-                  </View>
-                  <Slider
-                    style={styles.sliderBar}
-                    minimumValue={0}
-                    maximumValue={10}
-                    step={0.5}
-                    value={minRating}
-                    onValueChange={(val) => {
-                      const rounded = Math.round(val * 10) / 10;
-                      setMinRating(rounded);
-                      if (maxRating < rounded) {
-                        setMaxRating(10);
-                      }
-                      setActiveRatingPreset('custom');
-                    }}
-                    minimumTrackTintColor={theme.primary}
-                    maximumTrackTintColor={theme.surfaceContainerHighest}
-                    thumbTintColor={theme.primary}
-                  />
-                  <View style={styles.sliderLabelsRow}>
-                    <Text style={styles.sliderMinMaxText}>0.0 (Tümü)</Text>
-                    <Text style={styles.sliderMinMaxText}>5.0 (Orta)</Text>
-                    <Text style={styles.sliderMinMaxText}>10.0 (Elit)</Text>
-                  </View>
-                </View>
+                {/* 2. Tek Çubukta Çift Toplu Aralık Kaydırıcı (Dual Thumb Range Slider) */}
+                <DualThumbRangeSlider
+                  min={0}
+                  max={10}
+                  step={0.5}
+                  minGap={0.5}
+                  minValue={minRating}
+                  maxValue={maxRating}
+                  onChange={(newMin, newMax) => {
+                    setMinRating(newMin);
+                    setMaxRating(newMax);
+                    setActiveRatingPreset('custom');
+                  }}
+                />
               </View>
             )}
 
