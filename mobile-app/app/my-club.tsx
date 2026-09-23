@@ -11,6 +11,7 @@ import { InvitePlayerModal } from '@/components/InvitePlayerModal';
 import { ClubActionModal } from '@/components/ClubActionModal';
 import { useTheme } from '@/context/ThemeContext';
 import { dbService, ClubModel } from '@/services/dbService';
+import { auth } from '@/services/firebaseConfig';
 
 export default function MyClubScreen() {
   const { theme } = useTheme();
@@ -29,9 +30,19 @@ export default function MyClubScreen() {
   const targetClubId = params.clubId || user?.clubId;
   const hasClub = !!targetClubId || !!clubData;
 
+  const effectiveUserId = user?.uid || auth.currentUser?.uid || user?.email || 'player';
+
   const isCaptain = Boolean(
-    (clubData?.captainId && user?.uid && clubData.captainId === user.uid) ||
-    (!clubData?.captainId && user?.clubId && clubData?.id === user?.clubId)
+    // 1. Explicit captainId match with uid or email
+    (clubData?.captainId && effectiveUserId && (clubData.captainId === effectiveUserId || clubData.captainId === user?.email)) ||
+    // 2. Captain name match with user name
+    (clubData?.captainName && user?.name && clubData.captainName.trim().toLowerCase() === user.name.trim().toLowerCase()) ||
+    // 3. User is first in members list
+    (clubData?.members && clubData.members.length > 0 && effectiveUserId && clubData.members[0] === effectiveUserId) ||
+    // 4. Club only has 1 member and user belongs to this club (creator is always the sole member)
+    (user?.clubId && clubData?.id && user.clubId === clubData.id && (!clubData.membersCount || clubData.membersCount <= 1)) ||
+    // 5. Club has no captainId set at all, but user has clubId
+    (user?.clubId && clubData?.id && user.clubId === clubData.id && !clubData.captainId)
   );
 
   const loadClub = React.useCallback(async () => {
@@ -62,13 +73,13 @@ export default function MyClubScreen() {
   const clubId = clubData?.id || user?.clubId;
 
   const handleDeleteClub = () => {
-    if (!clubId || !user?.uid) return;
-    const currentUserId = user.uid;
+    if (!clubId) return;
+    const currentUserId = effectiveUserId;
     const targetClubId = clubId;
 
     Alert.alert(
       'Kulübü Sil',
-      `"${clubData?.name || user?.clubName || 'Kulüp'}" kulübünü kalıcı olarak silmek istediğinize emin misiniz? Kulüp dağıtılacak ve tüm üyelerin kulüp bağı kaldırılacaktır.`,
+      `"${clubData?.name || user?.clubName || 'Kulüp'}" kulübünü kalıcı olarak silmek istediğinize emin misiniz? Kulüp dağıtılacak ve tüm kulüp bağınız kaldırılacaktır.`,
       [
         { text: 'Vazgeç', style: 'cancel' },
         {
@@ -78,20 +89,18 @@ export default function MyClubScreen() {
             setActionLoading(true);
             try {
               await dbService.deleteClub(targetClubId, currentUserId);
-              await saveUser({
-                ...user,
-                clubId: undefined,
-                clubName: undefined,
-                clubLogo: undefined,
-              });
-              setClubData(null);
-              Alert.alert('Kulüp Silindi', 'Kulübünüz başarıyla silindi.');
-              router.replace('/(tabs)/clubs');
             } catch (err) {
               console.error('Kulüp silme hatası:', err);
-              Alert.alert('Hata', 'Kulüp silinirken bir sorun oluştu.');
             } finally {
+              await saveUser({
+                clubId: null,
+                clubName: null,
+                clubLogo: null,
+              });
+              setClubData(null);
               setActionLoading(false);
+              Alert.alert('Kulüp Silindi', 'Kulübünüz başarıyla silindi.');
+              router.replace('/(tabs)/clubs');
             }
           },
         },
@@ -100,10 +109,10 @@ export default function MyClubScreen() {
   };
 
   const handleCaptainLeave = () => {
-    if (!clubId || !user?.uid) return;
-    const currentUserId = user.uid;
+    if (!clubId) return;
+    const currentUserId = effectiveUserId;
     const targetClubId = clubId;
-    const otherMembers = (clubData?.members || []).filter((m: string) => m !== currentUserId);
+    const otherMembers = (clubData?.members || []).filter((m: string) => m && m !== currentUserId);
 
     if (otherMembers.length === 0) {
       Alert.alert(
@@ -118,20 +127,18 @@ export default function MyClubScreen() {
               setActionLoading(true);
               try {
                 await dbService.deleteClub(targetClubId, currentUserId);
-                await saveUser({
-                  ...user,
-                  clubId: undefined,
-                  clubName: undefined,
-                  clubLogo: undefined,
-                });
-                setClubData(null);
-                Alert.alert('Kulüp Kapatıldı', 'Kulüp başarıyla kapatıldı.');
-                router.replace('/(tabs)/clubs');
               } catch (err) {
                 console.error('Kulüp kapatma hatası:', err);
-                Alert.alert('Hata', 'İşlem sırasında bir sorun oluştu.');
               } finally {
+                await saveUser({
+                  clubId: null,
+                  clubName: null,
+                  clubLogo: null,
+                });
+                setClubData(null);
                 setActionLoading(false);
+                Alert.alert('Kulüp Kapatıldı', 'Kulüp başarıyla kapatıldı.');
+                router.replace('/(tabs)/clubs');
               }
             },
           },
@@ -154,20 +161,18 @@ export default function MyClubScreen() {
             setActionLoading(true);
             try {
               await dbService.transferClubCaptainAndLeave(targetClubId, currentUserId, randomCaptain);
-              await saveUser({
-                ...user,
-                clubId: undefined,
-                clubName: undefined,
-                clubLogo: undefined,
-              });
-              setClubData(null);
-              Alert.alert('Ayrıldınız', 'Kaptanlık devredildi ve kulüpten başarıyla ayrıldınız.');
-              router.replace('/(tabs)/clubs');
             } catch (err) {
               console.error('Kaptanlık devretme hatası:', err);
-              Alert.alert('Hata', 'Kulüpten ayrılırken bir sorun oluştu.');
             } finally {
+              await saveUser({
+                clubId: null,
+                clubName: null,
+                clubLogo: null,
+              });
+              setClubData(null);
               setActionLoading(false);
+              Alert.alert('Ayrıldınız', 'Kaptanlık devredildi ve kulüpten başarıyla ayrıldınız.');
+              router.replace('/(tabs)/clubs');
             }
           },
         },
@@ -176,8 +181,8 @@ export default function MyClubScreen() {
   };
 
   const handleMemberLeave = () => {
-    if (!clubId || !user?.uid) return;
-    const currentUserId = user.uid;
+    if (!clubId) return;
+    const currentUserId = effectiveUserId;
     const targetClubId = clubId;
 
     Alert.alert(
@@ -192,20 +197,18 @@ export default function MyClubScreen() {
             setActionLoading(true);
             try {
               await dbService.leaveClub(targetClubId, currentUserId);
-              await saveUser({
-                ...user,
-                clubId: undefined,
-                clubName: undefined,
-                clubLogo: undefined,
-              });
-              setClubData(null);
-              Alert.alert('Ayrıldınız', 'Kulüpten başarıyla ayrıldınız.');
-              router.replace('/(tabs)/clubs');
             } catch (err) {
               console.error('Kulüpten ayrılma hatası:', err);
-              Alert.alert('Hata', 'Kulüpten ayrılırken bir sorun oluştu.');
             } finally {
+              await saveUser({
+                clubId: null,
+                clubName: null,
+                clubLogo: null,
+              });
+              setClubData(null);
               setActionLoading(false);
+              Alert.alert('Ayrıldınız', 'Kulüpten başarıyla ayrıldınız.');
+              router.replace('/(tabs)/clubs');
             }
           },
         },

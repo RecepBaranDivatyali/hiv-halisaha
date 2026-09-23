@@ -203,11 +203,18 @@ export const dbService = {
 
   updateUserProfile: async (userId: string, data: Partial<any>) => {
     try {
+      if (!userId) return false;
       const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, {
-        ...data,
+      const cleanData: any = {};
+      for (const key of Object.keys(data)) {
+        if (data[key] !== undefined) {
+          cleanData[key] = data[key];
+        }
+      }
+      await setDoc(userRef, {
+        ...cleanData,
         updatedAt: serverTimestamp()
-      });
+      }, { merge: true });
       return true;
     } catch (error) {
       console.error("Profil güncelleme hatası:", error);
@@ -1316,23 +1323,22 @@ export const dbService = {
 
   leaveClub: async (clubId: string, userId: string) => {
     try {
-      const clubRef = doc(db, 'clubs', clubId);
-      const userRef = doc(db, 'users', userId);
+      if (clubId) {
+        const clubRef = doc(db, 'clubs', clubId);
+        await updateDoc(clubRef, {
+          members: arrayRemove(userId),
+          membersCount: increment(-1)
+        }).catch((err) => console.warn("leaveClub clubRef update warning:", err));
+      }
 
-      await runTransaction(db, async (transaction) => {
-        const clubDoc = await transaction.get(clubRef);
-        if (clubDoc.exists()) {
-          transaction.update(clubRef, {
-            members: arrayRemove(userId),
-            membersCount: increment(-1)
-          });
-        }
-        transaction.update(userRef, {
+      if (userId) {
+        const userRef = doc(db, 'users', userId);
+        await setDoc(userRef, {
           clubId: deleteField(),
           clubName: deleteField(),
           clubLogo: deleteField()
-        });
-      });
+        }, { merge: true }).catch((err) => console.warn("leaveClub userRef update warning:", err));
+      }
       return true;
     } catch (error) {
       console.error("Kulüpten ayrılma hatası:", error);
@@ -1342,28 +1348,37 @@ export const dbService = {
 
   deleteClub: async (clubId: string, captainId: string) => {
     try {
+      if (!clubId) return true;
       const clubRef = doc(db, 'clubs', clubId);
-      const snap = await getDoc(clubRef);
-      if (snap.exists()) {
-        const data = snap.data();
-        const memberIds: string[] = data.members || [];
-        for (const mId of memberIds) {
-          try {
-            await updateDoc(doc(db, 'users', mId), {
+      try {
+        const snap = await getDoc(clubRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          const memberIds: string[] = data.members || [];
+          const memberPromises = memberIds.map(mId => {
+            if (!mId) return Promise.resolve();
+            return setDoc(doc(db, 'users', mId), {
               clubId: deleteField(),
               clubName: deleteField(),
               clubLogo: deleteField()
-            });
-          } catch {}
+            }, { merge: true }).catch(() => {});
+          });
+          await Promise.allSettled(memberPromises);
         }
+      } catch (e) {
+        console.warn("deleteClub members fetch warning:", e);
       }
-      await deleteDoc(clubRef);
-      const userRef = doc(db, 'users', captainId);
-      await updateDoc(userRef, {
-        clubId: deleteField(),
-        clubName: deleteField(),
-        clubLogo: deleteField()
-      }).catch(() => {});
+
+      await deleteDoc(clubRef).catch((e) => console.warn("deleteDoc clubRef warning:", e));
+
+      if (captainId) {
+        const userRef = doc(db, 'users', captainId);
+        await setDoc(userRef, {
+          clubId: deleteField(),
+          clubName: deleteField(),
+          clubLogo: deleteField()
+        }, { merge: true }).catch(() => {});
+      }
       return true;
     } catch (error) {
       console.error("Kulüp silme hatası:", error);
@@ -1373,23 +1388,34 @@ export const dbService = {
 
   transferClubCaptainAndLeave: async (clubId: string, currentCaptainId: string, newCaptainId: string) => {
     try {
+      if (!clubId) return true;
       const clubRef = doc(db, 'clubs', clubId);
-      const newCapSnap = await getDoc(doc(db, 'users', newCaptainId));
-      const newCapName = newCapSnap.exists() ? (newCapSnap.data()?.name || 'Kaptan') : 'Kaptan';
+      let newCapName = 'Kaptan';
 
-      await runTransaction(db, async (transaction) => {
-        transaction.update(clubRef, {
-          captainId: newCaptainId,
-          captainName: newCapName,
-          members: arrayRemove(currentCaptainId),
-          membersCount: increment(-1)
-        });
-        transaction.update(doc(db, 'users', currentCaptainId), {
+      if (newCaptainId) {
+        try {
+          const newCapSnap = await getDoc(doc(db, 'users', newCaptainId));
+          if (newCapSnap.exists()) {
+            newCapName = newCapSnap.data()?.name || 'Kaptan';
+          }
+        } catch {}
+      }
+
+      await updateDoc(clubRef, {
+        captainId: newCaptainId,
+        captainName: newCapName,
+        members: arrayRemove(currentCaptainId),
+        membersCount: increment(-1)
+      }).catch((err) => console.warn("transferClubCaptainAndLeave clubRef warning:", err));
+
+      if (currentCaptainId) {
+        const userRef = doc(db, 'users', currentCaptainId);
+        await setDoc(userRef, {
           clubId: deleteField(),
           clubName: deleteField(),
           clubLogo: deleteField()
-        });
-      });
+        }, { merge: true }).catch(() => {});
+      }
       return true;
     } catch (error) {
       console.error("Kaptanlık devredip ayrılma hatası:", error);

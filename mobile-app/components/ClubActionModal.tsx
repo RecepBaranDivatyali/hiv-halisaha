@@ -9,6 +9,7 @@ import { useImagePicker } from '@/hooks/use-image-picker';
 import { useAuth } from '@/hooks/use-auth';
 import { dbService } from '@/services/dbService';
 import { useRouter } from 'expo-router';
+import { auth } from '@/services/firebaseConfig';
 
 interface ClubActionModalProps {
   visible: boolean;
@@ -95,12 +96,13 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
       setNameError('');
       setIsSubmitting(true);
       try {
+        const effectiveUid = user?.uid || auth.currentUser?.uid || user?.email || 'captain';
         const newClub = await dbService.createClub({
           name: clubName.trim(),
           desc: clubDesc.trim() || 'Halısaha Takımı',
           city: selectedCity,
           logo: selectedLogo || PRESET_LOGOS[0].uri,
-          captainId: user?.uid,
+          captainId: effectiveUid,
           captainName: user?.name || 'Kaptan',
           color: theme.primary,
           rank: 'YENİ',
@@ -108,7 +110,7 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
           membersCount: 1,
           maxMembers: 50,
           level: 1,
-          members: user?.uid ? [user.uid] : [],
+          members: [effectiveUid],
         });
 
         if (newClub?.id) {
