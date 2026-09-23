@@ -19,6 +19,7 @@ import Animated, { FadeIn, FadeOut, ZoomIn, ZoomOut } from 'react-native-reanima
 import { useTheme } from '@/context/ThemeContext';
 import { isMatchPast, parseTargetTimestamp } from '@/services/dateUtils';
 import { auth } from '@/services/firebaseConfig';
+import { dbService } from '@/services/dbService';
 
 const GUIDE_STORAGE_KEY = '@hiv_guide_viewed';
 
@@ -26,7 +27,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ matchCreated?: string }>();
   const { matches, pastMatches, reloadMatches } = useMatches();
-  const { user } = useAuth();
+  const { user, saveUser } = useAuth();
   const { theme } = useTheme();
   const styles = useStyles(theme);
 
@@ -71,6 +72,30 @@ export default function HomeScreen() {
       }
     }).catch(() => {});
   }, []);
+
+  // Maç Arama Sinyali Tarih Aşımı (Expiry) Kontrolü
+  useEffect(() => {
+    if (user?.isLookingForMatch) {
+      const now = Date.now();
+      let isExpired = false;
+
+      if (user.availableUntil && user.availableUntil < now) {
+        isExpired = true;
+      } else if (user.availableDateUpdatedAt) {
+        // Eğer availableUntil yoksa ancak güncelleme üzerinden 24 saat geçmişse
+        if (now - user.availableDateUpdatedAt > 24 * 60 * 60 * 1000) {
+          isExpired = true;
+        }
+      }
+
+      if (isExpired) {
+        saveUser({ ...user, isLookingForMatch: false });
+        if (user.uid) {
+          dbService.setUserLookingForMatch(user.uid, false).catch(() => {});
+        }
+      }
+    }
+  }, [user, saveUser]);
 
   useFocusEffect(
     useCallback(() => {
@@ -452,19 +477,23 @@ export default function HomeScreen() {
               <View style={styles.beaconPulseIcon}>
                 <View style={styles.beaconDotInner} />
               </View>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={styles.beaconActiveTitle}>MAÇ ARIYORSUNUZ</Text>
-                  <View style={styles.beaconDateTag}>
-                    <Text style={styles.beaconDateTagText}>{user.availableDate || 'Bugün'}</Text>
+              <View style={{ flex: 1, minWidth: 0, justifyContent: 'center' }}>
+                <Text style={styles.beaconActiveTitle} numberOfLines={1}>
+                  MAÇ ARIYORSUNUZ
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3 }}>
+                  <View style={[styles.beaconDateTag, { maxWidth: '100%' }]}>
+                    <Text style={styles.beaconDateTagText} numberOfLines={1} ellipsizeMode="tail">
+                      📅 {user.availableDate || 'Bugün'}
+                    </Text>
                   </View>
                 </View>
-                <Text style={styles.beaconActiveSub} numberOfLines={1}>
+                <Text style={styles.beaconActiveSub} numberOfLines={1} ellipsizeMode="tail">
                   {user.availableNote ? `💬 "${user.availableNote}"` : 'Kaptanlar seni oyuncu arama listesinde en üstte görüyor!'}
                 </Text>
               </View>
             </View>
-            <View style={styles.beaconEditBadge}>
+            <View style={[styles.beaconEditBadge, { flexShrink: 0 }]}>
               <Text style={styles.beaconEditBadgeText}>Düzenle</Text>
               <MaterialIcons name="chevron-right" size={16} color="#22c55e" />
             </View>

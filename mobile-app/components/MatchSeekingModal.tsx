@@ -25,6 +25,9 @@ const DISTRICTS_MAP: Record<string, string[]> = {
   'Samsun': ['Atakum', 'İlkadım', 'Canik'],
 };
 
+const TURKISH_DAYS = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+const TURKISH_MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+
 export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
   visible,
   onClose,
@@ -46,16 +49,25 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
   const [districtModalVisible, setDistrictModalVisible] = useState(false);
   const [pitchModalVisible, setPitchModalVisible] = useState(false);
 
+  const now = new Date();
+  const todayName = TURKISH_DAYS[now.getDay()];
+  const tomorrow = new Date();
+  tomorrow.setDate(now.getDate() + 1);
+  const tomorrowName = TURKISH_DAYS[tomorrow.getDay()];
+
+  const quickDateOptions = useMemo(() => [
+    { key: 'Bugün', label: `Bugün (${todayName})` },
+    { key: 'Yarın', label: `Yarın (${tomorrowName})` },
+  ], [todayName, tomorrowName]);
+
   const upcomingDaysList = useMemo(() => {
     const list: string[] = [];
-    const daysOfWeek = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
-    const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
-    const now = new Date();
+    const base = new Date();
     for (let i = 2; i <= 21; i++) {
       const d = new Date();
-      d.setDate(now.getDate() + i);
-      const dayName = daysOfWeek[d.getDay()];
-      const monthName = months[d.getMonth()];
+      d.setDate(base.getDate() + i);
+      const dayName = TURKISH_DAYS[d.getDay()];
+      const monthName = TURKISH_MONTHS[d.getMonth()];
       const dateNum = d.getDate();
       list.push(`${dateNum} ${monthName} ${dayName}`);
     }
@@ -77,16 +89,51 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
 
   const toggleDate = (dateVal: string) => {
     setSelectedDates(prev => {
-      if (prev.includes(dateVal)) {
+      const match = prev.find(d => d === dateVal || d.startsWith(dateVal));
+      if (match) {
         if (prev.length <= 1) {
           Alert.alert('Uyarı', 'En az 1 tarih seçili olmalıdır.');
           return prev;
         }
-        return prev.filter(d => d !== dateVal);
+        return prev.filter(d => d !== match);
       } else {
         return [...prev, dateVal];
       }
     });
+  };
+
+  const calculateAvailableUntil = (dates: string[]): number => {
+    let maxTs = 0;
+    const current = new Date();
+    
+    dates.forEach(d => {
+      if (d.includes('Bugün')) {
+        const endOfToday = new Date(current);
+        endOfToday.setHours(23, 59, 59, 999);
+        maxTs = Math.max(maxTs, endOfToday.getTime());
+      } else if (d.includes('Yarın')) {
+        const endOfTomorrow = new Date(current);
+        endOfTomorrow.setDate(current.getDate() + 1);
+        endOfTomorrow.setHours(23, 59, 59, 999);
+        maxTs = Math.max(maxTs, endOfTomorrow.getTime());
+      } else {
+        const match = d.match(/(\d{1,2})\s+([A-Za-zÇĞİÖŞÜçğıöşü]+)/);
+        if (match) {
+          const dayNum = parseInt(match[1], 10);
+          const monthName = match[2];
+          const monthIdx = TURKISH_MONTHS.indexOf(monthName);
+          if (monthIdx !== -1) {
+            const target = new Date(current.getFullYear(), monthIdx, dayNum, 23, 59, 59, 999);
+            if (target.getTime() < current.getTime()) {
+              target.setFullYear(target.getFullYear() + 1);
+            }
+            maxTs = Math.max(maxTs, target.getTime());
+          }
+        }
+      }
+    });
+
+    return maxTs > 0 ? maxTs : (Date.now() + 24 * 60 * 60 * 1000);
   };
 
   const availableDistricts = ['Tüm İlçeler', ...(DISTRICTS_MAP[selectedCity] || ['Merkez'])];
@@ -99,11 +146,14 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
       const finalDistrict = selectedDistrict === 'Tüm İlçeler' ? '' : selectedDistrict;
       const finalPitch = selectedPitch === 'Tüm Sahalar' ? '' : selectedPitch;
       const finalDatesStr = selectedDates.length > 0 ? selectedDates.join(', ') : 'Bugün';
+      const availableUntil = calculateAvailableUntil(selectedDates);
 
       const updatedUser = {
         ...user,
         isLookingForMatch: true,
         availableDate: finalDatesStr,
+        availableUntil,
+        availableDateUpdatedAt: Date.now(),
         city: selectedCity,
         preferredDistrict: finalDistrict,
         preferredPitch: finalPitch,
@@ -114,6 +164,7 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
       if (user.uid) {
         await dbService.setUserLookingForMatch(user.uid, true, {
           availableDate: finalDatesStr,
+          availableUntil,
           city: selectedCity,
           district: finalDistrict,
           preferredPitch: finalPitch,
@@ -212,13 +263,13 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
               </View>
 
               <View style={styles.chipsRow}>
-                {['Bugün', 'Yarın'].map((opt) => {
-                  const isSelected = selectedDates.includes(opt);
+                {quickDateOptions.map((opt) => {
+                  const isSelected = selectedDates.some(d => d === opt.key || d.startsWith(opt.key));
                   return (
                     <TouchableOpacity
-                      key={opt}
+                      key={opt.key}
                       style={[styles.dateChip, isSelected && styles.dateChipActive]}
-                      onPress={() => toggleDate(opt)}
+                      onPress={() => toggleDate(opt.key)}
                       activeOpacity={0.8}
                     >
                       <MaterialIcons 
@@ -226,7 +277,7 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
                         size={14} 
                         color={isSelected ? '#ffffff' : theme.textMuted} 
                       />
-                      <Text style={[styles.dateChipText, isSelected && styles.dateChipTextActive]}>{opt}</Text>
+                      <Text style={[styles.dateChipText, isSelected && styles.dateChipTextActive]}>{opt.label}</Text>
                     </TouchableOpacity>
                   );
                 })}

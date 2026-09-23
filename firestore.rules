@@ -76,7 +76,13 @@ service cloud.firestore {
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['membersCount', 'members', 'updatedAt'])
         )
       );
-      allow delete: if isAdmin();
+      // Kulüp silme: Admin veya kulüp lideri / kaptanı
+      allow delete: if isAdmin() || (
+        isAuthenticated() && (
+          resource.data.leaderId == request.auth.uid ||
+          resource.data.captainId == request.auth.uid
+        )
+      );
     }
 
     // ─── HALISAHA / TESİSLER (PITCHES) ───

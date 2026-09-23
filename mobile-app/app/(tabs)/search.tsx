@@ -56,23 +56,35 @@ export default function SearchScreen() {
   const [pitchModalVisible, setPitchModalVisible] = useState(false);
   const [dateModalVisible, setDateModalVisible] = useState(false);
 
-  const [pos, setPos] = useState('KL');
+  const [selectedPositions, setSelectedPositions] = useState<string[]>(['KL']);
   const [minRating, setMinRating] = useState<number>(0);
   const [maxRating, setMaxRating] = useState<number>(10);
-  const [selectedLevels, setSelectedLevels] = useState<string[]>(['0-3.9']);
-  const [difficulty, setDifficulty] = useState('Eğlence');
+  const [activeRatingPreset, setActiveRatingPreset] = useState<string>('all');
+  const [selectedDifficulties, setSelectedDifficulties] = useState<string[]>(['Eğlence']);
   const [selectedTimeFrames, setSelectedTimeFrames] = useState<string[]>([]);
   const [reservationStatus, setReservationStatus] = useState<'all' | 'reserved' | 'no_reservation'>('all');
   const [playerStatus, setPlayerStatus] = useState<'all' | 'looking'>('looking');
   const [remember, setRemember] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
 
-  const toggleLevel = (lv: string) => {
-    setSelectedLevels(prev => {
-      if (prev.includes(lv)) {
-        return prev.filter(item => item !== lv);
+  const togglePosition = (p: string) => {
+    setSelectedPositions(prev => {
+      if (prev.includes(p)) {
+        if (prev.length <= 1) return prev;
+        return prev.filter(x => x !== p);
       } else {
-        return [...prev, lv];
+        return [...prev, p];
+      }
+    });
+  };
+
+  const toggleDifficulty = (d: string) => {
+    setSelectedDifficulties(prev => {
+      if (prev.includes(d)) {
+        if (prev.length <= 1) return prev;
+        return prev.filter(x => x !== d);
+      } else {
+        return [...prev, d];
       }
     });
   };
@@ -126,14 +138,13 @@ export default function SearchScreen() {
           const parsed = JSON.parse(data);
           if (parsed.city) setSelectedCity(parsed.city);
           if (parsed.district) setSelectedDistrict(parsed.district);
-          if (parsed.pos) setPos(parsed.pos);
+          if (parsed.selectedPositions && Array.isArray(parsed.selectedPositions)) {
+            setSelectedPositions(parsed.selectedPositions);
+          } else if (parsed.pos) {
+            setSelectedPositions(parsed.pos.split(',').map((s: string) => s.trim()).filter(Boolean));
+          }
           if (parsed.minRating !== undefined) {
             setMinRating(Number(parsed.minRating));
-          } else if (parsed.selectedLevels && Array.isArray(parsed.selectedLevels)) {
-            setSelectedLevels(parsed.selectedLevels);
-            if (parsed.selectedLevels.includes('8.0+')) setMinRating(8.0);
-            else if (parsed.selectedLevels.includes('6.0-7.9')) setMinRating(6.0);
-            else if (parsed.selectedLevels.includes('4.0-5.9')) setMinRating(4.0);
           } else if (parsed.level) {
             const num = parseFloat(parsed.level);
             if (!isNaN(num)) setMinRating(num);
@@ -141,7 +152,11 @@ export default function SearchScreen() {
           if (parsed.maxRating !== undefined) {
             setMaxRating(Number(parsed.maxRating));
           }
-          if (parsed.difficulty) setDifficulty(parsed.difficulty);
+          if (parsed.selectedDifficulties && Array.isArray(parsed.selectedDifficulties)) {
+            setSelectedDifficulties(parsed.selectedDifficulties);
+          } else if (parsed.difficulty) {
+            setSelectedDifficulties(parsed.difficulty.split(',').map((s: string) => s.trim()).filter(Boolean));
+          }
           if (parsed.timeFrames && Array.isArray(parsed.timeFrames)) {
             setSelectedTimeFrames(parsed.timeFrames);
           } else if (parsed.timeFrame && parsed.timeFrame !== 'Tümü') {
@@ -164,15 +179,20 @@ export default function SearchScreen() {
   }, [params.tab]);
 
   const handleStartSearch = async () => {
+    const posParam = selectedPositions.length > 0 ? selectedPositions.join(',') : undefined;
+    const diffParam = selectedDifficulties.length > 0 ? selectedDifficulties.join(',') : undefined;
+
     if (remember) {
       AsyncStorage.setItem(SEARCH_PREFS_KEY, JSON.stringify({
         city: selectedCity,
         district: selectedDistrict,
-        pos,
+        selectedPositions,
+        pos: posParam,
         minRating,
         maxRating,
         level: minRating > 0 ? `${minRating.toFixed(1)}+` : undefined,
-        difficulty,
+        selectedDifficulties,
+        difficulty: diffParam,
         timeFrames: selectedTimeFrames,
         timeFrame: selectedTimeFrames.join(','),
       })).catch((e) => { console.error('AsyncStorage error:', e); });
@@ -182,8 +202,8 @@ export default function SearchScreen() {
       pathname: '/results',
       params: { 
         tab: activeTab, 
-        pos: pos, 
-        difficulty: difficulty, 
+        pos: posParam, 
+        difficulty: diffParam, 
         level: minRating > 0 ? `${minRating.toFixed(1)}+` : undefined, 
         minRating: minRating > 0 ? minRating.toString() : undefined,
         maxRating: maxRating < 10 ? maxRating.toString() : undefined,
@@ -223,11 +243,11 @@ export default function SearchScreen() {
             setSelectedCity('İstanbul');
             setSelectedDistrict('Kadıköy');
             setSelectedPitch('Tüm Sahalar');
-            setPos('KL');
+            setSelectedPositions(['KL']);
             setMinRating(0);
             setMaxRating(10);
-            setSelectedLevels([]);
-            setDifficulty('Eğlence');
+            setActiveRatingPreset('all');
+            setSelectedDifficulties(['Eğlence']);
             setSelectedTimeFrames([]);
             Alert.alert('Filtreler Sıfırlandı', 'Arama kriterleri varsayılan değerlere döndürüldü.');
           }} 
@@ -325,19 +345,24 @@ export default function SearchScreen() {
           </View>
         ) : (
           <>
-            {/* Position filter for Maç & Oyuncu tabs */}
+            {/* Position filter for Maç & Oyuncu tabs (Çoklu Seçim) */}
             {(activeTab === 'Maç' || activeTab === 'Oyuncu') && (
               <View style={styles.sectionBox}>
-                <Text style={styles.sectionTitle}>POZİSYON İHTİYACI</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                  <Text style={styles.sectionTitle}>POZİSYON İHTİYACI</Text>
+                  <Text style={{ fontFamily: Fonts.body, fontSize: 11, color: theme.primary }}>
+                    Birden fazla seçilebilir
+                  </Text>
+                </View>
                 <View style={styles.posGrid}>
                   {['KL', 'DF', 'OS', 'FV'].map((p, i) => {
                     const labels = ['Kaleci', 'Defans', 'Orta Saha', 'Forvet'];
-                    const active = pos === p;
+                    const active = selectedPositions.includes(p);
                     return (
                       <TouchableOpacity
                         key={p}
                         style={posBtnStyle(active)}
-                        onPress={() => setPos(p)}
+                        onPress={() => togglePosition(p)}
                         activeOpacity={0.8}
                         accessibilityRole="button"
                         accessibilityState={{ selected: active }}
@@ -513,27 +538,63 @@ export default function SearchScreen() {
               </View>
             )}
 
-            {/* Level filter for Oyuncu tab (Min - Max Puan Aralığı) */}
+            {/* Level filter for Oyuncu tab (Tekil Puan Bileşeni: Hazır Seviye Çipleri + Tek Slider) */}
             {activeTab === 'Oyuncu' && (
               <View style={styles.sectionBox}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                  <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>OYUNCU PUAN ARALIĞI</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>OYUNCU PUANI</Text>
                   <View style={styles.ratingBadge}>
                     <Text style={styles.ratingBadgeText}>
                       {minRating === 0 && maxRating === 10
                         ? 'Tüm Puanlar (0.0 - 10.0)'
-                        : `${minRating.toFixed(1)} - ${maxRating.toFixed(1)} Puan`}
+                        : minRating > 0 && maxRating === 10
+                          ? `${minRating.toFixed(1)} ★ ve Üzeri`
+                          : `${minRating.toFixed(1)} - ${maxRating.toFixed(1)} Puan`}
                     </Text>
                   </View>
                 </View>
 
-                {/* Min Slider */}
-                <View style={{ marginBottom: 14 }}>
+                {/* 1. Hızlı Puan Aralıkları (Tek Dokunuşlu Çipler) */}
+                <View style={[styles.levelGrid, { marginBottom: 14 }]}>
+                  {[
+                    { key: 'all', label: 'TÜMÜ', min: 0, max: 10 },
+                    { key: 'amateur', label: '0-5 (AMATÖR)', min: 0, max: 5.0 },
+                    { key: 'mid', label: '5-7.5 (ORTA)', min: 5.0, max: 7.5 },
+                    { key: 'pro', label: '7.5+ (YILDIZ)', min: 7.5, max: 10.0 },
+                  ].map((preset) => {
+                    const isActive = activeRatingPreset === preset.key || (minRating === preset.min && maxRating === preset.max);
+                    return (
+                      <TouchableOpacity
+                        key={preset.key}
+                        style={[
+                          styles.levelBtn,
+                          { flex: preset.key === 'all' ? 0.7 : 1 },
+                          isActive && { borderColor: theme.primary, backgroundColor: `${theme.primary}20` }
+                        ]}
+                        onPress={() => {
+                          setActiveRatingPreset(preset.key);
+                          setMinRating(preset.min);
+                          setMaxRating(preset.max);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.levelText, isActive && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                          {preset.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* 2. Tek Slider Çubuğu (Minimum Hedef Puan) */}
+                <View>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 11, color: theme.textMuted }}>EN DÜŞÜK PUAN (MİN)</Text>
+                    <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 11, color: theme.textMuted }}>MİNİMUM PUAN (EN AZ)</Text>
                     <View style={styles.sliderCurrentPill}>
                       <MaterialIcons name="star" size={12} color={theme.background} />
-                      <Text style={styles.sliderCurrentText}>{minRating.toFixed(1)} ★</Text>
+                      <Text style={styles.sliderCurrentText}>
+                        {minRating === 0 ? 'Filtresiz' : `${minRating.toFixed(1)} ★ +`}
+                      </Text>
                     </View>
                   </View>
                   <Slider
@@ -544,61 +605,42 @@ export default function SearchScreen() {
                     value={minRating}
                     onValueChange={(val) => {
                       const rounded = Math.round(val * 10) / 10;
-                      setMinRating(Math.min(rounded, maxRating));
+                      setMinRating(rounded);
+                      if (maxRating < rounded) {
+                        setMaxRating(10);
+                      }
+                      setActiveRatingPreset('custom');
                     }}
                     minimumTrackTintColor={theme.primary}
                     maximumTrackTintColor={theme.surfaceContainerHighest}
                     thumbTintColor={theme.primary}
                   />
                   <View style={styles.sliderLabelsRow}>
-                    <Text style={styles.sliderMinMaxText}>0.0 (Taban)</Text>
-                    <Text style={styles.sliderMinMaxText}>10.0</Text>
-                  </View>
-                </View>
-
-                {/* Max Slider */}
-                <View>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 11, color: theme.textMuted }}>EN YÜKSEK PUAN (MAX)</Text>
-                    <View style={[styles.sliderCurrentPill, { backgroundColor: theme.secondary }]}>
-                      <MaterialIcons name="star" size={12} color={theme.background} />
-                      <Text style={styles.sliderCurrentText}>{maxRating.toFixed(1)} ★</Text>
-                    </View>
-                  </View>
-                  <Slider
-                    style={styles.sliderBar}
-                    minimumValue={0}
-                    maximumValue={10}
-                    step={0.5}
-                    value={maxRating}
-                    onValueChange={(val) => {
-                      const rounded = Math.round(val * 10) / 10;
-                      setMaxRating(Math.max(rounded, minRating));
-                    }}
-                    minimumTrackTintColor={theme.secondary}
-                    maximumTrackTintColor={theme.surfaceContainerHighest}
-                    thumbTintColor={theme.secondary}
-                  />
-                  <View style={styles.sliderLabelsRow}>
-                    <Text style={styles.sliderMinMaxText}>0.0</Text>
-                    <Text style={styles.sliderMinMaxText}>10.0 (Tavan)</Text>
+                    <Text style={styles.sliderMinMaxText}>0.0 (Tümü)</Text>
+                    <Text style={styles.sliderMinMaxText}>5.0 (Orta)</Text>
+                    <Text style={styles.sliderMinMaxText}>10.0 (Elit)</Text>
                   </View>
                 </View>
               </View>
             )}
 
-            {/* Difficulty filter for Rakip tab */}
+            {/* Difficulty filter for Rakip tab (Çoklu Seçim) */}
             {activeTab === 'Rakip' && (
               <View style={styles.sectionBox}>
-                <Text style={styles.sectionTitle}>ZORLUK SEVİYESİ</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                  <Text style={styles.sectionTitle}>ZORLUK SEVİYESİ</Text>
+                  <Text style={{ fontFamily: Fonts.body, fontSize: 11, color: theme.primary }}>
+                    Birden fazla seçilebilir
+                  </Text>
+                </View>
                 <View style={styles.levelGrid}>
                   {['Eğlence', 'Düşük', 'Orta', 'Yüksek'].map((d) => {
-                    const active = difficulty === d;
+                    const active = selectedDifficulties.includes(d);
                     return (
                       <TouchableOpacity
                         key={d}
                         style={levelBtnStyle(active)}
-                        onPress={() => setDifficulty(d)}
+                        onPress={() => toggleDifficulty(d)}
                         activeOpacity={0.8}
                         accessibilityRole="button"
                         accessibilityState={{ selected: active }}

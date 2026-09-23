@@ -60,6 +60,7 @@ export default function ResultsScreen() {
           city: params.city,
           district: params.district,
           mode: params.mode,
+          position: params.pos,
           difficulty: params.difficulty,
           arena: params.arena,
           timeFrame: params.timeFrame,
@@ -70,6 +71,7 @@ export default function ResultsScreen() {
         const list = await dbService.getClubs({
           city: params.city,
           district: params.district,
+          difficulty: params.difficulty,
           hasReservation: params.reservationStatus === 'reserved' ? true : params.reservationStatus === 'no_reservation' ? false : undefined,
           timeFrame: params.timeFrame,
         });

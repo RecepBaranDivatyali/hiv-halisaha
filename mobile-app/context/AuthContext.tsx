@@ -40,6 +40,8 @@ export interface UserSession {
   stats?: UserStats;
   isLookingForMatch?: boolean;
   availableDate?: string;
+  availableUntil?: number;
+  availableDateUpdatedAt?: number;
   preferredDistrict?: string;
   availableNote?: string;
 }

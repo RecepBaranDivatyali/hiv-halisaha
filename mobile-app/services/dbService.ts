@@ -942,7 +942,14 @@ export const dbService = {
         );
       }
       if (criteria.position) {
-        players = players.filter((p: any) => p.position && p.position.toUpperCase().includes(criteria.position!.toUpperCase()));
+        const posList = criteria.position.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+        if (posList.length > 0) {
+          players = players.filter((p: any) => {
+            if (!p.position) return false;
+            const pPos = p.position.toUpperCase();
+            return posList.some(targetPos => pPos.includes(targetPos));
+          });
+        }
       }
       if ((criteria.minRating !== undefined && criteria.minRating > 0) || (criteria.maxRating !== undefined && criteria.maxRating < 10)) {
         const minVal = criteria.minRating ?? 0;
@@ -981,7 +988,13 @@ export const dbService = {
         }
       }
       if (criteria.onlyLookingForMatch) {
-        players = players.filter((p: any) => p.isLookingForMatch === true);
+        const now = Date.now();
+        players = players.filter((p: any) => {
+          if (p.isLookingForMatch !== true) return false;
+          // Süresi dolmuş sinyalleri arama sonuçlarında gösterme
+          if (p.availableUntil && p.availableUntil < now) return false;
+          return true;
+        });
       }
       if (criteria.timeFrame && criteria.timeFrame !== 'Tümü' && criteria.timeFrame !== 'all') {
         const rawFrames = criteria.timeFrame.split(',').map(f => f.toLocaleLowerCase('tr').trim()).filter(Boolean);
@@ -1013,6 +1026,7 @@ export const dbService = {
     city?: string; 
     district?: string; 
     mode?: string; 
+    position?: string;
     difficulty?: string; 
     arena?: string; 
     timeFrame?: string;
@@ -1035,6 +1049,30 @@ export const dbService = {
       }
       if (criteria.mode) {
         list = list.filter(m => m.mode === criteria.mode);
+      }
+      if (criteria.difficulty) {
+        const diffList = criteria.difficulty.split(',').map(d => d.trim().toLocaleLowerCase('tr')).filter(Boolean);
+        if (diffList.length > 0) {
+          list = list.filter((m: any) => {
+            const mDiff = (m.difficulty || '').toLocaleLowerCase('tr');
+            return diffList.some(d => mDiff.includes(d));
+          });
+        }
+      }
+      if (criteria.position) {
+        const posList = criteria.position.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+        if (posList.length > 0) {
+          list = list.filter((m: any) => {
+            const checkSlot = (slot: any) => {
+              if (!slot) return false;
+              const slotPos = (slot.role || slot.position || '').toUpperCase();
+              return posList.some(p => slotPos.includes(p));
+            };
+            const hasOpenSlot = m.benchA?.some(checkSlot) || m.benchB?.some(checkSlot);
+            const hasReqPos = m.requiredPositions?.some((p: string) => posList.includes(p.toUpperCase()));
+            return hasOpenSlot || hasReqPos || !m.requiredPositions || m.requiredPositions.length === 0;
+          });
+        }
       }
       if (criteria.arena && criteria.arena !== 'Tüm Sahalar') {
         const arenaLower = criteria.arena.trim().toLocaleLowerCase('tr');
@@ -1167,7 +1205,7 @@ export const dbService = {
   // 5. KULÜP İŞLEMLERİ (CLUBS)
   // ==========================================
 
-  getClubs: async (criteria?: { city?: string; district?: string; hasReservation?: boolean; timeFrame?: string }) => {
+  getClubs: async (criteria?: { city?: string; district?: string; hasReservation?: boolean; timeFrame?: string; difficulty?: string }) => {
     try {
       const clubsRef = collection(db, 'clubs');
       const snapshot = await getDocs(clubsRef);
@@ -1180,6 +1218,15 @@ export const dbService = {
       if (criteria?.district && criteria.district !== 'Tüm İlçeler') {
         const distLower = criteria.district.trim().toLocaleLowerCase('tr');
         list = list.filter(c => c.district && c.district.toLocaleLowerCase('tr').includes(distLower));
+      }
+      if (criteria?.difficulty) {
+        const diffList = criteria.difficulty.split(',').map(d => d.trim().toLocaleLowerCase('tr')).filter(Boolean);
+        if (diffList.length > 0) {
+          list = list.filter((c: any) => {
+            const cDiff = (c.difficulty || c.rank || '').toLocaleLowerCase('tr');
+            return diffList.some(d => cDiff.includes(d));
+          });
+        }
       }
       if (criteria?.hasReservation !== undefined) {
         list = list.filter(c => c.hasReservation === criteria.hasReservation);
@@ -1209,7 +1256,7 @@ export const dbService = {
   setUserLookingForMatch: async (
     userId: string, 
     isLooking: boolean, 
-    availableDateOrDetails?: string | { availableDate?: string; city?: string; district?: string; preferredPitch?: string; availableNote?: string }, 
+    availableDateOrDetails?: string | { availableDate?: string; city?: string; district?: string; preferredPitch?: string; availableNote?: string; availableUntil?: number }, 
     preferredDistrict?: string, 
     note?: string
   ) => {
@@ -1218,6 +1265,7 @@ export const dbService = {
     let distStr = '';
     let pitchStr = '';
     let noteStr = '';
+    let untilTs: number | null = null;
 
     if (typeof availableDateOrDetails === 'object' && availableDateOrDetails !== null) {
       dateStr = availableDateOrDetails.availableDate || 'Bugün';
@@ -1225,6 +1273,7 @@ export const dbService = {
       distStr = availableDateOrDetails.district || '';
       pitchStr = availableDateOrDetails.preferredPitch || '';
       noteStr = availableDateOrDetails.availableNote || '';
+      untilTs = availableDateOrDetails.availableUntil || null;
     } else {
       dateStr = availableDateOrDetails || 'Bugün';
       distStr = preferredDistrict || '';
@@ -1236,6 +1285,8 @@ export const dbService = {
       const updateData: Record<string, any> = {
         isLookingForMatch: isLooking,
         availableDate: isLooking ? dateStr : deleteField(),
+        availableUntil: isLooking ? (untilTs || null) : deleteField(),
+        availableDateUpdatedAt: isLooking ? Date.now() : deleteField(),
         preferredDistrict: isLooking ? (distStr || null) : deleteField(),
         preferredPitch: isLooking ? (pitchStr || null) : deleteField(),
         availableNote: isLooking ? (noteStr || null) : deleteField(),
@@ -1350,33 +1401,18 @@ export const dbService = {
     try {
       if (!clubId) return true;
       const clubRef = doc(db, 'clubs', clubId);
-      try {
-        const snap = await getDoc(clubRef);
-        if (snap.exists()) {
-          const data = snap.data();
-          const memberIds: string[] = data.members || [];
-          const memberPromises = memberIds.map(mId => {
-            if (!mId) return Promise.resolve();
-            return setDoc(doc(db, 'users', mId), {
-              clubId: deleteField(),
-              clubName: deleteField(),
-              clubLogo: deleteField()
-            }, { merge: true }).catch(() => {});
-          });
-          await Promise.allSettled(memberPromises);
-        }
-      } catch (e) {
-        console.warn("deleteClub members fetch warning:", e);
-      }
 
+      // Kulüp dokümanını doğrudan sil
       await deleteDoc(clubRef).catch((e) => console.warn("deleteDoc clubRef warning:", e));
 
+      // Kaptanın kendi profilindeki kulüp alanlarını temizle
       if (captainId) {
         const userRef = doc(db, 'users', captainId);
         await setDoc(userRef, {
           clubId: deleteField(),
           clubName: deleteField(),
-          clubLogo: deleteField()
+          clubLogo: deleteField(),
+          updatedAt: serverTimestamp()
         }, { merge: true }).catch(() => {});
       }
       return true;

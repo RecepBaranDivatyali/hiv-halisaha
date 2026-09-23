@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, RefreshControl, Alert } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, RefreshControl, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -24,6 +24,7 @@ export default function MyClubScreen() {
   const [inviteModalVisible, setInviteModalVisible] = useState(false);
   const [clubActionModalVisible, setClubActionModalVisible] = useState(false);
   const [clubData, setClubData] = useState<ClubModel | null>(null);
+  const [membersList, setMembersList] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -49,13 +50,66 @@ export default function MyClubScreen() {
     if (targetClubId) {
       try {
         const data = await dbService.getClubById(targetClubId);
-        if (data) setClubData(data);
+        if (data) {
+          setClubData(data);
+          const memberIds = data.members && data.members.length > 0 
+            ? data.members 
+            : (data.captainId ? [data.captainId] : []);
+          
+          if (memberIds.length > 0) {
+            const memberProfiles = await Promise.all(
+              memberIds.map(async (mId: string) => {
+                if (!mId) return null;
+                if (user && (user.uid === mId || user.email === mId)) {
+                  return {
+                    uid: mId,
+                    name: user.name || 'Siz',
+                    avatar: user.avatar,
+                    position: user.position || 'OS',
+                    rating: user.rating || 5.0,
+                    isCaptain: true, // Captain or member evaluated dynamically
+                  };
+                }
+                try {
+                  const p = await dbService.getUserProfile(mId);
+                  if (p) {
+                    return {
+                      uid: mId,
+                      name: p.name || 'Oyuncu',
+                      avatar: p.avatar,
+                      position: p.position || 'OS',
+                      rating: p.rating || 5.0,
+                      isCaptain: mId === data.captainId || p.name === data.captainName,
+                    };
+                  }
+                } catch {}
+                return {
+                  uid: mId,
+                  name: mId === data.captainId ? (data.captainName || 'Kaptan') : 'Kulüp Üyesi',
+                  avatar: undefined,
+                  position: 'OS',
+                  rating: 5.0,
+                  isCaptain: mId === data.captainId,
+                };
+              })
+            );
+            const valid = memberProfiles.filter(Boolean);
+            valid.sort((a: any, b: any) => {
+              if (a.isCaptain && !b.isCaptain) return -1;
+              if (!a.isCaptain && b.isCaptain) return 1;
+              return (b.rating || 0) - (a.rating || 0);
+            });
+            setMembersList(valid);
+          } else {
+            setMembersList([]);
+          }
+        }
       } catch (e) {
         console.error('Kulüp getirme hatası:', e);
         Alert.alert('Hata', 'Kulüp bilgileri yüklenemedi. Lütfen bağlantınızı kontrol edin.');
       }
     }
-  }, [targetClubId]);
+  }, [targetClubId, user]);
 
   useEffect(() => {
     loadClub();
@@ -99,8 +153,9 @@ export default function MyClubScreen() {
               });
               setClubData(null);
               setActionLoading(false);
-              Alert.alert('Kulüp Silindi', 'Kulübünüz başarıyla silindi.');
-              router.replace('/(tabs)/clubs');
+              Alert.alert('Kulüp Silindi', 'Kulübünüz başarıyla silindi.', [
+                { text: 'Tamam', onPress: () => router.replace('/(tabs)/clubs') }
+              ]);
             }
           },
         },
@@ -137,8 +192,9 @@ export default function MyClubScreen() {
                 });
                 setClubData(null);
                 setActionLoading(false);
-                Alert.alert('Kulüp Kapatıldı', 'Kulüp başarıyla kapatıldı.');
-                router.replace('/(tabs)/clubs');
+                Alert.alert('Kulüp Kapatıldı', 'Kulüp başarıyla kapatıldı.', [
+                  { text: 'Tamam', onPress: () => router.replace('/(tabs)/clubs') }
+                ]);
               }
             },
           },
@@ -171,8 +227,9 @@ export default function MyClubScreen() {
               });
               setClubData(null);
               setActionLoading(false);
-              Alert.alert('Ayrıldınız', 'Kaptanlık devredildi ve kulüpten başarıyla ayrıldınız.');
-              router.replace('/(tabs)/clubs');
+              Alert.alert('Ayrıldınız', 'Kaptanlık devredildi ve kulüpten başarıyla ayrıldınız.', [
+                { text: 'Tamam', onPress: () => router.replace('/(tabs)/clubs') }
+              ]);
             }
           },
         },
@@ -207,8 +264,9 @@ export default function MyClubScreen() {
               });
               setClubData(null);
               setActionLoading(false);
-              Alert.alert('Ayrıldınız', 'Kulüpten başarıyla ayrıldınız.');
-              router.replace('/(tabs)/clubs');
+              Alert.alert('Ayrıldınız', 'Kulüpten başarıyla ayrıldınız.', [
+                { text: 'Tamam', onPress: () => router.replace('/(tabs)/clubs') }
+              ]);
             }
           },
         },
@@ -218,6 +276,14 @@ export default function MyClubScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {actionLoading && (
+        <View style={styles.actionLoadingOverlay}>
+          <View style={styles.actionLoadingBox}>
+            <ActivityIndicator size="large" color={theme.primary} />
+            <Text style={styles.actionLoadingText}>Kulüp işlemi gerçekleştiriliyor...</Text>
+          </View>
+        </View>
+      )}
       <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} />
       <ChallengeModal visible={challengeModalVisible} onClose={() => setChallengeModalVisible(false)} />
       <InvitePlayerModal visible={inviteModalVisible} onClose={() => setInviteModalVisible(false)} />
@@ -327,6 +393,72 @@ export default function MyClubScreen() {
                 <MaterialIcons name="person-add" size={18} color={theme.secondary} />
                 <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.secondary, letterSpacing: 0.5 }}>OYUNCU DAVET ET</Text>
               </TouchableOpacity>
+            </View>
+
+            {/* Club Squad & Members Section (Kulüp Kadrosu & Üye Listesi) */}
+            <View style={{ marginTop: 24 }}>
+              <View style={styles.sectionHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={styles.sectionTitle}>KULÜP KADROSU</Text>
+                  <View style={styles.memberCountBadge}>
+                    <Text style={styles.memberCountBadgeText}>
+                      {membersList.length > 0 ? membersList.length : (clubData?.membersCount || 1)} Üye
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={() => setInviteModalVisible(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.primary }}>+ Davet Et</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.membersGrid}>
+                {(membersList.length > 0 ? membersList : [
+                  {
+                    uid: clubData?.captainId || 'cap',
+                    name: clubData?.captainName || user?.name || 'Kaptan',
+                    avatar: user?.avatar,
+                    position: user?.position || 'FORVET',
+                    rating: user?.rating || 7.5,
+                    isCaptain: true,
+                  }
+                ]).map((member, idx) => (
+                  <View key={member.uid || idx} style={[styles.memberCard, member.isCaptain && styles.captainCard]}>
+                    <View style={styles.memberCardLeft}>
+                      <View style={styles.memberAvatarBox}>
+                        {member.avatar ? (
+                          <Image source={{ uri: member.avatar }} style={styles.memberAvatar} />
+                        ) : (
+                          <MaterialIcons name="person" size={24} color={theme.textMuted} />
+                        )}
+                        {member.isCaptain && (
+                          <View style={styles.crownIconBox}>
+                            <MaterialIcons name="military-tech" size={13} color="#f59e0b" />
+                          </View>
+                        )}
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.memberName} numberOfLines={1}>
+                            {member.name}
+                          </Text>
+                          {member.isCaptain ? (
+                            <View style={styles.captainPill}>
+                              <Text style={styles.captainPillText}>👑 KAPTAN</Text>
+                            </View>
+                          ) : (
+                            <View style={styles.memberPill}>
+                              <Text style={styles.memberPillText}>ÜYE</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.memberSubInfo}>
+                          {member.position || 'MEVKİ YOK'} • ★ {(member.rating || 5.0).toFixed(1)}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </View>
             </View>
 
             {/* Club Management / Leave / Delete Section */}
@@ -679,5 +811,123 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontFamily: Fonts.headlineBold,
     fontSize: 11,
     letterSpacing: 0.5,
-  }
+  },
+  actionLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    zIndex: 9999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionLoadingBox: {
+    backgroundColor: theme.surfaceContainerHigh,
+    paddingVertical: 24,
+    paddingHorizontal: 28,
+    borderRadius: 16,
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: `${theme.primary}40`,
+  },
+  actionLoadingText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 14,
+    color: theme.text,
+  },
+  memberCountBadge: {
+    backgroundColor: `${theme.primary}20`,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  memberCountBadgeText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.primary,
+  },
+  membersGrid: {
+    gap: 10,
+    marginTop: 12,
+  },
+  memberCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.surfaceContainer,
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+  },
+  captainCard: {
+    borderColor: 'rgba(245, 158, 11, 0.4)',
+    backgroundColor: 'rgba(245, 158, 11, 0.05)',
+  },
+  memberCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  memberAvatarBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: theme.surfaceContainerHighest,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    overflow: 'visible',
+  },
+  memberAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  crownIconBox: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#1f1b13',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#f59e0b',
+  },
+  memberName: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 14,
+    color: theme.text,
+  },
+  memberSubInfo: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: theme.textMuted,
+    marginTop: 2,
+  },
+  captainPill: {
+    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  captainPillText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 9,
+    color: '#f59e0b',
+  },
+  memberPill: {
+    backgroundColor: `${theme.primary}15`,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  memberPillText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 9,
+    color: theme.primary,
+  },
 });
