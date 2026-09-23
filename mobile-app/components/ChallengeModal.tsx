@@ -97,7 +97,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerTitleRow}>
-              <MaterialIcons name="sports-mma" size={24} color={theme.error} />
+              <MaterialIcons name="sports-mma" size={24} color="#a855f7" />
               <Text style={styles.headerTitle}>KULÜBE MEYDAN OKU</Text>
             </View>
             <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
@@ -115,7 +115,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
                     {targetClub.logo ? (
                       <Image source={{ uri: targetClub.logo }} style={styles.targetClubLogo} resizeMode="contain" />
                     ) : (
-                      <MaterialIcons name="shield" size={32} color={theme.error} />
+                      <MaterialIcons name="shield" size={32} color="#a855f7" />
                     )}
                   </View>
                   <View style={styles.targetClubInfo}>
@@ -131,7 +131,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
                       style={[styles.clubCard, selectedClubName === c.name && styles.clubCardActive]}
                       onPress={() => setSelectedClubName(c.name)}
                     >
-                      <MaterialIcons name="shield" size={20} color={selectedClubName === c.name ? theme.error : theme.textMuted} />
+                      <MaterialIcons name="shield" size={20} color={selectedClubName === c.name ? '#a855f7' : theme.textMuted} />
                       <Text style={[styles.clubCardText, selectedClubName === c.name && styles.clubCardTextActive]}>{c.name}</Text>
                     </TouchableOpacity>
                   ))}
@@ -197,28 +197,28 @@ const useStyles = (theme: any) => StyleSheet.create({
   modalContent: { backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%', paddingBottom: 24 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: theme.border },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  headerTitle: { fontFamily: Fonts.headlineBold, fontSize: 18, color: theme.error, fontStyle: 'italic', letterSpacing: -0.5 },
+  headerTitle: { fontFamily: Fonts.headlineBold, fontSize: 18, color: '#a855f7', fontStyle: 'italic', letterSpacing: -0.5 },
   closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: theme.surfaceContainerHighest, alignItems: 'center', justifyContent: 'center' },
   body: { padding: 24, gap: 24 },
   section: { gap: 12 },
-  label: { fontFamily: Fonts.headlineBold, fontSize: 11, color: theme.error, letterSpacing: 1.5 },
-  targetClubCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: theme.surfaceContainer, padding: 14, borderRadius: 14, borderWidth: 1.5, borderColor: `${theme.error}66` },
-  targetClubLogoBox: { width: 50, height: 50, borderRadius: 25, backgroundColor: `${theme.error}1A`, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  label: { fontFamily: Fonts.headlineBold, fontSize: 11, color: '#c084fc', letterSpacing: 1.5 },
+  targetClubCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: theme.surfaceContainer, padding: 14, borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(168, 85, 247, 0.4)' },
+  targetClubLogoBox: { width: 50, height: 50, borderRadius: 25, backgroundColor: 'rgba(168, 85, 247, 0.15)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   targetClubLogo: { width: '100%', height: '100%' },
   targetClubInfo: { flex: 1, gap: 4 },
   targetClubName: { fontFamily: Fonts.headlineBold, fontSize: 16, color: theme.text },
   targetClubMeta: { fontFamily: Fonts.body, fontSize: 11, color: theme.textMuted },
   clubGrid: { gap: 10 },
   clubCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.surfaceContainer, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: theme.border },
-  clubCardActive: { backgroundColor: `${theme.error}26`, borderColor: theme.error },
+  clubCardActive: { backgroundColor: 'rgba(168, 85, 247, 0.15)', borderColor: '#a855f7' },
   clubCardText: { fontFamily: Fonts.headlineBold, fontSize: 14, color: theme.text },
-  clubCardTextActive: { color: theme.error },
+  clubCardTextActive: { color: '#c084fc' },
   chipRow: { gap: 10 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.surfaceContainer, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: theme.border },
   chipActive: { backgroundColor: theme.primary, borderColor: theme.primary },
   chipText: { fontFamily: Fonts.body, fontSize: 13, color: theme.text, fontWeight: '600' },
   chipTextActive: { color: theme.background, fontWeight: 'bold' },
   footer: { paddingHorizontal: 24, paddingTop: 8 },
-  submitBtn: { backgroundColor: theme.error, height: 56, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
-  submitBtnText: { fontFamily: Fonts.headlineBold, fontSize: 16, color: theme.background, fontStyle: 'italic', letterSpacing: 1 },
+  submitBtn: { backgroundColor: '#a855f7', height: 56, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  submitBtnText: { fontFamily: Fonts.headlineBold, fontSize: 16, color: '#ffffff', fontStyle: 'italic', letterSpacing: 1 },
 });

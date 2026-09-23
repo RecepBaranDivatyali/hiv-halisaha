@@ -291,9 +291,11 @@ export default function ClubsScreen() {
                       setSelectedClubForChallenge(null);
                       setChallengeModalVisible(true);
                     }}
+                    style={[styles.headerCreateBtn, { borderColor: '#a855f7', backgroundColor: 'rgba(168, 85, 247, 0.12)' }]}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <Text style={styles.filterBtnText}>MEYDAN OKU</Text>
+                    <MaterialIcons name="sports-mma" size={14} color="#c084fc" />
+                    <Text style={[styles.headerCreateBtnText, { color: '#c084fc' }]}>MEYDAN OKU</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -367,15 +369,15 @@ export default function ClubsScreen() {
                       </View>
                       {user?.clubId && user.clubId !== club.id ? (
                         <TouchableOpacity 
-                          style={[styles.actionJoinBtn, { backgroundColor: 'rgba(255, 115, 81, 0.12)', borderColor: theme.error }]} 
+                          style={[styles.actionJoinBtn, { backgroundColor: 'rgba(168, 85, 247, 0.15)', borderColor: '#a855f7' }]} 
                           onPress={(e) => {
                             e.stopPropagation();
                             setSelectedClubForChallenge(club);
                             setChallengeModalVisible(true);
                           }}
                         >
-                          <Text style={[styles.actionJoinBtnText, { color: theme.error }]}>MEYDAN OKU</Text>
-                          <MaterialIcons name="sports-mma" size={14} color={theme.error} />
+                          <Text style={[styles.actionJoinBtnText, { color: '#c084fc' }]}>MEYDAN OKU</Text>
+                          <MaterialIcons name="sports-mma" size={14} color="#c084fc" />
                         </TouchableOpacity>
                       ) : user?.clubId === club.id ? (
                         <View style={[styles.actionJoinBtn, { opacity: 0.6, borderColor: theme.borderSubtle }]}>

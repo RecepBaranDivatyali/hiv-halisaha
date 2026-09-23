@@ -68,6 +68,11 @@ export default function MyClubScreen() {
       (user?.clubId && clubData?.id && user.clubId === clubData.id && !clubData.captainId)
     )
   );
+  const hasOtherMembers = Boolean(
+    (clubData?.members && clubData.members.filter((m: string) => m && m !== effectiveUserId && m !== user?.email && m !== user?.uid).length > 0) ||
+    (membersList.filter(m => m && m.uid !== effectiveUserId && m.uid !== user?.uid).length > 0) ||
+    ((clubData?.membersCount ?? 0) > 1)
+  );
 
   const loadClub = React.useCallback(async () => {
     if (targetClubId) {
@@ -372,12 +377,12 @@ export default function MyClubScreen() {
               {isViewingOwnClub ? (
                 <>
                   <TouchableOpacity 
-                    style={{ flex: 1, backgroundColor: `${theme.error}26`, borderWidth: 1, borderColor: theme.error, borderRadius: 12, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                    style={{ flex: 1, backgroundColor: 'rgba(168, 85, 247, 0.15)', borderWidth: 1, borderColor: '#a855f7', borderRadius: 12, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
                     activeOpacity={0.8}
                     onPress={() => setChallengeModalVisible(true)}
                   >
-                    <MaterialIcons name="sports-mma" size={18} color={theme.error} />
-                    <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.error, letterSpacing: 0.5 }}>MEYDAN OKU</Text>
+                    <MaterialIcons name="sports-mma" size={18} color="#c084fc" />
+                    <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: '#c084fc', letterSpacing: 0.5 }}>MEYDAN OKU</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity 
@@ -393,12 +398,12 @@ export default function MyClubScreen() {
                 <>
                   {user?.clubId && user.clubId !== clubData?.id ? (
                     <TouchableOpacity 
-                      style={{ flex: 1, backgroundColor: `${theme.error}26`, borderWidth: 1, borderColor: theme.error, borderRadius: 12, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                      style={{ flex: 1, backgroundColor: 'rgba(168, 85, 247, 0.15)', borderWidth: 1, borderColor: '#a855f7', borderRadius: 12, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
                       activeOpacity={0.8}
                       onPress={() => setChallengeModalVisible(true)}
                     >
-                      <MaterialIcons name="sports-mma" size={18} color={theme.error} />
-                      <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.error, letterSpacing: 0.5 }}>BU KULÜBE MEYDAN OKU</Text>
+                      <MaterialIcons name="sports-mma" size={18} color="#c084fc" />
+                      <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: '#c084fc', letterSpacing: 0.5 }}>BU KULÜBE MEYDAN OKU</Text>
                     </TouchableOpacity>
                   ) : null}
 
@@ -494,19 +499,32 @@ export default function MyClubScreen() {
 
               {isViewingOwnClub ? (
                 isCaptain ? (
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <TouchableOpacity 
-                      style={[styles.dangerBtn, { flex: 1, borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.12)' }]}
-                      activeOpacity={0.8}
-                      onPress={openCaptainLeaveModal}
-                      disabled={actionLoading}
-                    >
-                      <MaterialIcons name="exit-to-app" size={18} color="#f59e0b" />
-                      <Text style={[styles.dangerBtnText, { color: '#f59e0b' }]}>AYRIL (DEVRET)</Text>
-                    </TouchableOpacity>
+                  hasOtherMembers ? (
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <TouchableOpacity 
+                        style={[styles.dangerBtn, { flex: 1, borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.12)' }]}
+                        activeOpacity={0.8}
+                        onPress={openCaptainLeaveModal}
+                        disabled={actionLoading}
+                      >
+                        <MaterialIcons name="exit-to-app" size={18} color="#f59e0b" />
+                        <Text style={[styles.dangerBtnText, { color: '#f59e0b' }]}>AYRIL (DEVRET)</Text>
+                      </TouchableOpacity>
 
+                      <TouchableOpacity 
+                        style={[styles.dangerBtn, { flex: 1, borderColor: theme.error, backgroundColor: `${theme.error}15` }]}
+                        activeOpacity={0.8}
+                        onPress={openDeleteClubModal}
+                        disabled={actionLoading}
+                      >
+                        <MaterialIcons name="delete-forever" size={18} color={theme.error} />
+                        <Text style={[styles.dangerBtnText, { color: theme.error }]}>KULÜBÜ SİL</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    /* Kulüpte başka üye yoksa devret butonu gösterilmez, doğrudan tek tuş Kulübü Sil çıkar */
                     <TouchableOpacity 
-                      style={[styles.dangerBtn, { flex: 1, borderColor: theme.error, backgroundColor: `${theme.error}15` }]}
+                      style={[styles.dangerBtn, { width: '100%', borderColor: theme.error, backgroundColor: `${theme.error}15` }]}
                       activeOpacity={0.8}
                       onPress={openDeleteClubModal}
                       disabled={actionLoading}
@@ -514,7 +532,7 @@ export default function MyClubScreen() {
                       <MaterialIcons name="delete-forever" size={18} color={theme.error} />
                       <Text style={[styles.dangerBtnText, { color: theme.error }]}>KULÜBÜ SİL</Text>
                     </TouchableOpacity>
-                  </View>
+                  )
                 ) : (
                   <TouchableOpacity 
                     style={[styles.dangerBtn, { borderColor: theme.error, backgroundColor: `${theme.error}15` }]}
@@ -551,12 +569,12 @@ export default function MyClubScreen() {
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity 
-                      style={[styles.dangerBtn, { borderColor: theme.error, backgroundColor: `${theme.error}15` }]}
+                      style={[styles.dangerBtn, { borderColor: '#a855f7', backgroundColor: 'rgba(168, 85, 247, 0.15)' }]}
                       activeOpacity={0.85}
                       onPress={() => setChallengeModalVisible(true)}
                     >
-                      <MaterialIcons name="sports-mma" size={18} color={theme.error} />
-                      <Text style={[styles.dangerBtnText, { color: theme.error }]}>KULÜBÜMÜZLE MEYDAN OKU</Text>
+                      <MaterialIcons name="sports-mma" size={18} color="#c084fc" />
+                      <Text style={[styles.dangerBtnText, { color: '#c084fc' }]}>KULÜBÜMÜZLE MEYDAN OKU</Text>
                     </TouchableOpacity>
                   )}
                 </View>
