@@ -14,6 +14,7 @@ import {
   limit, 
   onSnapshot, 
   arrayUnion,
+  arrayRemove,
   increment,
   runTransaction,
   writeBatch,
@@ -910,6 +911,7 @@ export const dbService = {
     position?: string; 
     level?: string;
     minRating?: number;
+    maxRating?: number;
     onlyLookingForMatch?: boolean;
     timeFrame?: string;
   }) => {
@@ -935,10 +937,13 @@ export const dbService = {
       if (criteria.position) {
         players = players.filter((p: any) => p.position && p.position.toUpperCase().includes(criteria.position!.toUpperCase()));
       }
-      if (criteria.minRating !== undefined && !isNaN(criteria.minRating) && criteria.minRating > 0) {
+      if ((criteria.minRating !== undefined && criteria.minRating > 0) || (criteria.maxRating !== undefined && criteria.maxRating < 10)) {
+        const minVal = criteria.minRating ?? 0;
+        const maxVal = criteria.maxRating ?? 10;
         players = players.filter((p: any) => {
           const ratingNum = typeof p.rating === 'number' ? p.rating : parseFloat(p.rating);
-          return !isNaN(ratingNum) && ratingNum >= criteria.minRating!;
+          if (isNaN(ratingNum)) return true;
+          return ratingNum >= minVal && ratingNum <= maxVal;
         });
       } else if (criteria.level) {
         const matchNumeric = criteria.level.match(/^(\d+(\.\d+)?)/);
@@ -1309,6 +1314,89 @@ export const dbService = {
     }
   },
 
+  leaveClub: async (clubId: string, userId: string) => {
+    try {
+      const clubRef = doc(db, 'clubs', clubId);
+      const userRef = doc(db, 'users', userId);
+
+      await runTransaction(db, async (transaction) => {
+        const clubDoc = await transaction.get(clubRef);
+        if (clubDoc.exists()) {
+          transaction.update(clubRef, {
+            members: arrayRemove(userId),
+            membersCount: increment(-1)
+          });
+        }
+        transaction.update(userRef, {
+          clubId: deleteField(),
+          clubName: deleteField(),
+          clubLogo: deleteField()
+        });
+      });
+      return true;
+    } catch (error) {
+      console.error("Kulüpten ayrılma hatası:", error);
+      throw error;
+    }
+  },
+
+  deleteClub: async (clubId: string, captainId: string) => {
+    try {
+      const clubRef = doc(db, 'clubs', clubId);
+      const snap = await getDoc(clubRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        const memberIds: string[] = data.members || [];
+        for (const mId of memberIds) {
+          try {
+            await updateDoc(doc(db, 'users', mId), {
+              clubId: deleteField(),
+              clubName: deleteField(),
+              clubLogo: deleteField()
+            });
+          } catch {}
+        }
+      }
+      await deleteDoc(clubRef);
+      const userRef = doc(db, 'users', captainId);
+      await updateDoc(userRef, {
+        clubId: deleteField(),
+        clubName: deleteField(),
+        clubLogo: deleteField()
+      }).catch(() => {});
+      return true;
+    } catch (error) {
+      console.error("Kulüp silme hatası:", error);
+      throw error;
+    }
+  },
+
+  transferClubCaptainAndLeave: async (clubId: string, currentCaptainId: string, newCaptainId: string) => {
+    try {
+      const clubRef = doc(db, 'clubs', clubId);
+      const newCapSnap = await getDoc(doc(db, 'users', newCaptainId));
+      const newCapName = newCapSnap.exists() ? (newCapSnap.data()?.name || 'Kaptan') : 'Kaptan';
+
+      await runTransaction(db, async (transaction) => {
+        transaction.update(clubRef, {
+          captainId: newCaptainId,
+          captainName: newCapName,
+          members: arrayRemove(currentCaptainId),
+          membersCount: increment(-1)
+        });
+        transaction.update(doc(db, 'users', currentCaptainId), {
+          clubId: deleteField(),
+          clubName: deleteField(),
+          clubLogo: deleteField()
+        });
+      });
+      return true;
+    } catch (error) {
+      console.error("Kaptanlık devredip ayrılma hatası:", error);
+      throw error;
+    }
+  },
+
   // ==========================================
   // 6. TESİS & HALISAHA PUANLAMA (PITCH REVIEWS)
   // ==========================================
@@ -1330,9 +1418,21 @@ export const dbService = {
     }
   },
 
-  addPitchReview: async (pitchName: string, review: Omit<PitchReviewModel, 'id' | 'createdAt' | 'pitchName'>) => {
+  savePitchReview: async (pitchName: string, review: Omit<PitchReviewModel, 'id' | 'createdAt' | 'pitchName'>) => {
     try {
       const reviewsRef = collection(db, 'pitch_reviews');
+      if (review.userId && review.userId !== 'anon') {
+        const q = query(reviewsRef, where('pitchName', '==', pitchName), where('userId', '==', review.userId));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const existingDoc = snap.docs[0];
+          await updateDoc(existingDoc.ref, {
+            ...review,
+            updatedAt: serverTimestamp()
+          });
+          return { id: existingDoc.id, pitchName, ...review };
+        }
+      }
       const docRef = await addDoc(reviewsRef, {
         pitchName,
         ...review,
@@ -1340,9 +1440,13 @@ export const dbService = {
       });
       return { id: docRef.id, pitchName, ...review };
     } catch (error) {
-      console.error("Tesis yorumu ekleme hatası:", error);
+      console.error("Tesis yorumu kaydetme hatası:", error);
       throw error;
     }
+  },
+
+  addPitchReview: async (pitchName: string, review: Omit<PitchReviewModel, 'id' | 'createdAt' | 'pitchName'>) => {
+    return dbService.savePitchReview(pitchName, review);
   },
 
   // ─── TESİS BİLGİ DÜZELTME / ÖNERİSİ ───

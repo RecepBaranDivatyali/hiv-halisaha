@@ -8,6 +8,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { useImagePicker } from '@/hooks/use-image-picker';
 import { useAuth } from '@/hooks/use-auth';
 import { dbService } from '@/services/dbService';
+import { useRouter } from 'expo-router';
 
 interface ClubActionModalProps {
   visible: boolean;
@@ -39,6 +40,7 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
   onSuccess,
   initialTab = 'create',
 }) => {
+  const router = useRouter();
   const { theme } = useTheme();
   const styles = useStyles(theme);
   const { pickImage } = useImagePicker();
@@ -77,7 +79,14 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
   };
 
   const handleSubmit = async () => {
+    if (isSubmitting) return;
+
     if (activeTab === 'create') {
+      if (user?.clubId) {
+        Alert.alert('Zaten Kulübünüz Var', 'Yeni bir kulüp kurabilmek için önce mevcut kulübünüzden ayrılmalı veya kulübünüzü silmelisiniz.');
+        return;
+      }
+
       if (!clubName.trim()) {
         setNameError('Lütfen kulüp adını giriniz.');
         Alert.alert('Eksik Bilgi', 'Lütfen kulüp adını girin.');
@@ -110,23 +119,30 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
           });
         }
 
+        const createdName = clubName.trim();
+        const createdCity = selectedCity;
+
+        setClubName('');
+        setClubDesc('');
+        setNameError('');
+        setSelectedLogo(PRESET_LOGOS[0].uri);
+        onClose();
+        if (onSuccess) onSuccess();
+
         Alert.alert(
           'Tebrikler! 🏆',
-          `"${clubName.trim()}" (${selectedCity}) kulübünüz başarıyla kuruldu!`,
+          `"${createdName}" (${createdCity}) kulübünüz başarıyla kuruldu!`,
           [
             {
-              text: 'Tamam',
+              text: 'Kulübüme Git',
               onPress: () => {
-                setClubName('');
-                setClubDesc('');
-                setNameError('');
-                setSelectedLogo(PRESET_LOGOS[0].uri);
-                onClose();
-                if (onSuccess) onSuccess();
+                router.push('/my-club');
               },
             },
           ]
         );
+
+        router.push('/my-club');
       } catch (err) {
         console.error('Kulüp kurma hatası:', err);
         Alert.alert('Hata', 'Kulüp kurulurken bir sorun oluştu. Lütfen tekrar deneyin.');

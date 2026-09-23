@@ -262,7 +262,7 @@ export default function ClubsScreen() {
                 <Text style={styles.listHeaderTitle}>TÜM KULÜPLER</Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                {Boolean(user?.clubId) && (
+                {!user?.clubId ? (
                   <TouchableOpacity 
                     onPress={() => {
                       setClubActionTab('create');
@@ -273,6 +273,15 @@ export default function ClubsScreen() {
                   >
                     <MaterialIcons name="add" size={16} color={theme.primary} />
                     <Text style={styles.headerCreateBtnText}>KULÜP KUR</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity 
+                    onPress={() => router.push('/my-club')}
+                    style={styles.headerCreateBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <MaterialIcons name="shield" size={16} color={theme.primary} />
+                    <Text style={styles.headerCreateBtnText}>KULÜBÜM</Text>
                   </TouchableOpacity>
                 )}
                 {Boolean(user?.clubId) && (
@@ -300,19 +309,30 @@ export default function ClubsScreen() {
                   </View>
                   <Text style={styles.emptyTitle}>Henüz Kulüp Bulunamadı</Text>
                   <Text style={styles.emptySub}>
-                    İlk kulübü sen kurarak halısaha liginde zirveye giden yolu başlat!
+                    {!user?.clubId ? 'İlk kulübü sen kurarak halısaha liginde zirveye giden yolu başlat!' : 'Mevcut kulübünüzü yönetmek için kulübüm sayfasına gidin.'}
                   </Text>
-                  <TouchableOpacity 
-                    style={styles.emptyCreateBtn}
-                    onPress={() => {
-                      setClubActionTab('create');
-                      setClubActionVisible(true);
-                    }}
-                    activeOpacity={0.85}
-                  >
-                    <MaterialIcons name="add-circle" size={18} color={theme.background} />
-                    <Text style={styles.emptyCreateBtnText}>İLK KULÜBÜ KUR</Text>
-                  </TouchableOpacity>
+                  {!user?.clubId ? (
+                    <TouchableOpacity 
+                      style={styles.emptyCreateBtn}
+                      onPress={() => {
+                        setClubActionTab('create');
+                        setClubActionVisible(true);
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <MaterialIcons name="add-circle" size={18} color={theme.background} />
+                      <Text style={styles.emptyCreateBtnText}>İLK KULÜBÜ KUR</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity 
+                      style={styles.emptyCreateBtn}
+                      onPress={() => router.push('/my-club')}
+                      activeOpacity={0.85}
+                    >
+                      <MaterialIcons name="shield" size={18} color={theme.background} />
+                      <Text style={styles.emptyCreateBtnText}>KULÜBÜME GİT</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               ) : filteredClubs.map((club) => (
                 <View key={club.id || club.name} style={styles.clubCard}>

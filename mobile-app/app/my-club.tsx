@@ -17,16 +17,22 @@ export default function MyClubScreen() {
   const styles = useStyles(theme);
   const router = useRouter();
   const params = useLocalSearchParams<{ clubId?: string }>();
-  const { user } = useAuth();
+  const { user, saveUser } = useAuth();
   const [menuVisible, setMenuVisible] = useState(false);
   const [challengeModalVisible, setChallengeModalVisible] = useState(false);
   const [inviteModalVisible, setInviteModalVisible] = useState(false);
   const [clubActionModalVisible, setClubActionModalVisible] = useState(false);
   const [clubData, setClubData] = useState<ClubModel | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
 
   const targetClubId = params.clubId || user?.clubId;
   const hasClub = !!targetClubId || !!clubData;
+
+  const isCaptain = Boolean(
+    (clubData?.captainId && user?.uid && clubData.captainId === user.uid) ||
+    (!clubData?.captainId && user?.clubId && clubData?.id === user?.clubId)
+  );
 
   const loadClub = React.useCallback(async () => {
     if (targetClubId) {
@@ -51,6 +57,160 @@ export default function MyClubScreen() {
     } finally {
       setRefreshing(false);
     }
+  };
+
+  const clubId = clubData?.id || user?.clubId;
+
+  const handleDeleteClub = () => {
+    if (!clubId || !user?.uid) return;
+    const currentUserId = user.uid;
+    const targetClubId = clubId;
+
+    Alert.alert(
+      'Kulübü Sil',
+      `"${clubData?.name || user?.clubName || 'Kulüp'}" kulübünü kalıcı olarak silmek istediğinize emin misiniz? Kulüp dağıtılacak ve tüm üyelerin kulüp bağı kaldırılacaktır.`,
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Evet, Kulübü Sil',
+          style: 'destructive',
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              await dbService.deleteClub(targetClubId, currentUserId);
+              await saveUser({
+                ...user,
+                clubId: undefined,
+                clubName: undefined,
+                clubLogo: undefined,
+              });
+              setClubData(null);
+              Alert.alert('Kulüp Silindi', 'Kulübünüz başarıyla silindi.');
+              router.replace('/(tabs)/clubs');
+            } catch (err) {
+              console.error('Kulüp silme hatası:', err);
+              Alert.alert('Hata', 'Kulüp silinirken bir sorun oluştu.');
+            } finally {
+              setActionLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCaptainLeave = () => {
+    if (!clubId || !user?.uid) return;
+    const currentUserId = user.uid;
+    const targetClubId = clubId;
+    const otherMembers = (clubData?.members || []).filter((m: string) => m !== currentUserId);
+
+    if (otherMembers.length === 0) {
+      Alert.alert(
+        'Kulüpten Ayrıl',
+        'Kulüpte sizden başka üye bulunmuyor. Ayrılırsanız kulüp tamamen silinecektir. Devam etmek istiyor musunuz?',
+        [
+          { text: 'Vazgeç', style: 'cancel' },
+          {
+            text: 'Kulübü Sil ve Ayrıl',
+            style: 'destructive',
+            onPress: async () => {
+              setActionLoading(true);
+              try {
+                await dbService.deleteClub(targetClubId, currentUserId);
+                await saveUser({
+                  ...user,
+                  clubId: undefined,
+                  clubName: undefined,
+                  clubLogo: undefined,
+                });
+                setClubData(null);
+                Alert.alert('Kulüp Kapatıldı', 'Kulüp başarıyla kapatıldı.');
+                router.replace('/(tabs)/clubs');
+              } catch (err) {
+                console.error('Kulüp kapatma hatası:', err);
+                Alert.alert('Hata', 'İşlem sırasında bir sorun oluştu.');
+              } finally {
+                setActionLoading(false);
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    const randomCaptain = otherMembers[Math.floor(Math.random() * otherMembers.length)];
+
+    Alert.alert(
+      'Kaptanlıktan ve Kulüpten Ayrıl',
+      'Kulüpten ayrıldığınızda kaptanlık rastgele seçilen başka bir kulüp üyesine devredilecektir. Onaylıyor musunuz?',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Devret ve Ayrıl',
+          style: 'destructive',
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              await dbService.transferClubCaptainAndLeave(targetClubId, currentUserId, randomCaptain);
+              await saveUser({
+                ...user,
+                clubId: undefined,
+                clubName: undefined,
+                clubLogo: undefined,
+              });
+              setClubData(null);
+              Alert.alert('Ayrıldınız', 'Kaptanlık devredildi ve kulüpten başarıyla ayrıldınız.');
+              router.replace('/(tabs)/clubs');
+            } catch (err) {
+              console.error('Kaptanlık devretme hatası:', err);
+              Alert.alert('Hata', 'Kulüpten ayrılırken bir sorun oluştu.');
+            } finally {
+              setActionLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleMemberLeave = () => {
+    if (!clubId || !user?.uid) return;
+    const currentUserId = user.uid;
+    const targetClubId = clubId;
+
+    Alert.alert(
+      'Kulüpten Ayrıl',
+      `"${clubData?.name || user?.clubName || 'Kulüp'}" kulübünden ayrılmak istediğinize emin misiniz?`,
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Ayrıl',
+          style: 'destructive',
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              await dbService.leaveClub(targetClubId, currentUserId);
+              await saveUser({
+                ...user,
+                clubId: undefined,
+                clubName: undefined,
+                clubLogo: undefined,
+              });
+              setClubData(null);
+              Alert.alert('Ayrıldınız', 'Kulüpten başarıyla ayrıldınız.');
+              router.replace('/(tabs)/clubs');
+            } catch (err) {
+              console.error('Kulüpten ayrılma hatası:', err);
+              Alert.alert('Hata', 'Kulüpten ayrılırken bir sorun oluştu.');
+            } finally {
+              setActionLoading(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -164,6 +324,48 @@ export default function MyClubScreen() {
                 <MaterialIcons name="person-add" size={18} color={theme.secondary} />
                 <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.secondary, letterSpacing: 0.5 }}>OYUNCU DAVET ET</Text>
               </TouchableOpacity>
+            </View>
+
+            {/* Club Management / Leave / Delete Section */}
+            <View style={{ marginTop: 24, gap: 12 }}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>KULÜP YÖNETİMİ</Text>
+                <View style={styles.sectionDivider} />
+              </View>
+
+              {isCaptain ? (
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TouchableOpacity 
+                    style={[styles.dangerBtn, { flex: 1, borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.12)' }]}
+                    activeOpacity={0.8}
+                    onPress={handleCaptainLeave}
+                    disabled={actionLoading}
+                  >
+                    <MaterialIcons name="exit-to-app" size={18} color="#f59e0b" />
+                    <Text style={[styles.dangerBtnText, { color: '#f59e0b' }]}>AYRIL (DEVRET)</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={[styles.dangerBtn, { flex: 1, borderColor: theme.error, backgroundColor: `${theme.error}15` }]}
+                    activeOpacity={0.8}
+                    onPress={handleDeleteClub}
+                    disabled={actionLoading}
+                  >
+                    <MaterialIcons name="delete-forever" size={18} color={theme.error} />
+                    <Text style={[styles.dangerBtnText, { color: theme.error }]}>KULÜBÜ SİL</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity 
+                  style={[styles.dangerBtn, { borderColor: theme.error, backgroundColor: `${theme.error}15` }]}
+                  activeOpacity={0.8}
+                  onPress={handleMemberLeave}
+                  disabled={actionLoading}
+                >
+                  <MaterialIcons name="exit-to-app" size={18} color={theme.error} />
+                  <Text style={[styles.dangerBtnText, { color: theme.error }]}>KULÜPTEN AYRIL</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </>
         ) : (
@@ -459,5 +661,20 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontFamily: Fonts.headlineBold,
     fontSize: 14,
     color: theme.primary
+  },
+  dangerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 8,
+  },
+  dangerBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    letterSpacing: 0.5,
   }
 });

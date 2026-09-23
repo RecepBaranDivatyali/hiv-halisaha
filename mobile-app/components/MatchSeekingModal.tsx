@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, TextInput, Alert, ActivityIndicator, ScrollView } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -13,8 +13,6 @@ interface MatchSeekingModalProps {
   onClose: () => void;
   onSuccess?: () => void;
 }
-
-const DATE_OPTIONS = ['Bugün', 'Yarın', 'Hafta Sonu', 'Bu Hafta'];
 
 const CITIES_LIST = ['İstanbul', 'Ankara', 'İzmir', 'Bursa', 'Antalya', 'Adana', 'Kocaeli', 'Gaziantep', 'Konya', 'Eskişehir', 'Trabzon', 'Samsun'];
 const DISTRICTS_MAP: Record<string, string[]> = {
@@ -36,26 +34,60 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
   const styles = useStyles(theme);
   const { user, saveUser } = useAuth();
 
-  const [availableDate, setAvailableDate] = useState('Bugün');
+  const [selectedDates, setSelectedDates] = useState<string[]>(['Bugün']);
   const [selectedCity, setSelectedCity] = useState(user?.city || 'İstanbul');
   const [selectedDistrict, setSelectedDistrict] = useState(user?.preferredDistrict || 'Tüm İlçeler');
   const [selectedPitch, setSelectedPitch] = useState('Tüm Sahalar');
   const [note, setNote] = useState(user?.availableNote || '');
   const [loading, setLoading] = useState(false);
 
+  const [dateModalVisible, setDateModalVisible] = useState(false);
   const [cityModalVisible, setCityModalVisible] = useState(false);
   const [districtModalVisible, setDistrictModalVisible] = useState(false);
   const [pitchModalVisible, setPitchModalVisible] = useState(false);
 
+  const upcomingDaysList = useMemo(() => {
+    const list: string[] = [];
+    const daysOfWeek = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+    const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+    const now = new Date();
+    for (let i = 2; i <= 21; i++) {
+      const d = new Date();
+      d.setDate(now.getDate() + i);
+      const dayName = daysOfWeek[d.getDay()];
+      const monthName = months[d.getMonth()];
+      const dateNum = d.getDate();
+      list.push(`${dateNum} ${monthName} ${dayName}`);
+    }
+    return list;
+  }, []);
+
   useEffect(() => {
     if (visible && user) {
-      setAvailableDate(user.availableDate || 'Bugün');
+      const parsedDates = user.availableDate
+        ? user.availableDate.split(',').map((d: string) => d.trim()).filter((d: string) => d.length > 0 && d !== 'Hafta Sonu' && d !== 'Bu Hafta')
+        : ['Bugün'];
+      setSelectedDates(parsedDates.length > 0 ? parsedDates : ['Bugün']);
       setSelectedCity(user.city || 'İstanbul');
       setSelectedDistrict(user.preferredDistrict || 'Tüm İlçeler');
       setSelectedPitch((user as any).preferredPitch || 'Tüm Sahalar');
       setNote(user.availableNote || '');
     }
   }, [visible, user]);
+
+  const toggleDate = (dateVal: string) => {
+    setSelectedDates(prev => {
+      if (prev.includes(dateVal)) {
+        if (prev.length <= 1) {
+          Alert.alert('Uyarı', 'En az 1 tarih seçili olmalıdır.');
+          return prev;
+        }
+        return prev.filter(d => d !== dateVal);
+      } else {
+        return [...prev, dateVal];
+      }
+    });
+  };
 
   const availableDistricts = ['Tüm İlçeler', ...(DISTRICTS_MAP[selectedCity] || ['Merkez'])];
   const cityPitches = PITCH_DATABASE.filter(p => p.city === selectedCity);
@@ -66,11 +98,12 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
     try {
       const finalDistrict = selectedDistrict === 'Tüm İlçeler' ? '' : selectedDistrict;
       const finalPitch = selectedPitch === 'Tüm Sahalar' ? '' : selectedPitch;
+      const finalDatesStr = selectedDates.length > 0 ? selectedDates.join(', ') : 'Bugün';
 
       const updatedUser = {
         ...user,
         isLookingForMatch: true,
-        availableDate,
+        availableDate: finalDatesStr,
         city: selectedCity,
         preferredDistrict: finalDistrict,
         preferredPitch: finalPitch,
@@ -80,7 +113,7 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
 
       if (user.uid) {
         await dbService.setUserLookingForMatch(user.uid, true, {
-          availableDate,
+          availableDate: finalDatesStr,
           city: selectedCity,
           district: finalDistrict,
           preferredPitch: finalPitch,
@@ -90,7 +123,7 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
 
       Alert.alert(
         '🟢 Maç Arama Sinyali Açıldı!',
-        `Durumunuz "${availableDate}" (${selectedCity}${finalDistrict ? ` - ${finalDistrict}` : ''}) için aktif edildi. Kaptanlar sizi Oyuncu Arama listesinde en üstte görebilecek.`
+        `Durumunuz "${finalDatesStr}" (${selectedCity}${finalDistrict ? ` - ${finalDistrict}` : ''}) için aktif edildi. Kaptanlar sizi Oyuncu Arama listesinde en üstte görebilecek.`
       );
       if (onSuccess) onSuccess();
       onClose();
@@ -169,23 +202,57 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
               </View>
             </View>
 
-            {/* Tarih Seçimi */}
+            {/* Tarih Seçimi (Çoklu Gün Seçimi) */}
             <View style={styles.section}>
-              <Text style={styles.sectionLabel}>HANGİ GÜN OYNAMAK İSTİYORSUNUZ?</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={styles.sectionLabel}>HANGİ GÜNLER OYNAMAK İSTİYORSUNUZ?</Text>
+                <Text style={{ fontFamily: Fonts.body, fontSize: 11, color: theme.primary, fontWeight: 'bold' }}>
+                  {selectedDates.length} Gün Seçili
+                </Text>
+              </View>
+
               <View style={styles.chipsRow}>
-                {DATE_OPTIONS.map((opt) => {
-                  const isSelected = availableDate === opt;
+                {['Bugün', 'Yarın'].map((opt) => {
+                  const isSelected = selectedDates.includes(opt);
                   return (
                     <TouchableOpacity
                       key={opt}
                       style={[styles.dateChip, isSelected && styles.dateChipActive]}
-                      onPress={() => setAvailableDate(opt)}
+                      onPress={() => toggleDate(opt)}
                       activeOpacity={0.8}
                     >
+                      <MaterialIcons 
+                        name={isSelected ? "check" : "add"} 
+                        size={14} 
+                        color={isSelected ? '#ffffff' : theme.textMuted} 
+                      />
                       <Text style={[styles.dateChipText, isSelected && styles.dateChipTextActive]}>{opt}</Text>
                     </TouchableOpacity>
                   );
                 })}
+
+                {/* Display any other selected custom dates */}
+                {selectedDates.filter(d => d !== 'Bugün' && d !== 'Yarın').map((d) => (
+                  <TouchableOpacity
+                    key={d}
+                    style={[styles.dateChip, styles.dateChipActive]}
+                    onPress={() => toggleDate(d)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.dateChipText, styles.dateChipTextActive]}>{d}</Text>
+                    <MaterialIcons name="close" size={13} color="#ffffff" style={{ marginLeft: 2 }} />
+                  </TouchableOpacity>
+                ))}
+
+                {/* Button to open multi-date selector modal */}
+                <TouchableOpacity
+                  style={styles.datePickerBtn}
+                  onPress={() => setDateModalVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <MaterialIcons name="calendar-today" size={13} color={theme.primary} />
+                  <Text style={styles.datePickerBtnText}>+ Tarih Seç</Text>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -291,6 +358,56 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
               </TouchableOpacity>
             </View>
           </ScrollView>
+
+          {/* Date Modal Picker (Çoklu Gün Seçimi) */}
+          {dateModalVisible && (
+            <TouchableOpacity 
+              style={styles.pickerModalOverlay}
+              activeOpacity={1}
+              onPress={() => setDateModalVisible(false)}
+            >
+              <TouchableOpacity activeOpacity={1} style={styles.pickerModalBox}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <Text style={styles.pickerModalHeader}>DİĞER GÜNLERİ SEÇİN</Text>
+                  <Text style={{ fontFamily: Fonts.body, fontSize: 11, color: theme.primary, fontWeight: 'bold' }}>
+                    Çoklu Seçim
+                  </Text>
+                </View>
+                <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 300 }}>
+                  {upcomingDaysList.map((dayStr) => {
+                    const isSelected = selectedDates.includes(dayStr);
+                    return (
+                      <TouchableOpacity
+                        key={dayStr}
+                        style={[styles.pickerModalItem, isSelected && styles.pickerModalItemActive]}
+                        onPress={() => toggleDate(dayStr)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <MaterialIcons 
+                            name={isSelected ? "check-box" : "check-box-outline-blank"} 
+                            size={20} 
+                            color={isSelected ? theme.primary : theme.textMuted} 
+                          />
+                          <Text style={[styles.pickerModalItemText, isSelected && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                            {dayStr}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                <TouchableOpacity 
+                  style={[styles.pickerModalClose, { backgroundColor: theme.primary, marginTop: 10 }]} 
+                  onPress={() => setDateModalVisible(false)}
+                >
+                  <Text style={[styles.pickerModalCloseText, { color: theme.onPrimary }]}>
+                    TAMAM ({selectedDates.length} Gün Seçili)
+                  </Text>
+                </TouchableOpacity>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          )}
 
           {/* City Modal Picker */}
           {cityModalVisible && (
@@ -522,15 +639,18 @@ const useStyles = (theme: any) =>
     },
     chipsRow: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: 8,
+      alignItems: 'center',
     },
     dateChip: {
-      flex: 1,
+      flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
+      gap: 6,
       backgroundColor: theme.surfaceContainer,
       borderRadius: 10,
-      paddingVertical: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
       borderWidth: 1,
       borderColor: theme.borderSubtle,
     },
@@ -546,6 +666,23 @@ const useStyles = (theme: any) =>
     dateChipTextActive: {
       color: '#ffffff',
       fontWeight: 'bold',
+    },
+    datePickerBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: 'rgba(34, 197, 94, 0.1)',
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      borderWidth: 1,
+      borderColor: '#22c55e',
+      borderStyle: 'dashed',
+    },
+    datePickerBtnText: {
+      fontFamily: Fonts.headlineBold,
+      fontSize: 12,
+      color: '#22c55e',
     },
     pickerSelector: {
       flexDirection: 'row',

@@ -27,6 +27,7 @@ export default function ResultsScreen() {
     reservationStatus?: string;
     playerStatus?: string;
     minRating?: string;
+    maxRating?: string;
   }>();
   const searchTab = (params.tab || 'Oyuncu') as string;
   const posName = params.pos ? `(${params.pos})` : '';
@@ -49,6 +50,7 @@ export default function ResultsScreen() {
           position: params.pos,
           level: params.level,
           minRating: params.minRating ? parseFloat(params.minRating) : undefined,
+          maxRating: params.maxRating ? parseFloat(params.maxRating) : undefined,
           onlyLookingForMatch: params.playerStatus === 'looking',
           timeFrame: params.timeFrame,
         });
@@ -79,7 +81,7 @@ export default function ResultsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [searchTab, params.city, params.district, params.pos, params.level, params.mode, params.difficulty, params.arena, params.timeFrame, params.reservationStatus, params.playerStatus]);
+  }, [searchTab, params.city, params.district, params.pos, params.level, params.minRating, params.maxRating, params.mode, params.difficulty, params.arena, params.timeFrame, params.reservationStatus, params.playerStatus]);
 
   useEffect(() => {
     fetchResults();

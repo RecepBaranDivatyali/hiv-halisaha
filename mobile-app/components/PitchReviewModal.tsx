@@ -48,6 +48,8 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
   const [, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  const myReview = reviews.find(r => r.userId && user?.uid && r.userId === user.uid);
+
   useEffect(() => {
     if (visible && pitchName) {
       setLoading(true);
@@ -55,6 +57,7 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
         if (remoteReviews && remoteReviews.length > 0) {
           const mapped = remoteReviews.map(r => ({
             id: r.id || Date.now().toString(),
+            userId: r.userId,
             name: r.userName || 'Halısaha Oyuncusu',
             rating: r.rating || 5,
             criteria: r.criteria,
@@ -73,6 +76,17 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
   }, [visible, pitchName]);
 
   const liveFormAverage = ((surfaceRating + showerRating + lightingRating + parkingRating) / 4).toFixed(1);
+
+  const handleOpenEdit = () => {
+    if (myReview) {
+      setSurfaceRating(myReview.criteria?.turf ?? 5);
+      setShowerRating(myReview.criteria?.showers ?? 5);
+      setLightingRating(myReview.criteria?.lighting ?? 5);
+      setParkingRating(myReview.criteria?.parking ?? 5);
+      setUserComment(myReview.comment || '');
+    }
+    setShowAddForm(true);
+  };
 
   const handleAddReview = async () => {
     setSubmitting(true);
@@ -95,21 +109,22 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
         criteria: criteriaObj,
         comment: finalComment,
       };
-      await dbService.addPitchReview(pitchName, reviewPayload);
+      await dbService.savePitchReview(pitchName, reviewPayload);
 
       const newRev = {
-        id: Date.now().toString(),
+        id: myReview?.id || Date.now().toString(),
+        userId: user?.uid,
         name: user?.name || 'Siz (Oyuncu)',
         rating: avgNum,
         criteria: criteriaObj,
         comment: finalComment,
-        date: 'Az önce',
+        date: myReview ? 'Az önce (Güncellendi)' : 'Az önce',
         avatar: user?.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG',
       };
-      setReviews(prev => [newRev, ...prev]);
+      setReviews(prev => [newRev, ...prev.filter(r => !(r.userId && user?.uid && r.userId === user.uid))]);
       setUserComment('');
       setShowAddForm(false);
-      Alert.alert('✅ Değerlendirme Kaydedildi', 'Tesis puanınız başarıyla kaydedildi.');
+      Alert.alert(myReview ? '✅ Değerlendirme Güncellendi' : '✅ Değerlendirme Kaydedildi', myReview ? 'Tesis puanınız başarıyla güncellendi.' : 'Tesis puanınız başarıyla kaydedildi.');
     } catch (e) {
       console.error('Yorum ekleme hatası:', e);
       Alert.alert('Hata', 'Değerlendirmeniz kaydedilirken bir sorun oluştu.');
@@ -195,17 +210,33 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
               </View>
             </View>
 
-            {/* Add Review Button Toggle */}
+            {/* Add Review Button Toggle / Already Reviewed Card */}
             {!showAddForm ? (
-              <TouchableOpacity style={styles.addReviewToggleBtn} onPress={() => setShowAddForm(true)} activeOpacity={0.8}>
-                <MaterialIcons name="rate-review" size={18} color={theme.onPrimary} />
-                <Text style={styles.addReviewToggleText}>DEĞERLENDİRME YAZ</Text>
-              </TouchableOpacity>
+              myReview ? (
+                <View style={styles.alreadyReviewedBox}>
+                  <View style={styles.alreadyReviewedInfo}>
+                    <MaterialIcons name="check-circle" size={20} color={theme.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.alreadyReviewedTitle}>Bu tesisi değerlendirdiniz</Text>
+                      <Text style={styles.alreadyReviewedSub}>Puanınızı veya yorumunuzu dilediğiniz zaman güncelleyebilirsiniz.</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity style={styles.editMyReviewBtn} onPress={handleOpenEdit} activeOpacity={0.8}>
+                    <MaterialIcons name="edit" size={15} color={theme.onPrimary} />
+                    <Text style={styles.editMyReviewBtnText}>DÜZENLE</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.addReviewToggleBtn} onPress={() => setShowAddForm(true)} activeOpacity={0.8}>
+                  <MaterialIcons name="rate-review" size={18} color={theme.onPrimary} />
+                  <Text style={styles.addReviewToggleText}>DEĞERLENDİRME YAZ</Text>
+                </TouchableOpacity>
+              )
             ) : (
               /* Add Review Form */
               <View style={styles.addFormBox}>
                 <View style={styles.addFormHeader}>
-                  <Text style={styles.addFormTitle}>TESİSİ KATEGORİLERE GÖRE PUANLA</Text>
+                  <Text style={styles.addFormTitle}>{myReview ? 'DEĞERLENDİRMENİZİ DÜZENLEYİN' : 'TESİSİ KATEGORİLERE GÖRE PUANLA'}</Text>
                   <View style={styles.liveScoreBadge}>
                     <MaterialIcons name="star" size={16} color="#f59e0b" />
                     <Text style={styles.liveScoreText}>Ort: {liveFormAverage}</Text>
@@ -258,7 +289,7 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
                     {submitting ? (
                       <ActivityIndicator size="small" color={theme.onPrimary} />
                     ) : (
-                      <Text style={styles.submitReviewBtnText}>YAYINLA ({liveFormAverage} ★)</Text>
+                      <Text style={styles.submitReviewBtnText}>{myReview ? `GÜNCELLE (${liveFormAverage} ★)` : `YAYINLA (${liveFormAverage} ★)`}</Text>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -268,39 +299,62 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
             {/* Reviews List */}
             <View style={styles.reviewsSection}>
               <Text style={styles.sectionTitle}>OYUNCU YORUMLARI</Text>
-              {reviews.map((rev) => (
-                <View key={rev.id} style={styles.reviewCard}>
-                  <Image source={{ uri: rev.avatar }} style={styles.revAvatar} />
-                  <View style={styles.revContent}>
-                    <View style={styles.revHeader}>
-                      <Text style={styles.revName}>{rev.name}</Text>
-                      <Text style={styles.revDate}>{rev.date}</Text>
-                    </View>
-                    <View style={styles.revStars}>
-                      {[1, 2, 3, 4, 5].map((s) => (
-                        <MaterialIcons 
-                          key={s} 
-                          name="star" 
-                          size={12} 
-                          color={s <= Math.round(rev.rating || 5) ? theme.primary : theme.surfaceContainerHighest} 
-                        />
-                      ))}
-                      <Text style={styles.revStarScore}>{(rev.rating || 5).toFixed?.(1) ?? rev.rating}</Text>
-                    </View>
-
-                    {rev.criteria && (
-                      <View style={styles.revCriteriaPills}>
-                        {rev.criteria.turf != null && <Text style={styles.revCritPill}>⚽ {rev.criteria.turf}</Text>}
-                        {rev.criteria.showers != null && <Text style={styles.revCritPill}>🚿 {rev.criteria.showers}</Text>}
-                        {rev.criteria.lighting != null && <Text style={styles.revCritPill}>💡 {rev.criteria.lighting}</Text>}
-                        {rev.criteria.parking != null && <Text style={styles.revCritPill}>🚗 {rev.criteria.parking}</Text>}
+              {[...reviews].sort((a, b) => {
+                const aIsMe = Boolean(a.userId && user?.uid && a.userId === user.uid);
+                const bIsMe = Boolean(b.userId && user?.uid && b.userId === user.uid);
+                if (aIsMe) return -1;
+                if (bIsMe) return 1;
+                return 0;
+              }).map((rev) => {
+                const isMine = Boolean(rev.userId && user?.uid && rev.userId === user.uid);
+                return (
+                  <View key={rev.id} style={[styles.reviewCard, isMine && styles.myReviewCard]}>
+                    <Image source={{ uri: rev.avatar }} style={styles.revAvatar} />
+                    <View style={styles.revContent}>
+                      <View style={styles.revHeader}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                          <Text style={[styles.revName, isMine && { color: theme.primary }]}>{rev.name}</Text>
+                          {isMine && (
+                            <View style={styles.myPill}>
+                              <Text style={styles.myPillText}>SİZİN YORUMUNUZ</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Text style={styles.revDate}>{rev.date}</Text>
+                          {isMine && (
+                            <TouchableOpacity onPress={handleOpenEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.pencilTouch}>
+                              <MaterialIcons name="edit" size={16} color={theme.primary} />
+                            </TouchableOpacity>
+                          )}
+                        </View>
                       </View>
-                    )}
+                      <View style={styles.revStars}>
+                        {[1, 2, 3, 4, 5].map((s) => (
+                          <MaterialIcons 
+                            key={s} 
+                            name="star" 
+                            size={12} 
+                            color={s <= Math.round(rev.rating || 5) ? theme.primary : theme.surfaceContainerHighest} 
+                          />
+                        ))}
+                        <Text style={styles.revStarScore}>{(rev.rating || 5).toFixed?.(1) ?? rev.rating}</Text>
+                      </View>
 
-                    {Boolean(rev.comment) && <Text style={styles.revComment}>{rev.comment}</Text>}
+                      {rev.criteria && (
+                        <View style={styles.revCriteriaPills}>
+                          {rev.criteria.turf != null && <Text style={styles.revCritPill}>⚽ {rev.criteria.turf}</Text>}
+                          {rev.criteria.showers != null && <Text style={styles.revCritPill}>🚿 {rev.criteria.showers}</Text>}
+                          {rev.criteria.lighting != null && <Text style={styles.revCritPill}>💡 {rev.criteria.lighting}</Text>}
+                          {rev.criteria.parking != null && <Text style={styles.revCritPill}>🚗 {rev.criteria.parking}</Text>}
+                        </View>
+                      )}
+
+                      {Boolean(rev.comment) && <Text style={styles.revComment}>{rev.comment}</Text>}
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
 
             {/* Bottom Close Button so user can easily exit from the bottom too */}
@@ -425,9 +479,73 @@ const useStyles = (theme: any) => StyleSheet.create({
   cancelBtnText: { fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.textMuted },
   submitReviewBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 8, backgroundColor: theme.primary },
   submitReviewBtnText: { fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.onPrimary },
+  alreadyReviewedBox: {
+    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+    borderColor: 'rgba(34, 197, 94, 0.3)',
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  alreadyReviewedInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  alreadyReviewedTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 13,
+    color: theme.primary,
+  },
+  alreadyReviewedSub: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: theme.textMuted,
+    marginTop: 2,
+  },
+  editMyReviewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: theme.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  editMyReviewBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.onPrimary,
+  },
   reviewsSection: { gap: 12 },
   sectionTitle: { fontFamily: Fonts.headlineBold, fontSize: 12, color: `${theme.primary}CC`, letterSpacing: 1.5 },
   reviewCard: { flexDirection: 'row', gap: 12, backgroundColor: theme.surface, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: theme.borderSubtle },
+  myReviewCard: {
+    borderColor: `${theme.primary}80`,
+    borderWidth: 1.5,
+    backgroundColor: `${theme.primary}0D`,
+  },
+  myPill: {
+    backgroundColor: `${theme.primary}25`,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  myPillText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 9,
+    color: theme.primary,
+    letterSpacing: 0.5,
+  },
+  pencilTouch: {
+    padding: 4,
+    borderRadius: 6,
+    backgroundColor: `${theme.primary}20`,
+  },
   revAvatar: { width: 36, height: 36, borderRadius: 18 },
   revContent: { flex: 1 },
   revHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

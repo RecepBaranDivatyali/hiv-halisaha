@@ -58,6 +58,7 @@ export default function SearchScreen() {
 
   const [pos, setPos] = useState('KL');
   const [minRating, setMinRating] = useState<number>(0);
+  const [maxRating, setMaxRating] = useState<number>(10);
   const [selectedLevels, setSelectedLevels] = useState<string[]>(['0-3.9']);
   const [difficulty, setDifficulty] = useState('Eğlence');
   const [selectedTimeFrames, setSelectedTimeFrames] = useState<string[]>([]);
@@ -137,6 +138,9 @@ export default function SearchScreen() {
             const num = parseFloat(parsed.level);
             if (!isNaN(num)) setMinRating(num);
           }
+          if (parsed.maxRating !== undefined) {
+            setMaxRating(Number(parsed.maxRating));
+          }
           if (parsed.difficulty) setDifficulty(parsed.difficulty);
           if (parsed.timeFrames && Array.isArray(parsed.timeFrames)) {
             setSelectedTimeFrames(parsed.timeFrames);
@@ -166,6 +170,7 @@ export default function SearchScreen() {
         district: selectedDistrict,
         pos,
         minRating,
+        maxRating,
         level: minRating > 0 ? `${minRating.toFixed(1)}+` : undefined,
         difficulty,
         timeFrames: selectedTimeFrames,
@@ -181,6 +186,7 @@ export default function SearchScreen() {
         difficulty: difficulty, 
         level: minRating > 0 ? `${minRating.toFixed(1)}+` : undefined, 
         minRating: minRating > 0 ? minRating.toString() : undefined,
+        maxRating: maxRating < 10 ? maxRating.toString() : undefined,
         city: selectedCity, 
         district: selectedDistrict,
         arena: selectedPitch !== 'Tüm Sahalar' ? selectedPitch : undefined,
@@ -219,6 +225,7 @@ export default function SearchScreen() {
             setSelectedPitch('Tüm Sahalar');
             setPos('KL');
             setMinRating(0);
+            setMaxRating(10);
             setSelectedLevels([]);
             setDifficulty('Eğlence');
             setSelectedTimeFrames([]);
@@ -506,38 +513,75 @@ export default function SearchScreen() {
               </View>
             )}
 
-            {/* Level filter for Oyuncu tab */}
+            {/* Level filter for Oyuncu tab (Min - Max Puan Aralığı) */}
             {activeTab === 'Oyuncu' && (
               <View style={styles.sectionBox}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>OYUNCU PUAN SEVİYESİ</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                  <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>OYUNCU PUAN ARALIĞI</Text>
                   <View style={styles.ratingBadge}>
                     <Text style={styles.ratingBadgeText}>
-                      {minRating === 0 ? 'Tüm Puanlar (0.0 - 10.0)' : `${minRating.toFixed(1)} ve Üzeri`}
+                      {minRating === 0 && maxRating === 10
+                        ? 'Tüm Puanlar (0.0 - 10.0)'
+                        : `${minRating.toFixed(1)} - ${maxRating.toFixed(1)} Puan`}
                     </Text>
                   </View>
                 </View>
-                <View style={styles.sliderContainer}>
+
+                {/* Min Slider */}
+                <View style={{ marginBottom: 14 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 11, color: theme.textMuted }}>EN DÜŞÜK PUAN (MİN)</Text>
+                    <View style={styles.sliderCurrentPill}>
+                      <MaterialIcons name="star" size={12} color={theme.background} />
+                      <Text style={styles.sliderCurrentText}>{minRating.toFixed(1)} ★</Text>
+                    </View>
+                  </View>
                   <Slider
                     style={styles.sliderBar}
                     minimumValue={0}
                     maximumValue={10}
                     step={0.5}
                     value={minRating}
-                    onValueChange={(val) => setMinRating(Math.round(val * 10) / 10)}
+                    onValueChange={(val) => {
+                      const rounded = Math.round(val * 10) / 10;
+                      setMinRating(Math.min(rounded, maxRating));
+                    }}
                     minimumTrackTintColor={theme.primary}
                     maximumTrackTintColor={theme.surfaceContainerHighest}
                     thumbTintColor={theme.primary}
                   />
                   <View style={styles.sliderLabelsRow}>
-                    <Text style={styles.sliderMinMaxText}>0.0</Text>
-                    <View style={styles.sliderCurrentPill}>
-                      <MaterialIcons name="star" size={13} color={theme.background} />
-                      <Text style={styles.sliderCurrentText}>
-                        {minRating === 0 ? 'Filtresiz (0-10)' : `${minRating.toFixed(1)} +`}
-                      </Text>
-                    </View>
+                    <Text style={styles.sliderMinMaxText}>0.0 (Taban)</Text>
                     <Text style={styles.sliderMinMaxText}>10.0</Text>
+                  </View>
+                </View>
+
+                {/* Max Slider */}
+                <View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 11, color: theme.textMuted }}>EN YÜKSEK PUAN (MAX)</Text>
+                    <View style={[styles.sliderCurrentPill, { backgroundColor: theme.secondary }]}>
+                      <MaterialIcons name="star" size={12} color={theme.background} />
+                      <Text style={styles.sliderCurrentText}>{maxRating.toFixed(1)} ★</Text>
+                    </View>
+                  </View>
+                  <Slider
+                    style={styles.sliderBar}
+                    minimumValue={0}
+                    maximumValue={10}
+                    step={0.5}
+                    value={maxRating}
+                    onValueChange={(val) => {
+                      const rounded = Math.round(val * 10) / 10;
+                      setMaxRating(Math.max(rounded, minRating));
+                    }}
+                    minimumTrackTintColor={theme.secondary}
+                    maximumTrackTintColor={theme.surfaceContainerHighest}
+                    thumbTintColor={theme.secondary}
+                  />
+                  <View style={styles.sliderLabelsRow}>
+                    <Text style={styles.sliderMinMaxText}>0.0</Text>
+                    <Text style={styles.sliderMinMaxText}>10.0 (Tavan)</Text>
                   </View>
                 </View>
               </View>
