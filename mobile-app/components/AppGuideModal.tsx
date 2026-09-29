@@ -152,14 +152,9 @@ export const AppGuideModal: React.FC<AppGuideModalProps> = ({ visible, onClose }
                   <MaterialIcons name="menu-book" size={20} color={theme.primary} />
                   <Text style={styles.headerTitle} numberOfLines={1}>H.İ.V. NASIL KULLANILIR?</Text>
                 </View>
-                <View style={styles.headerRightActions}>
-                  <TouchableOpacity style={styles.skipBtn} onPress={handleClose} activeOpacity={0.7}>
-                    <Text style={styles.skipBtnText}>KAPAT</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.closeBtn} onPress={handleClose} activeOpacity={0.7}>
-                    <MaterialIcons name="close" size={18} color={theme.text} />
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity style={styles.closeBtn} onPress={handleClose} activeOpacity={0.7} accessibilityLabel="Kılavuzu Kapat" accessibilityRole="button">
+                  <MaterialIcons name="close" size={18} color={theme.text} />
+                </TouchableOpacity>
               </View>
 
               {/* Sub-header: Step Badge & Category */}
@@ -296,21 +291,6 @@ const useStyles = (theme: any, modalInnerWidth: number) => StyleSheet.create({
     color: theme.primary, 
     fontStyle: 'italic', 
     letterSpacing: 0.5 
-  },
-  headerRightActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  skipBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  skipBtnText: {
-    fontFamily: Fonts.headlineBold,
-    fontSize: 10,
-    color: theme.textMuted,
-    letterSpacing: 0.5,
   },
   closeBtn: { 
     width: 28, 
