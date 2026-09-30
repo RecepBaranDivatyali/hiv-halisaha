@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -6,7 +6,7 @@ import { Fonts } from '@/constants/theme';
 import { useRouter } from 'expo-router';
 import { SideMenu } from '@/components/SideMenu';
 import { CreateMatchModal } from '@/components/CreateMatchModal';
-import { useMatches } from '@/hooks/use-matches';
+import { useMatches, isUserInMatchItem } from '@/hooks/use-matches';
 import { useAuth } from '@/hooks/use-auth';
 import Animated, { FadeInRight } from 'react-native-reanimated';
 import { NotificationCenterModal } from '@/components/NotificationCenterModal';
@@ -22,18 +22,32 @@ export default function MatchesScreen() {
   const { theme } = useTheme();
   const styles = useStyles(theme);
 
+  const isUserMatch = useCallback((m: any) => {
+    return isUserInMatchItem(m, user?.uid, user?.name);
+  }, [user]);
+
+  const [activeTab, setActiveTab] = useState<'AKTİF MAÇLAR' | 'GEÇMİŞ MAÇLARIM'>('AKTİF MAÇLAR');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'mine'>('all');
+
   const actualActiveMatches = matches
     .filter(m => !isMatchPast(m.dateTime) && m.status !== 'completed' && m.status !== 'cancelled')
-    .sort((a, b) => parseTargetTimestamp(a.dateTime) - parseTargetTimestamp(b.dateTime));
+    .filter(m => activeFilter === 'mine' ? isUserMatch(m) : true)
+    .sort((a, b) => {
+      // Önce kullanıcının kendi maçları öne çıksın
+      const aMine = isUserMatch(a) ? 1 : 0;
+      const bMine = isUserMatch(b) ? 1 : 0;
+      if (aMine !== bMine) return bMine - aMine;
+      return parseTargetTimestamp(a.dateTime) - parseTargetTimestamp(b.dateTime);
+    });
 
+  // Yalnızca kullanıcının bizzat dahil olduğu geçmiş maçlar
   const actualPastMatches = [
-    ...pastMatches,
-    ...matches.filter(m => isMatchPast(m.dateTime) || m.status === 'completed')
+    ...pastMatches.filter(isUserMatch),
+    ...matches.filter(m => (isMatchPast(m.dateTime) || m.status === 'completed') && isUserMatch(m))
   ]
     .filter((m, i, arr) => arr.findIndex(x => x.id === m.id) === i)
     .sort((a, b) => parseTargetTimestamp(b.dateTime) - parseTargetTimestamp(a.dateTime));
 
-  const [activeTab, setActiveTab] = useState<'AKTİF MAÇLARIM' | 'GEÇMİŞ MAÇLAR'>('AKTİF MAÇLARIM');
   const [menuVisible, setMenuVisible] = useState(false);
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [notifModalVisible, setNotifModalVisible] = useState(false);
@@ -101,7 +115,7 @@ export default function MatchesScreen() {
         {/* Screen Header & Filters */}
         <View style={styles.screenHeaderBox}>
           <View style={styles.screenHeaderTop}>
-            <Text style={styles.pageTitle}>MAÇLARIM</Text>
+            <Text style={styles.pageTitle}>MAÇLAR</Text>
             <TouchableOpacity style={styles.filterBtn} onPress={onRefresh} accessibilityLabel="Yenile" accessibilityRole="button">
               <MaterialIcons name="refresh" size={22} color={theme.primary} />
             </TouchableOpacity>
@@ -110,26 +124,50 @@ export default function MatchesScreen() {
           {/* Segmented Control */}
           <View style={styles.segmentContainer}>
             <TouchableOpacity 
-              style={[styles.segmentBtn, activeTab === 'AKTİF MAÇLARIM' && styles.segmentBtnActive]}
-              onPress={() => setActiveTab('AKTİF MAÇLARIM')}
+              style={[styles.segmentBtn, activeTab === 'AKTİF MAÇLAR' && styles.segmentBtnActive]}
+              onPress={() => setActiveTab('AKTİF MAÇLAR')}
               accessibilityRole="tab"
-              accessibilityState={{ selected: activeTab === 'AKTİF MAÇLARIM' }}
+              accessibilityState={{ selected: activeTab === 'AKTİF MAÇLAR' }}
             >
-              <Text style={[styles.segmentText, activeTab === 'AKTİF MAÇLARIM' && styles.segmentTextActive]}>AKTİF MAÇLARIM</Text>
+              <Text style={[styles.segmentText, activeTab === 'AKTİF MAÇLAR' && styles.segmentTextActive]}>AKTİF MAÇLAR</Text>
             </TouchableOpacity>
             <TouchableOpacity 
-              style={[styles.segmentBtn, activeTab === 'GEÇMİŞ MAÇLAR' && styles.segmentBtnActive]}
-              onPress={() => setActiveTab('GEÇMİŞ MAÇLAR')}
+              style={[styles.segmentBtn, activeTab === 'GEÇMİŞ MAÇLARIM' && styles.segmentBtnActive]}
+              onPress={() => setActiveTab('GEÇMİŞ MAÇLARIM')}
               accessibilityRole="tab"
-              accessibilityState={{ selected: activeTab === 'GEÇMİŞ MAÇLAR' }}
+              accessibilityState={{ selected: activeTab === 'GEÇMİŞ MAÇLARIM' }}
             >
-              <Text style={[styles.segmentText, activeTab === 'GEÇMİŞ MAÇLAR' && styles.segmentTextActive]}>GEÇMİŞ MAÇLAR</Text>
+              <Text style={[styles.segmentText, activeTab === 'GEÇMİŞ MAÇLARIM' && styles.segmentTextActive]}>GEÇMİŞ MAÇLARIM</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Aktif Maçlar Alt Filtre Butonları */}
+          {activeTab === 'AKTİF MAÇLAR' && (
+            <View style={styles.filterChipRow}>
+              <TouchableOpacity 
+                style={[styles.filterChip, activeFilter === 'all' && styles.filterChipActive]}
+                onPress={() => setActiveFilter('all')}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.filterChipText, activeFilter === 'all' && styles.filterChipTextActive]}>
+                  Tümü ({matches.filter(m => !isMatchPast(m.dateTime) && m.status !== 'completed' && m.status !== 'cancelled').length})
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.filterChip, activeFilter === 'mine' && styles.filterChipActive]}
+                onPress={() => setActiveFilter('mine')}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.filterChipText, activeFilter === 'mine' && styles.filterChipTextActive]}>
+                  Dahil Olduklarım ({matches.filter(m => !isMatchPast(m.dateTime) && m.status !== 'completed' && m.status !== 'cancelled' && isUserMatch(m)).length})
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* Active Matches */}
-        {activeTab === 'AKTİF MAÇLARIM' && (
+        {activeTab === 'AKTİF MAÇLAR' && (
           <View style={styles.matchesList}>
             {loading ? (
               [1, 2, 3].map((item) => (
@@ -220,7 +258,7 @@ export default function MatchesScreen() {
         )}
 
         {/* Past Matches */}
-        {activeTab === 'GEÇMİŞ MAÇLAR' && (
+        {activeTab === 'GEÇMİŞ MAÇLARIM' && (
           <View style={styles.matchesList}>
             {loading ? (
               [1, 2, 3].map((item) => (
@@ -238,8 +276,10 @@ export default function MatchesScreen() {
             ) : actualPastMatches.length === 0 ? (
               <View style={{ alignItems: 'center', paddingVertical: 60, gap: 16 }}>
                 <MaterialIcons name="history" size={64} color={theme.surfaceContainerHighest} />
-                <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 18, color: theme.textMuted, textAlign: 'center' }}>Henüz geçmiş maç yok</Text>
-                <Text style={{ fontFamily: Fonts.body, fontSize: 13, color: theme.textMuted, textAlign: 'center' }}>Tamamlanan maçlar burada görünecek</Text>
+                <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 18, color: theme.textMuted, textAlign: 'center' }}>Henüz geçmiş maçınız yok</Text>
+                <Text style={{ fontFamily: Fonts.body, fontSize: 13, color: theme.textMuted, textAlign: 'center', maxWidth: 280 }}>
+                  Katıldığınız maçlar tamamlandığında skorları ve oyuncu değerlendirmeleriyle burada listelenecektir.
+                </Text>
               </View>
             ) : actualPastMatches.map((match, idx) => (
               <Animated.View key={match.id || idx} entering={FadeInRight.delay(idx * 100).springify()}>
@@ -376,6 +416,32 @@ const useStyles = (theme: any) => StyleSheet.create({
   },
   segmentTextActive: {
     color: theme.primary
+  },
+  filterChipRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+  },
+  filterChipActive: {
+    backgroundColor: `${theme.primary}20`,
+    borderColor: theme.primary,
+  },
+  filterChipText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.textMuted,
+    letterSpacing: 0.5,
+  },
+  filterChipTextActive: {
+    color: theme.primary,
   },
   matchesList: {
     gap: 16

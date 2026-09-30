@@ -9,7 +9,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useImagePicker } from '@/hooks/use-image-picker';
 import { BadgeDetailModal, BadgeData } from '@/components/BadgeDetailModal';
 import { NotificationCenterModal } from '@/components/NotificationCenterModal';
-import { useMatches } from '@/hooks/use-matches';
+import { useMatches, isUserInMatchItem } from '@/hooks/use-matches';
 import { useTheme } from '@/context/ThemeContext';
 import { AppGuideModal } from '@/components/AppGuideModal';
 
@@ -23,6 +23,8 @@ export default function ProfileScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<BadgeData | null>(null);
   const [notifModalVisible, setNotifModalVisible] = useState(false);
+
+  const userMatches = matches.filter(m => isUserInMatchItem(m, user?.uid, user?.name));
   const [guideVisible, setGuideVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -368,14 +370,17 @@ export default function ProfileScreen() {
           </View>
           
           <View style={styles.matchList}>
-            {matches.length === 0 ? (
+            {userMatches.length === 0 ? (
               <View style={{ alignItems: 'center', paddingVertical: 24, gap: 8 }}>
                 <MaterialIcons name="sports-soccer" size={36} color={theme.surfaceContainerHighest} />
                 <Text style={{ fontFamily: Fonts.body, fontSize: 13, color: theme.textMuted, textAlign: 'center' }}>
                   Henüz maç geçmişin yok
                 </Text>
+                <Text style={{ fontFamily: Fonts.body, fontSize: 11, color: theme.textMuted, textAlign: 'center' }}>
+                  Katıldığın veya organize ettiğin maçlar burada listelenecektir.
+                </Text>
               </View>
-            ) : matches.slice(0, 3).map((match) => {
+            ) : userMatches.slice(0, 3).map((match) => {
               const isOrganizer = match.organizer?.toLowerCase().includes('siz');
               const barColor = isOrganizer ? theme.primary : theme.secondary;
               return (

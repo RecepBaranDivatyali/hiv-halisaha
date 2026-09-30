@@ -304,12 +304,20 @@ export const dbService = {
   getPastMatches: async (userId?: string) => {
     try {
       const matchesRef = collection(db, 'matches');
-      const q = query(matchesRef, where('status', '==', 'completed'), limit(20));
+      const q = query(matchesRef, where('status', '==', 'completed'), limit(50));
       const snapshot = await getDocs(q);
       let list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MatchModel));
       
       if (userId) {
-        list = list.filter(m => m.organizerId === userId || (m.slots && Object.values(m.slots).some(slot => slot?.uid === userId)));
+        list = list.filter(m => 
+          m.organizerId === userId || 
+          m.captainAId === userId || 
+          m.captainBId === userId || 
+          (m.slots && Object.values(m.slots).some(slot => slot?.uid === userId)) ||
+          (m.benchA && Array.isArray(m.benchA) && m.benchA.some((b: any) => b?.uid === userId)) ||
+          (m.benchB && Array.isArray(m.benchB) && m.benchB.some((b: any) => b?.uid === userId)) ||
+          (m.reserves && Array.isArray(m.reserves) && m.reserves.some((r: any) => r?.uid === userId))
+        );
       }
       
       return list;

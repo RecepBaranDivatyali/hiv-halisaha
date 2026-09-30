@@ -13,32 +13,11 @@ interface PitchReviewModalProps {
   onClose: () => void;
 }
 
-const SAMPLE_REVIEWS = [
-  { 
-    id: '1', 
-    name: 'Ahmet K.', 
-    rating: 4.8, 
-    criteria: { turf: 5, showers: 5, lighting: 5, parking: 4 },
-    comment: 'Zemin harika! Krampon kaymıyor, soyunma odaları tertemiz ve sıcak su var.', 
-    date: '3 gün önce', 
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCKH5OYGgw6kyLLpH5wMB9LQxlysnBPQOzGlTYgCblgjVquca3KkOX5eAQ0rqvOjVr9qEQGj-yP235XnroUuyzg7ZsmyIXWpDnxXISTalw3NzTDuw_ZmQX-Ne1hFDC0eysnPT4qZ1-8DGKiHIfmwdX8oJRjOJuuspWloG3YJSs7bU4_nXnrmNdlVphCmkNnCmyMAplXu8T0BShbsk-UUGhVj3_acb9UxRLlDA44DPG15QZILO7eSCKY16cXOu2I3DQjKW4ccIolcKzm' 
-  },
-  { 
-    id: '2', 
-    name: 'Sercan B.', 
-    rating: 4.3, 
-    criteria: { turf: 4, showers: 4, lighting: 5, parking: 4 },
-    comment: 'Işıklandırma akşam maçlarında mükemmel. Otopark biraz dar ama sorunsuz.', 
-    date: 'Geçen hafta', 
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBE4lFsV0XR6nZWh-Yz-LkjJwfk7GsSSS-BSYugdoVtbu593_7FbtX4_cgRbFIzS3L75J2b3-8G6DHFbJuKj8OiPD4k2FVjKeknv2UGrTH69Wk7Ah0gv4MQJ9Vu6yvnafQVEEBQxaUXwU6fLxN5faXUl8puhH-eL5iPRSR-l6s_mPI7uFbCLcr7tRC8OhRZC3b-nGDSPAMWudV0AGFKrFQ9_pUCJYJRUdC4ODwJyvcvYixPhiy1a17jhPgmSVxj7Qo3fxzpOqNaw1kt' 
-  },
-];
-
 export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 'Beşiktaş Arena', visible, onClose }) => {
   const { theme } = useTheme();
   const { user } = useAuth();
   const styles = useStyles(theme);
-  const [reviews, setReviews] = useState<any[]>(SAMPLE_REVIEWS);
+  const [reviews, setReviews] = useState<any[]>([]);
   const [surfaceRating, setSurfaceRating] = useState(5);
   const [showerRating, setShowerRating] = useState(5);
   const [lightingRating, setLightingRating] = useState(5);
@@ -67,10 +46,11 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
           }));
           setReviews(mapped);
         } else {
-          setReviews(SAMPLE_REVIEWS);
+          setReviews([]);
         }
       }).catch(err => {
         console.error('Tesis yorumları yüklenemedi:', err);
+        setReviews([]);
       }).finally(() => {
         setLoading(false);
       });
@@ -163,23 +143,23 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
 
   const averageRating = reviews.length > 0 
     ? (reviews.reduce((sum, r) => sum + (r.rating || 5), 0) / reviews.length).toFixed(1)
-    : '4.8';
+    : 'Yeni';
 
   const avgSurface = reviews.some(r => r.criteria?.turf)
     ? (reviews.reduce((sum, r) => sum + (r.criteria?.turf || r.rating || 5), 0) / reviews.length).toFixed(1)
-    : (parseFloat(averageRating) > 4.5 ? '4.9' : averageRating);
+    : '-';
 
   const avgShower = reviews.some(r => r.criteria?.showers)
     ? (reviews.reduce((sum, r) => sum + (r.criteria?.showers || r.rating || 4.5), 0) / reviews.length).toFixed(1)
-    : '4.7';
+    : '-';
 
   const avgLighting = reviews.some(r => r.criteria?.lighting)
     ? (reviews.reduce((sum, r) => sum + (r.criteria?.lighting || r.rating || 5), 0) / reviews.length).toFixed(1)
-    : averageRating;
+    : '-';
 
   const avgParking = reviews.some(r => r.criteria?.parking)
     ? (reviews.reduce((sum, r) => sum + (r.criteria?.parking || r.rating || 4), 0) / reviews.length).toFixed(1)
-    : '4.5';
+    : '-';
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -332,14 +312,21 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
 
             {/* Reviews List */}
             <View style={styles.reviewsSection}>
-              <Text style={styles.sectionTitle}>OYUNCU YORUMLARI</Text>
-              {[...reviews].sort((a, b) => {
-                const aIsMe = Boolean(a.userId && user?.uid && a.userId === user.uid);
-                const bIsMe = Boolean(b.userId && user?.uid && b.userId === user.uid);
-                if (aIsMe) return -1;
-                if (bIsMe) return 1;
-                return 0;
-              }).map((rev) => {
+              <Text style={styles.sectionTitle}>OYUNCU YORUMLARI ({reviews.length})</Text>
+              {reviews.length === 0 ? (
+                <View style={styles.emptyReviewsBox}>
+                  <MaterialIcons name="rate-review" size={38} color={theme.surfaceContainerHighest} />
+                  <Text style={styles.emptyReviewsTitle}>Henüz değerlendirme yapılmamış</Text>
+                  <Text style={styles.emptyReviewsSub}>Bu tesis için ilk puanı ve yorumu siz bırakın!</Text>
+                </View>
+              ) : (
+                [...reviews].sort((a, b) => {
+                  const aIsMe = Boolean(a.userId && user?.uid && a.userId === user.uid);
+                  const bIsMe = Boolean(b.userId && user?.uid && b.userId === user.uid);
+                  if (aIsMe) return -1;
+                  if (bIsMe) return 1;
+                  return 0;
+                }).map((rev) => {
                 const isMine = Boolean(rev.userId && user?.uid && rev.userId === user.uid);
                 return (
                   <View key={rev.id} style={[styles.reviewCard, isMine && styles.myReviewCard]}>
@@ -393,7 +380,7 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
                     </View>
                   </View>
                 );
-              })}
+              }))}
             </View>
 
             {/* Bottom Close Button so user can easily exit from the bottom too */}
@@ -616,6 +603,29 @@ const useStyles = (theme: any) => StyleSheet.create({
   revCriteriaPills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginVertical: 4 },
   revCritPill: { fontFamily: Fonts.body, fontSize: 10, color: theme.textMuted, backgroundColor: theme.surfaceContainerHighest, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
   revComment: { fontFamily: Fonts.body, fontSize: 12, color: theme.textMuted, lineHeight: 16, marginTop: 2 },
+  emptyReviewsBox: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    gap: 6,
+  },
+  emptyReviewsTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 13,
+    color: theme.text,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  emptyReviewsSub: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: theme.textMuted,
+    textAlign: 'center',
+  },
   bottomCloseBtn: { 
     flexDirection: 'row', 
     alignItems: 'center', 

@@ -1,35 +1,51 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, TextInput, Alert, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, TextInput, Alert, Image, ActivityIndicator } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
+import { useAuth } from '@/hooks/use-auth';
+import { dbService } from '@/services/dbService';
 
 interface InvitePlayerModalProps {
   visible: boolean;
   onClose: () => void;
 }
 
-const SAMPLE_PLAYERS = [
-  { id: '1', name: 'Emre K.', position: 'KALECİ', level: 'LVL 42', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCKH5OYGgw6kyLLpH5wMB9LQxlysnBPQOzGlTYgCblgjVquca3KkOX5eAQ0rqvOjVr9qEQGj-yP235XnroUuyzg7ZsmyIXWpDnxXISTalw3NzTDuw_ZmQX-Ne1hFDC0eysnPT4qZ1-8DGKiHIfmwdX8oJRjOJuuspWloG3YJSs7bU4_nXnrmNdlVphCmkNnCmyMAplXu8T0BShbsk-UUGhVj3_acb9UxRLlDA44DPG15QZILO7eSCKY16cXOu2I3DQjKW4ccIolcKzm' },
-  { id: '2', name: 'Mert Y.', position: 'DEFANS', level: 'LVL 38', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBE4lFsV0XR6nZWh-Yz-LkjJwfk7GsSSS-BSYugdoVtbu593_7FbtX4_cgRbFIzS3L75J2b3-8G6DHFbJuKj8OiPD4k2FVjKeknv2UGrTH69Wk7Ah0gv4MQJ9Vu6yvnafQVEEBQxaUXwU6fLxN5faXUl8puhH-eL5iPRSR-l6s_mPI7uFbCLcr7tRC8OhRZC3b-nGDSPAMWudV0AGFKrFQ9_pUCJYJRUdC4ODwJyvcvYixPhiy1a17jhPgmSVxj7Qo3fxzpOqNaw1kt' },
-  { id: '3', name: 'Canberk T.', position: 'ORTA SAHA', level: 'LVL 45', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuD8zUJF1Saqr9vLfmCBr4mZal8zP8AG7YdNQ_Lf2JplpOnr78Db0YoR09stWCBd3EU4PCu5JipiLrx1GaYJr8_b52MaKj3NC3J_pZLpJhpXa8vnfxpsouclJZYdJ0wsntODI7Lnj3l0QUJjjWpjtRTaoqRNhG7MzslLrfaCZ-ccXxdM6WnoEetlcVuU0G0x3XSkP64nOJ5B32iF9c3wUN-NoUF9hH60ZkKko2tyY2QmOYOYlcnRzBQMMiG-W1yx8zjjM_-8LL_TnFW-' },
-];
-
 export const InvitePlayerModal: React.FC<InvitePlayerModalProps> = ({ visible, onClose }) => {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const styles = useStyles(theme);
   const [searchQuery, setSearchQuery] = useState('');
   const [invitedIds, setInvitedIds] = useState<string[]>([]);
+  const [players, setPlayers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const filteredPlayers = SAMPLE_PLAYERS.filter(p =>
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.position.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  useEffect(() => {
+    if (visible) {
+      setLoading(true);
+      dbService.searchPlayers({}).then((res) => {
+        const otherPlayers = res.filter((p: any) => p.id && (!user?.uid || p.id !== user.uid));
+        setPlayers(otherPlayers);
+      }).catch(err => {
+        console.error('Oyuncu listesi yükleme hatası:', err);
+        setPlayers([]);
+      }).finally(() => {
+        setLoading(false);
+      });
+    }
+  }, [visible, user?.uid]);
 
-  const handleInvite = (player: typeof SAMPLE_PLAYERS[0]) => {
+  const filteredPlayers = players.filter(p => {
+    const q = searchQuery.toLowerCase();
+    const nameMatch = (p.name || '').toLowerCase().includes(q);
+    const posMatch = (p.position || '').toLowerCase().includes(q);
+    return nameMatch || posMatch;
+  });
+
+  const handleInvite = (player: any) => {
     setInvitedIds(prev => [...prev, player.id]);
-    Alert.alert('✅ Davet Gönderildi', `${player.name} oyuncusuna kulüp daveti iletildi.`);
+    Alert.alert('✅ Davet Gönderildi', `${player.name || 'Oyuncu'} kullanıcısına kulüp daveti iletildi.`);
   };
 
   return (
@@ -62,31 +78,51 @@ export const InvitePlayerModal: React.FC<InvitePlayerModalProps> = ({ visible, o
 
             {/* Players List */}
             <ScrollView contentContainerStyle={styles.playersList} showsVerticalScrollIndicator={false}>
-              {filteredPlayers.map((player) => {
-                const isInvited = invitedIds.includes(player.id);
-                return (
-                  <View key={player.id} style={styles.playerCard}>
-                    <Image source={{ uri: player.avatar }} style={styles.playerAvatar} />
-                    <View style={styles.playerInfo}>
-                      <Text style={styles.playerName}>{player.name}</Text>
-                      <View style={styles.playerSubRow}>
-                        <Text style={styles.playerPos}>{player.position}</Text>
-                        <Text style={styles.playerDot}>•</Text>
-                        <Text style={styles.playerLvl}>{player.level}</Text>
+              {loading ? (
+                <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                  <ActivityIndicator size="large" color={theme.primary} />
+                </View>
+              ) : filteredPlayers.length === 0 ? (
+                <View style={{ alignItems: 'center', paddingVertical: 40, gap: 10 }}>
+                  <MaterialIcons name="person-search" size={48} color={theme.surfaceContainerHighest} />
+                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 14, color: theme.textMuted }}>
+                    {searchQuery ? 'Aramanızla eşleşen oyuncu bulunamadı' : 'Davet edilebilecek kayıtlı oyuncu yok'}
+                  </Text>
+                  <Text style={{ fontFamily: Fonts.body, fontSize: 12, color: theme.textMuted, textAlign: 'center' }}>
+                    Sisteme kayıtlı diğer futbolcular burada listelenir.
+                  </Text>
+                </View>
+              ) : (
+                filteredPlayers.map((player) => {
+                  const isInvited = invitedIds.includes(player.id);
+                  const avatarUri = player.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuCKH5OYGgw6kyLLpH5wMB9LQxlysnBPQOzGlTYgCblgjVquca3KkOX5eAQ0rqvOjVr9qEQGj-yP235XnroUuyzg7ZsmyIXWpDnxXISTalw3NzTDuw_ZmQX-Ne1hFDC0eysnPT4qZ1-8DGKiHIfmwdX8oJRjOJuuspWloG3YJSs7bU4_nXnrmNdlVphCmkNnCmyMAplXu8T0BShbsk-UUGhVj3_acb9UxRLlDA44DPG15QZILO7eSCKY16cXOu2I3DQjKW4ccIolcKzm';
+                  const posName = player.position || 'OYUNCU';
+                  const lvlName = player.stats?.matchesPlayed != null ? `${player.stats.matchesPlayed} Maç` : (player.rating ? `${player.rating} ★` : 'Aktif');
+
+                  return (
+                    <View key={player.id} style={styles.playerCard}>
+                      <Image source={{ uri: avatarUri }} style={styles.playerAvatar} />
+                      <View style={styles.playerInfo}>
+                        <Text style={styles.playerName}>{player.name || 'Halısaha Oyuncusu'}</Text>
+                        <View style={styles.playerSubRow}>
+                          <Text style={styles.playerPos}>{posName}</Text>
+                          <Text style={styles.playerDot}>•</Text>
+                          <Text style={styles.playerLvl}>{lvlName}</Text>
+                        </View>
                       </View>
+                      <TouchableOpacity
+                        style={[styles.inviteBtn, isInvited && styles.inviteBtnSent]}
+                        disabled={isInvited}
+                        onPress={() => handleInvite(player)}
+                      >
+                        <Text style={[styles.inviteBtnText, isInvited && styles.inviteBtnTextSent]}>
+                          {isInvited ? 'GÖNDERİLDİ' : 'DAVET ET'}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
-                    <TouchableOpacity
-                      style={[styles.inviteBtn, isInvited && styles.inviteBtnSent]}
-                      disabled={isInvited}
-                      onPress={() => handleInvite(player)}
-                    >
-                      <Text style={[styles.inviteBtnText, isInvited && styles.inviteBtnTextSent]}>
-                        {isInvited ? 'GÖNDERİLDİ' : 'DAVET ET'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                );
-              })}
+                  );
+                })
+              )}
             </ScrollView>
           </View>
         </View>

@@ -16,7 +16,7 @@ type Tab = 'Maç' | 'Oyuncu' | 'Rakip';
 const CITIES_LIST = ['İstanbul', 'Ankara', 'İzmir', 'Bursa', 'Antalya', 'Adana', 'Kocaeli', 'Gaziantep', 'Konya', 'Eskişehir', 'Trabzon', 'Samsun'];
 const DISTRICTS_MAP: Record<string, string[]> = {
   'İstanbul': ['Kadıköy', 'Beşiktaş', 'Şişli', 'Üsküdar', 'Bakırköy', 'Maltepe', 'Ataşehir'],
-  'Ankara': ['Çankaya', 'Dikmen', 'Yenimahalle', 'Keçiören', 'Etimesgut', 'Mamak'],
+  'Ankara': ['Çankaya', 'Yenimahalle', 'Batıkent', 'Etimesgut', 'Eryaman', 'Keçiören', 'Gölbaşı', 'Mamak', 'Altındağ', 'Sincan', 'Pursaklar'],
   'İzmir': ['Karşıyaka', 'Bornova', 'Konak', 'Alsancak', 'Buca'],
   'Bursa': ['Nilüfer', 'Osmangazi', 'Yıldırım'],
   'Antalya': ['Muratpaşa', 'Konyaaltı', 'Kepez'],

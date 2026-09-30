@@ -10,6 +10,54 @@ export interface MatchItemFull extends MatchModel {
   id: string;
 }
 
+// Helper: Kullanıcı bu maçta yer alıyor mu? (Organizatör, kaptan, kadro, yedek kulübesi)
+export function isUserInMatchItem(m: any, uid?: string, name?: string): boolean {
+  if (!m) return false;
+  const currentUid = uid || auth.currentUser?.uid;
+  const currentName = name || auth.currentUser?.displayName;
+  const nameClean = currentName?.trim().toLowerCase();
+
+  // 1. Organizatör kontrolü
+  if (m.organizer?.toLowerCase().includes('siz')) return true;
+  if (currentUid && m.organizerId === currentUid) return true;
+  if (nameClean && nameClean.length >= 2 && m.organizer?.toLowerCase() === nameClean) return true;
+
+  // 2. Kaptan kontrolü
+  if (currentUid && (m.captainAId === currentUid || m.captainBId === currentUid)) return true;
+  if (nameClean && nameClean.length >= 2) {
+    if (m.captainAName?.toLowerCase() === nameClean || m.captainBName?.toLowerCase() === nameClean) return true;
+  }
+
+  // 3. Kadro slotları kontrolü
+  if (m.slots && typeof m.slots === 'object') {
+    const slotValues = Object.values(m.slots) as any[];
+    const inSlot = slotValues.some((s: any) => {
+      if (!s) return false;
+      if (currentUid && s.uid === currentUid) return true;
+      if (nameClean && nameClean.length >= 2 && s.name?.trim().toLowerCase() === nameClean) return true;
+      return false;
+    });
+    if (inSlot) return true;
+  }
+
+  // 4. Yedek kulübesi (Bench & Reserves) kontrolü
+  const checkBench = (arr: any[]) => {
+    if (!Array.isArray(arr)) return false;
+    return arr.some((b: any) => {
+      if (!b) return false;
+      if (currentUid && b.uid === currentUid) return true;
+      if (nameClean && nameClean.length >= 2 && b.name?.trim().toLowerCase() === nameClean) return true;
+      return false;
+    });
+  };
+
+  if (checkBench(m.benchA) || checkBench(m.benchB) || checkBench(m.reserves)) {
+    return true;
+  }
+
+  return false;
+}
+
 export function useMatches() {
   const [matches, setMatches] = useState<MatchItemFull[]>([]);
   const [pastMatches, setPastMatches] = useState<MatchItemFull[]>([]);
@@ -18,6 +66,9 @@ export function useMatches() {
   const loadMatches = useCallback(async () => {
     try {
       setLoading(true);
+      const currentUid = auth.currentUser?.uid;
+      const currentName = auth.currentUser?.displayName || undefined;
+
       // 1. Önce önbellekten hızlıca getir (geçmiş maçları aktiften eleyerek)
       const cached = await AsyncStorage.getItem(MATCHES_CACHE_KEY);
       if (cached) {
@@ -25,10 +76,10 @@ export function useMatches() {
         setMatches(parsed.filter(m => !isMatchPast(m.dateTime)));
       }
 
-      // 2. Firestore'dan güncel aktif ve geçmiş maçları çek
+      // 2. Firestore'dan güncel aktif ve geçmiş maçları çek (kullanıcıya özel geçmiş maçlar)
       const [remoteMatches, remotePast] = await Promise.all([
         dbService.getMatches(),
-        dbService.getPastMatches()
+        currentUid ? dbService.getPastMatches(currentUid) : Promise.resolve([])
       ]);
 
       const activeList: MatchItemFull[] = [];
@@ -36,16 +87,21 @@ export function useMatches() {
 
       for (const m of ((remoteMatches as MatchItemFull[]) || [])) {
         if (isMatchPast(m.dateTime) || m.status === 'completed') {
-          pastFromActive.push({ ...m, status: 'completed' });
+          // Sadece kullanıcının bizzat katıldığı geçmiş maçları ekle
+          if (isUserInMatchItem(m, currentUid, currentName)) {
+            pastFromActive.push({ ...m, status: 'completed' });
+          }
         } else {
           activeList.push(m);
         }
       }
 
-      // Birleştirilmiş geçmiş maçlar (tekil ve en yeni üstte)
+      // Birleştirilmiş geçmiş maçlar (tekil, sadece kullanıcıya ait ve en yeni üstte)
       const pastMap = new Map<string, MatchItemFull>();
       for (const p of ((remotePast as MatchItemFull[]) || [])) {
-        pastMap.set(p.id, p);
+        if (isUserInMatchItem(p, currentUid, currentName)) {
+          pastMap.set(p.id, p);
+        }
       }
       for (const p of pastFromActive) {
         if (!pastMap.has(p.id)) {
