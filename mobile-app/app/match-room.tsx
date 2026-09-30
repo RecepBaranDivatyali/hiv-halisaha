@@ -1228,9 +1228,13 @@ export default function MatchRoomScreen() {
             ? `🛡️ A Takımı için ${teamAMissing} oyuncu aranıyor!` 
             : '🛡️ A Takımı kadrosu dolmak üzere!';
         } else {
-          teamText = teamBMissing > 0 
-            ? `⚔️ B Takımı (Rakip) için ${teamBMissing} oyuncu aranıyor!` 
-            : '⚔️ B Takımı kadrosu dolmak üzere!';
+          if (!hasCaptainB) {
+            teamText = `⚔️ B Takımı için Rakip Kaptan ve ${teamBMissing} oyuncu aranıyor!`;
+          } else {
+            teamText = teamBMissing > 0 
+              ? `⚔️ B Takımı (${activeMatch?.captainBName || 'Rakip'}) için ${teamBMissing} oyuncu aranıyor!` 
+              : '⚔️ B Takımı kadrosu dolmak üzere!';
+          }
         }
       } else {
         const remainingCount = Math.max(0, totalPlayersCount - rosterPayments.length);
@@ -1915,7 +1919,9 @@ export default function MatchRoomScreen() {
                         ? (activeTeam === 'A' ? '🛡️ A TAKIMI KADROSU DOLDU' : '⚔️ B TAKIMI KADROSU DOLDU')
                         : (activeTeam === 'A'
                             ? `📢 A TAKIMI: ${activeTeamMissing} OYUNCU EKSİK • KADROYA ÇAĞIR`
-                            : `⚔️ B TAKIMI (RAKİP): ${activeTeamMissing} OYUNCU EKSİK • RAKİP BUL`))
+                            : (!hasCaptainB 
+                                ? `⚔️ B TAKIMI: RAKİP KAPTAN & ${activeTeamMissing} OYUNCU ARANIYOR`
+                                : `⚔️ B TAKIMI (RAKİP): ${activeTeamMissing} OYUNCU EKSİK • RAKİP BUL`)))
                     : (rosterPayments.length >= totalPlayersCount
                         ? '🏆 KADRO TAMAMLANDI (DOLDU)'
                         : `📢 ${totalPlayersCount - rosterPayments.length} OYUNCU EKSİK • ARKADAŞLARINI ÇAĞIR`)}

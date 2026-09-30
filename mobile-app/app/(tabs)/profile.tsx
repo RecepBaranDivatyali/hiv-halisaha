@@ -12,7 +12,7 @@ import { NotificationCenterModal } from '@/components/NotificationCenterModal';
 import { useMatches, isUserInMatchItem } from '@/hooks/use-matches';
 import { useTheme } from '@/context/ThemeContext';
 import { AppGuideModal } from '@/components/AppGuideModal';
-import { isMatchEnded } from '@/services/dateUtils';
+import { isMatchEnded, parseTargetTimestamp } from '@/services/dateUtils';
 
 export default function ProfileScreen() {
   const { theme } = useTheme();
@@ -25,7 +25,9 @@ export default function ProfileScreen() {
   const [selectedBadge, setSelectedBadge] = useState<BadgeData | null>(null);
   const [notifModalVisible, setNotifModalVisible] = useState(false);
 
-  const userMatches = matches.filter(m => isUserInMatchItem(m, user?.uid, user?.name));
+  const userMatches = matches
+    .filter(m => isUserInMatchItem(m, user?.uid, user?.name))
+    .sort((a, b) => parseTargetTimestamp(b.dateTime) - parseTargetTimestamp(a.dateTime));
   const [guideVisible, setGuideVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -324,11 +326,21 @@ export default function ProfileScreen() {
               <Text style={styles.statCardLabel} numberOfLines={1}>MVP</Text>
               <Text style={[styles.statCardValue, { color: theme.primary }]} numberOfLines={1} adjustsFontSizeToFit>{user?.stats?.mvpCount ?? 0}</Text>
             </View>
-            <View style={styles.statCard}>
+            <TouchableOpacity 
+              style={styles.statCard}
+              activeOpacity={0.8}
+              onPress={() => Alert.alert(
+                `Güvenilirlik Puanı (%${user?.stats?.reliabilityScore ?? 100})`,
+                'Bu metrik, katıldığınız maçlara zamanında ve eksiksiz katılımınızı gösterir.\n\n• Maçlara zamanında katılmak puanınızı artırır.\n• Son dakika maçtan çıkmak veya gelmemek puanı düşürür.\n• %90 altına düşen oyuncular maç ararken uyarı alabilir.'
+              )}
+            >
               <MaterialIcons name="shield" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
-              <Text style={styles.statCardLabel} numberOfLines={1}>GÜVENİLİRLİK</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+                <Text style={styles.statCardLabel} numberOfLines={1}>GÜVENİLİRLİK</Text>
+                <MaterialIcons name="info-outline" size={11} color={theme.textMuted} />
+              </View>
               <Text style={[styles.statCardValue, { color: theme.primary }]} numberOfLines={1} adjustsFontSizeToFit>%{user?.stats?.reliabilityScore ?? 100}</Text>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -386,14 +398,15 @@ export default function ProfileScreen() {
                 (user?.uid && match.organizerId === user.uid) ||
                 (user?.name && user.name.trim().length >= 2 && match.organizer?.toLowerCase() === user.name.trim().toLowerCase())
               );
-              const barColor = isOrganizer ? theme.primary : theme.secondary;
+              const ended = match.status === 'completed' || isMatchEnded(match.dateTime);
+              const needsReview = ended && !user?.dismissedReviews?.includes(match.id);
+              const barColor = needsReview ? theme.primary : (isOrganizer ? theme.primary : theme.secondary);
               return (
                 <TouchableOpacity
                   key={match.id}
                   style={styles.matchItem}
                   activeOpacity={0.85}
                   onPress={() => {
-                    const ended = match.status === 'completed' || isMatchEnded(match.dateTime);
                     if (ended) {
                       router.push({ pathname: '/rate-match', params: { matchId: match.id } });
                     } else {
@@ -404,9 +417,16 @@ export default function ProfileScreen() {
                   <View style={[styles.matchColorBar, { backgroundColor: barColor }]} />
                   <View style={styles.matchItemDetail}>
                     <View style={styles.matchItemLeft}>
-                      <Text style={styles.matchItemDate} numberOfLines={1}>
-                        {match.dateTime?.toUpperCase()} • {match.city?.toUpperCase()}
-                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={styles.matchItemDate} numberOfLines={1}>
+                          {match.dateTime?.toUpperCase()} • {match.city?.toUpperCase()}
+                        </Text>
+                        {needsReview && (
+                          <View style={{ backgroundColor: `${theme.primary}25`, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                            <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 9, color: theme.primary }}>⭐ DEĞERLENDİR</Text>
+                          </View>
+                        )}
+                      </View>
                       <Text style={styles.matchItemTitle} numberOfLines={1}>{match.arena}</Text>
                     </View>
                     <View style={styles.matchItemRight}>
@@ -418,7 +438,7 @@ export default function ProfileScreen() {
                       </View>
                       <View style={styles.matchItemThumb}>
                         <MaterialIcons
-                          name={isOrganizer ? 'stars' : 'people'}
+                          name={needsReview ? 'star' : (isOrganizer ? 'stars' : 'people')}
                           size={14}
                           color={barColor}
                         />

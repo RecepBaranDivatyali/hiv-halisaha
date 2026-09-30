@@ -64,6 +64,7 @@ export default function SearchScreen() {
   const [selectedTimeFrames, setSelectedTimeFrames] = useState<string[]>([]);
   const [reservationStatus, setReservationStatus] = useState<'all' | 'reserved' | 'no_reservation'>('all');
   const [playerStatus, setPlayerStatus] = useState<'all' | 'looking'>('looking');
+  const [selectedMode, setSelectedMode] = useState<string>('Tümü');
   const [remember, setRemember] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -211,6 +212,7 @@ export default function SearchScreen() {
         district: selectedDistrict,
         arena: selectedPitch !== 'Tüm Sahalar' ? selectedPitch : undefined,
         timeFrame: selectedTimeFrames.length > 0 ? selectedTimeFrames.join(',') : undefined,
+        mode: activeTab === 'Maç' && selectedMode !== 'Tümü' ? selectedMode : undefined,
         reservationStatus: (activeTab === 'Maç' || activeTab === 'Rakip') && reservationStatus !== 'all' ? reservationStatus : undefined,
         playerStatus: activeTab === 'Oyuncu' ? playerStatus : undefined,
       }
@@ -249,6 +251,7 @@ export default function SearchScreen() {
             setActiveRatingPreset('all');
             setSelectedDifficulties(['Eğlence']);
             setSelectedTimeFrames([]);
+            setSelectedMode('Tümü');
             setReservationStatus('all');
             setPlayerStatus('looking');
             Alert.alert('Filtreler Sıfırlandı', 'Arama kriterleri varsayılan değerlere döndürüldü.');
@@ -371,6 +374,30 @@ export default function SearchScreen() {
                       >
                         <Text style={[styles.posIconText, active && styles.posIconTextActive]}>{p}</Text>
                         <Text style={[styles.posLabelText, active && styles.posLabelTextActive]}>{labels[i]}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* Maç Formatı Filtresi (Sadece Maç Sekmesi) */}
+            {activeTab === 'Maç' && (
+              <View style={styles.sectionBox}>
+                <Text style={styles.sectionTitle}>MAÇ FORMATI</Text>
+                <View style={styles.levelGrid}>
+                  {['Tümü', '6v6', '7v7', '8v8'].map((m) => {
+                    const active = selectedMode === m;
+                    return (
+                      <TouchableOpacity
+                        key={m}
+                        style={levelBtnStyle(active)}
+                        onPress={() => setSelectedMode(m)}
+                        activeOpacity={0.8}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                      >
+                        <Text style={[styles.levelText, active && styles.levelTextActive]}>{m}</Text>
                       </TouchableOpacity>
                     );
                   })}

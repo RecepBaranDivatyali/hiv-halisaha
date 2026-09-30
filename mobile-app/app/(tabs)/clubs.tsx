@@ -32,6 +32,7 @@ export default function ClubsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [clubsList, setClubsList] = useState<ClubModel[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [selectedCityFilter, setSelectedCityFilter] = useState('Tümü');
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -169,10 +170,14 @@ export default function ClubsScreen() {
     }
   };
 
-  const filteredClubs = clubsList.filter(c => 
-    (c.name && c.name.toLocaleLowerCase('tr').includes(searchQuery.toLocaleLowerCase('tr'))) ||
-    (c.desc && c.desc.toLocaleLowerCase('tr').includes(searchQuery.toLocaleLowerCase('tr')))
-  );
+  const filteredClubs = clubsList.filter(c => {
+    const matchesSearch = 
+      !searchQuery.trim() ||
+      (c.name && c.name.toLocaleLowerCase('tr').includes(searchQuery.toLocaleLowerCase('tr'))) ||
+      (c.desc && c.desc.toLocaleLowerCase('tr').includes(searchQuery.toLocaleLowerCase('tr')));
+    const matchesCity = selectedCityFilter === 'Tümü' || (c.city && c.city.toLocaleLowerCase('tr') === selectedCityFilter.toLocaleLowerCase('tr'));
+    return matchesSearch && matchesCity;
+  });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -332,6 +337,38 @@ export default function ClubsScreen() {
                 value={searchQuery}
                 onChangeText={setSearchQuery}
               />
+            </View>
+
+            {/* Şehir Hızlı Filtreleri */}
+            <View style={{ marginBottom: 14 }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {['Tümü', 'İstanbul', 'Ankara', 'İzmir', 'Bursa', 'Antalya'].map((cityName) => {
+                  const active = selectedCityFilter === cityName;
+                  return (
+                    <TouchableOpacity
+                      key={cityName}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        borderRadius: 16,
+                        backgroundColor: active ? `${theme.primary}20` : theme.surfaceContainerHighest,
+                        borderWidth: 1,
+                        borderColor: active ? theme.primary : theme.borderSubtle,
+                      }}
+                      onPress={() => setSelectedCityFilter(cityName)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={{
+                        fontFamily: active ? Fonts.headlineBold : Fonts.body,
+                        fontSize: 12,
+                        color: active ? theme.primary : theme.textMuted
+                      }}>
+                        {cityName}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
             </View>
 
             <View style={styles.listHeader}>

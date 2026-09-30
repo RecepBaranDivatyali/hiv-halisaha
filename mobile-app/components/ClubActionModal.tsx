@@ -55,6 +55,7 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
   const [selectedCity, setSelectedCity] = useState(user?.city || 'İstanbul');
   const [citySelectorOpen, setCitySelectorOpen] = useState(false);
   const [selectedLogo, setSelectedLogo] = useState<string>(PRESET_LOGOS[0].uri);
+  const [maxMembers, setMaxMembers] = useState<number>(25);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Join Club State
@@ -108,7 +109,7 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
           rank: 'YENİ',
           points: 100,
           membersCount: 1,
-          maxMembers: 50,
+          maxMembers: maxMembers,
           level: 1,
           members: [effectiveUid],
         });
@@ -335,6 +336,32 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
                       ))}
                     </View>
                   )}
+                </View>
+
+                {/* Kadro Kapasitesi Seçimi */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Maksimum Kadro Kapasitesi</Text>
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                    {[15, 25, 50].map((cap) => {
+                      const active = maxMembers === cap;
+                      return (
+                        <TouchableOpacity
+                          key={cap}
+                          style={[
+                            styles.cityChip,
+                            { flex: 1, alignItems: 'center', justifyContent: 'center' },
+                            active && styles.cityChipActive
+                          ]}
+                          onPress={() => setMaxMembers(cap)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.cityChipText, active && styles.cityChipTextActive]}>
+                            {cap} Oyuncu
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
                 </View>
               </View>
             ) : (
