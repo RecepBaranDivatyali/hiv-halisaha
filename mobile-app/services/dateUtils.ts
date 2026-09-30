@@ -90,22 +90,57 @@ export function parseTargetTimestamp(dateTime?: string, targetHours: number = 2)
 }
 
 /**
- * Maçın sona erip ermediğini belirler.
- * Halısaha maçları genellikle 60 dakikadır; 75 dakika sonrasında maç geçmiş kabul edilir.
+ * Verilen maç tarih/saat metninden maçın bitiş timestamp'ini hesaplar.
+ * Örnek: "30 Eylül 2026, 21:00 - 22:00" -> 22:00 timestamp'i
  */
-export function isMatchPast(dateTime?: string): boolean {
-  if (!dateTime) return false;
-  const targetTimestamp = parseTargetTimestamp(dateTime);
-  const now = Date.now();
-  return now > (targetTimestamp + 75 * 60 * 1000);
+export function getMatchEndTimestamp(dateTime?: string): number {
+  if (!dateTime) return Date.now();
+  const startTs = parseTargetTimestamp(dateTime);
+
+  // İki saat aralığı varsa ("21:00 - 22:00" gibi), ikinci saat maçın bitiş dakikasıdır
+  const times = dateTime.match(/(\d{1,2}):(\d{2})/g);
+  if (times && times.length >= 2) {
+    const parts = times[1].split(':');
+    const endH = parseInt(parts[0], 10);
+    const endM = parseInt(parts[1], 10);
+    const d = new Date(startTs);
+    // Gece yarısı geçişi (örn: 23:00 - 00:00)
+    if (endH < d.getHours()) {
+      d.setDate(d.getDate() + 1);
+    }
+    d.setHours(endH, endM, 0, 0);
+    return d.getTime();
+  }
+
+  // Aralık belirtilmemişse standart 60 dakika sonra biter
+  return startTs + 60 * 60 * 1000;
 }
 
 /**
- * Maçın şu anda canlı olarak oynanıp oynanmadığını kontrol eder (0 - 75 dk arası).
+ * Maçın bitiş dakikasının gelip gelmediğini kontrol eder.
+ * Bitiş saati ve dakikası geldiğinde veya geçtiğinde true döner.
+ */
+export function isMatchEnded(dateTime?: string): boolean {
+  if (!dateTime) return false;
+  return Date.now() >= getMatchEndTimestamp(dateTime);
+}
+
+/**
+ * Maçın sona erip ermediğini belirler.
+ * Maçın bitiş dakikası geldiğinde maç geçmiş kabul edilir.
+ */
+export function isMatchPast(dateTime?: string): boolean {
+  if (!dateTime) return false;
+  return isMatchEnded(dateTime);
+}
+
+/**
+ * Maçın şu anda canlı olarak oynanıp oynanmadığını kontrol eder (başlangıç ile bitiş arası).
  */
 export function isMatchLive(dateTime?: string): boolean {
   if (!dateTime) return false;
-  const targetTimestamp = parseTargetTimestamp(dateTime);
+  const startTs = parseTargetTimestamp(dateTime);
+  const endTs = getMatchEndTimestamp(dateTime);
   const now = Date.now();
-  return now >= targetTimestamp && now <= (targetTimestamp + 75 * 60 * 1000);
+  return now >= startTs && now < endTs;
 }

@@ -12,6 +12,7 @@ import { NotificationCenterModal } from '@/components/NotificationCenterModal';
 import { useMatches, isUserInMatchItem } from '@/hooks/use-matches';
 import { useTheme } from '@/context/ThemeContext';
 import { AppGuideModal } from '@/components/AppGuideModal';
+import { isMatchEnded } from '@/services/dateUtils';
 
 export default function ProfileScreen() {
   const { theme } = useTheme();
@@ -391,7 +392,14 @@ export default function ProfileScreen() {
                   key={match.id}
                   style={styles.matchItem}
                   activeOpacity={0.85}
-                  onPress={() => router.push({ pathname: '/match-room', params: { matchId: match.id } })}
+                  onPress={() => {
+                    const ended = match.status === 'completed' || isMatchEnded(match.dateTime);
+                    if (ended) {
+                      router.push({ pathname: '/rate-match', params: { matchId: match.id } });
+                    } else {
+                      router.push({ pathname: '/match-room', params: { matchId: match.id } });
+                    }
+                  }}
                 >
                   <View style={[styles.matchColorBar, { backgroundColor: barColor }]} />
                   <View style={styles.matchItemDetail}>

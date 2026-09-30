@@ -16,7 +16,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { dbService, MatchModel, BenchPlayer } from '@/services/dbService';
 import { auth } from '@/services/firebaseConfig';
 import { PITCH_DATABASE } from '@/config/pitches';
-import { parseTargetTimestamp } from '@/services/dateUtils';
+import { parseTargetTimestamp, getMatchEndTimestamp, isMatchEnded } from '@/services/dateUtils';
 
 interface PlayerPayment {
   slotKey: string;
@@ -88,6 +88,47 @@ export default function MatchRoomScreen() {
   const isCaptainB = Boolean(currentUid && activeMatch?.captainBId === currentUid);
   const hasCaptainB = Boolean(activeMatch?.captainBId);
   const isTwoCaptainsMode = activeMatch?.matchFormatType === 'two_captains' || hasCaptainB;
+
+  // Maçın bitiş zamanının gelip gelmediği kontrolü
+  const isCompleted = activeMatch?.status === 'completed';
+  const [hasMatchEnded, setHasMatchEnded] = useState(() => {
+    return Boolean(isCompleted || (matchDateTime && isMatchEnded(matchDateTime)));
+  });
+
+  React.useEffect(() => {
+    if (isCompleted || (matchDateTime && isMatchEnded(matchDateTime))) {
+      setHasMatchEnded(true);
+      return;
+    }
+
+    if (matchDateTime) {
+      const endTs = getMatchEndTimestamp(matchDateTime);
+      const remainingMs = endTs - Date.now();
+      if (remainingMs > 0 && remainingMs < 24 * 3600 * 1000) {
+        const timer = setTimeout(() => {
+          setHasMatchEnded(true);
+        }, remainingMs);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [matchDateTime, isCompleted]);
+
+  // Zaman gelince (maçın bitme dakikası gelince) maç odası değil de maçı değerlendirme kısmı açılsın
+  React.useEffect(() => {
+    if (activeMatch && hasMatchEnded) {
+      router.replace({
+        pathname: '/rate-match',
+        params: {
+          matchId: activeMatchId,
+          matchScore: activeMatch.score || '',
+          isOrganizer: isOrganizer ? 'true' : 'false'
+        }
+      });
+    }
+  }, [hasMatchEnded, activeMatchId, isOrganizer]);
+
+  // Zaman gelmeden "Maçı Bitir ve Skor Gir" butonu gelmesin
+  const canFinishMatch = Boolean(isOrganizer && hasMatchEnded && !isCompleted);
   const [joinTerms, setJoinTerms] = useState(activeMatch?.joinTerms ?? 0);
   const [userSlot, setUserSlot] = useState<string | null>(null);
   const [activeTeam, setActiveTeam] = useState<'A' | 'B'>('A');
@@ -1405,7 +1446,7 @@ export default function MatchRoomScreen() {
             </View>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            {isOrganizer && activeMatch?.status !== 'completed' && (
+            {canFinishMatch && (
               <TouchableOpacity 
                 style={{ backgroundColor: `${theme.primary}26`, borderWidth: 1, borderColor: theme.primary, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }} 
                 onPress={() => setScoreModalVisible(true)} 
@@ -1432,7 +1473,7 @@ export default function MatchRoomScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          {isOrganizer && activeMatch?.status !== 'completed' && (
+          {canFinishMatch && (
             <TouchableOpacity 
               style={{ 
                 backgroundColor: `${theme.primary}18`, 

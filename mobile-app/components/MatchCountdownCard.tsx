@@ -4,7 +4,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
-import { parseTargetTimestamp } from '@/services/dateUtils';
+import { parseTargetTimestamp, getMatchEndTimestamp } from '@/services/dateUtils';
 
 interface MatchCountdownCardProps {
   targetHours?: number;
@@ -46,21 +46,20 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
     }
 
     const targetTimestamp = parseTargetTimestamp(dateTime, targetHours);
+    const endTimestamp = getMatchEndTimestamp(dateTime);
 
     const updateTimer = () => {
       const now = Date.now();
       const diffSec = Math.floor((targetTimestamp - now) / 1000);
 
-      if (diffSec <= 0) {
-        if (diffSec >= -4500) {
-          // İlk 75 dakika maç oynanıyor kabul edilir
-          const elapsed = Math.min(75, Math.floor(Math.abs(diffSec) / 60));
-          setTimeLeft({ days: 0, hours: 0, minutes: elapsed, seconds: Math.abs(diffSec) % 60, isLive: true, isPast: false });
-        } else {
-          // Maç bitti -> Değerlendirme durumuna geç
-          setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, isLive: false, isPast: true });
-          onMatchPast?.();
-        }
+      if (now >= endTimestamp) {
+        // Maçın bitiş dakikası geldi -> Değerlendirme durumuna geç
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, isLive: false, isPast: true });
+        onMatchPast?.();
+      } else if (diffSec <= 0) {
+        // Maç başladı ve bitiş saatine kadar canlı oynanıyor
+        const elapsed = Math.floor(Math.abs(diffSec) / 60);
+        setTimeLeft({ days: 0, hours: 0, minutes: elapsed, seconds: Math.abs(diffSec) % 60, isLive: true, isPast: false });
       } else {
         const days = Math.floor(diffSec / 86400);
         const hours = Math.floor((diffSec % 86400) / 3600);
