@@ -514,7 +514,15 @@ export const dbService = {
     }
   },
 
-  saveMatchRating: async (matchId: string, ratingData: { userId: string; rating: number; mvpNominee?: string; comment?: string; ratedPlayerId?: string; ratedPlayerName?: string }) => {
+  saveMatchRating: async (matchId: string, ratingData: { 
+    userId: string; 
+    rating: number; 
+    isMvp?: boolean;
+    mvpNominee?: string; 
+    comment?: string; 
+    ratedPlayerId?: string; 
+    ratedPlayerName?: string;
+  }) => {
     try {
       const ratingsRef = collection(db, 'ratings');
       await addDoc(ratingsRef, {
@@ -523,21 +531,39 @@ export const dbService = {
         createdAt: serverTimestamp()
       });
 
-      // Eğer MVP oyu verilmişse veya oyuncu puanlanmışsa oyuncunun profiline yansıt
-      const targetPlayerId = ratingData.ratedPlayerId || ratingData.mvpNominee;
-      if (targetPlayerId) {
+      // Eğer oyuncu puanlanmışsa oyuncunun profiline yansıt
+      const targetPlayerId = ratingData.ratedPlayerId;
+      if (targetPlayerId && !targetPlayerId.startsWith('slot-')) {
         try {
           const userRef = doc(db, 'users', targetPlayerId);
           const userSnap = await getDoc(userRef);
           if (userSnap.exists()) {
             const uData = userSnap.data();
             const currentRating = typeof uData.rating === 'number' ? uData.rating : 5.0;
-            const newRating = Number(((currentRating * 4 + ratingData.rating) / 5).toFixed(1));
+            const currentCount = typeof uData.stats?.ratingCount === 'number' ? uData.stats.ratingCount : 1;
+            const newCount = currentCount + 1;
+            const newRating = Number(((currentRating * currentCount + ratingData.rating) / newCount).toFixed(1));
+
+            // Centilmenlik / Güvenilirlik skoru güncellemesi
+            let reliabilityDelta = 0;
+            if (ratingData.comment?.includes('Centilmen / Fair Play') || ratingData.rating >= 8) {
+              reliabilityDelta = 1;
+            } else if (ratingData.comment?.includes('Sert Oynayan') || ratingData.comment?.includes('Bencil')) {
+              reliabilityDelta = -2;
+            }
+
+            const currentReliability = typeof uData.stats?.reliabilityScore === 'number' ? uData.stats.reliabilityScore : 100;
+            const newReliability = Math.max(50, Math.min(100, currentReliability + reliabilityDelta));
+
             const updates: Record<string, any> = {
               rating: newRating,
+              'stats.ratingCount': increment(1),
+              'stats.reliabilityScore': newReliability,
               updatedAt: serverTimestamp()
             };
-            if (ratingData.mvpNominee && ratingData.mvpNominee === targetPlayerId) {
+
+            // MVP oyu verilmişse sayacı artır
+            if (ratingData.isMvp || ratingData.mvpNominee === targetPlayerId || (ratingData.mvpNominee && ratingData.mvpNominee === ratingData.ratedPlayerName)) {
               updates['stats.mvpCount'] = increment(1);
             }
             await updateDoc(userRef, updates);
@@ -902,7 +928,7 @@ export const dbService = {
 
         const batch = writeBatch(db);
         
-        const updatePlayerStats = (uid: string, result: 'win' | 'loss' | 'draw') => {
+        const updatePlayerStats = (uid: string, result: 'win' | 'loss' | 'draw', conceded: number) => {
           const userRef = doc(db, 'users', uid);
           batch.set(userRef, {
             stats: {
@@ -910,25 +936,26 @@ export const dbService = {
               ...(result === 'win' ? { wins: increment(1) } : {}),
               ...(result === 'loss' ? { losses: increment(1) } : {}),
               ...(result === 'draw' ? { draws: increment(1) } : {}),
+              ...(conceded === 0 ? { cleanSheets: increment(1) } : {}),
             }
           }, { merge: true });
         };
 
         if (scoreA > scoreB) {
-          teamAPlayers.forEach(uid => updatePlayerStats(uid, 'win'));
-          teamBPlayers.forEach(uid => updatePlayerStats(uid, 'loss'));
+          teamAPlayers.forEach(uid => updatePlayerStats(uid, 'win', scoreB));
+          teamBPlayers.forEach(uid => updatePlayerStats(uid, 'loss', scoreA));
         } else if (scoreB > scoreA) {
-          teamBPlayers.forEach(uid => updatePlayerStats(uid, 'win'));
-          teamAPlayers.forEach(uid => updatePlayerStats(uid, 'loss'));
+          teamBPlayers.forEach(uid => updatePlayerStats(uid, 'win', scoreA));
+          teamAPlayers.forEach(uid => updatePlayerStats(uid, 'loss', scoreB));
         } else if (formaGoluTeam === 'A') {
-          teamAPlayers.forEach(uid => updatePlayerStats(uid, 'win'));
-          teamBPlayers.forEach(uid => updatePlayerStats(uid, 'loss'));
+          teamAPlayers.forEach(uid => updatePlayerStats(uid, 'win', scoreB));
+          teamBPlayers.forEach(uid => updatePlayerStats(uid, 'loss', scoreA));
         } else if (formaGoluTeam === 'B') {
-          teamBPlayers.forEach(uid => updatePlayerStats(uid, 'win'));
-          teamAPlayers.forEach(uid => updatePlayerStats(uid, 'loss'));
+          teamBPlayers.forEach(uid => updatePlayerStats(uid, 'win', scoreA));
+          teamAPlayers.forEach(uid => updatePlayerStats(uid, 'loss', scoreB));
         } else {
-          teamAPlayers.forEach(uid => updatePlayerStats(uid, 'draw'));
-          teamBPlayers.forEach(uid => updatePlayerStats(uid, 'draw'));
+          teamAPlayers.forEach(uid => updatePlayerStats(uid, 'draw', scoreB));
+          teamBPlayers.forEach(uid => updatePlayerStats(uid, 'draw', scoreA));
         }
 
         await batch.commit().catch(err => console.warn("Profil istatistikleri batch güncelleme hatası:", err));
@@ -1848,6 +1875,17 @@ export const dbService = {
 
   addPitchReview: async (pitchName: string, review: Omit<PitchReviewModel, 'id' | 'createdAt' | 'pitchName'>) => {
     return dbService.savePitchReview(pitchName, review);
+  },
+
+  deletePitchReview: async (reviewId: string) => {
+    try {
+      const reviewRef = doc(db, 'pitch_reviews', reviewId);
+      await deleteDoc(reviewRef);
+      return true;
+    } catch (error) {
+      console.error("Tesis yorumu silme hatası:", error);
+      throw error;
+    }
   },
 
   // ─── TESİS BİLGİ DÜZELTME / ÖNERİSİ ───

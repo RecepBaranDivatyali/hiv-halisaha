@@ -65,7 +65,9 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
             date: 'Yeni',
             avatar: r.userAvatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuCKH5OYGgw6kyLLpH5wMB9LQxlysnBPQOzGlTYgCblgjVquca3KkOX5eAQ0rqvOjVr9qEQGj-yP235XnroUuyzg7ZsmyIXWpDnxXISTalw3NzTDuw_ZmQX-Ne1hFDC0eysnPT4qZ1-8DGKiHIfmwdX8oJRjOJuuspWloG3YJSs7bU4_nXnrmNdlVphCmkNnCmyMAplXu8T0BShbsk-UUGhVj3_acb9UxRLlDA44DPG15QZILO7eSCKY16cXOu2I3DQjKW4ccIolcKzm',
           }));
-          setReviews([...mapped, ...SAMPLE_REVIEWS]);
+          setReviews(mapped);
+        } else {
+          setReviews(SAMPLE_REVIEWS);
         }
       }).catch(err => {
         console.error('Tesis yorumları yüklenemedi:', err);
@@ -86,6 +88,32 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
       setUserComment(myReview.comment || '');
     }
     setShowAddForm(true);
+  };
+
+  const handleDeleteReview = () => {
+    if (!myReview) return;
+    Alert.alert('Değerlendirmeyi Sil', 'Yorumunuzu silmek istediğinize emin misiniz?', [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: 'Evet, Sil',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            setSubmitting(true);
+            if (myReview.id && !myReview.id.startsWith('1') && !myReview.id.startsWith('2')) {
+              await dbService.deletePitchReview(myReview.id);
+            }
+            setReviews(prev => prev.filter(r => !(r.userId && user?.uid && r.userId === user.uid)));
+            Alert.alert('Silindi', 'Değerlendirmeniz silindi.');
+          } catch (e) {
+            console.error('Silme hatası:', e);
+            Alert.alert('Hata', 'Silinirken bir sorun oluştu.');
+          } finally {
+            setSubmitting(false);
+          }
+        },
+      },
+    ]);
   };
 
   const handleAddReview = async () => {
@@ -218,13 +246,19 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
                     <MaterialIcons name="check-circle" size={20} color={theme.primary} />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.alreadyReviewedTitle}>Bu tesisi değerlendirdiniz</Text>
-                      <Text style={styles.alreadyReviewedSub}>Puanınızı veya yorumunuzu dilediğiniz zaman güncelleyebilirsiniz.</Text>
+                      <Text style={styles.alreadyReviewedSub}>Puanınızı veya yorumunuzu dilediğiniz zaman güncelleyebilir veya silebilirsiniz.</Text>
                     </View>
                   </View>
-                  <TouchableOpacity style={styles.editMyReviewBtn} onPress={handleOpenEdit} activeOpacity={0.8}>
-                    <MaterialIcons name="edit" size={15} color={theme.onPrimary} />
-                    <Text style={styles.editMyReviewBtnText}>DÜZENLE</Text>
-                  </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <TouchableOpacity style={styles.deleteMyReviewBtn} onPress={handleDeleteReview} activeOpacity={0.8}>
+                      <MaterialIcons name="delete-outline" size={15} color={theme.error || '#ef4444'} />
+                      <Text style={styles.deleteMyReviewBtnText}>SİL</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.editMyReviewBtn} onPress={handleOpenEdit} activeOpacity={0.8}>
+                      <MaterialIcons name="edit" size={15} color={theme.onPrimary} />
+                      <Text style={styles.editMyReviewBtnText}>DÜZENLE</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ) : (
                 <TouchableOpacity style={styles.addReviewToggleBtn} onPress={() => setShowAddForm(true)} activeOpacity={0.8}>
@@ -323,9 +357,14 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                           <Text style={styles.revDate}>{rev.date}</Text>
                           {isMine && (
-                            <TouchableOpacity onPress={handleOpenEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.pencilTouch}>
-                              <MaterialIcons name="edit" size={16} color={theme.primary} />
-                            </TouchableOpacity>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <TouchableOpacity onPress={handleOpenEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.pencilTouch}>
+                                <MaterialIcons name="edit" size={16} color={theme.primary} />
+                              </TouchableOpacity>
+                              <TouchableOpacity onPress={handleDeleteReview} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.trashTouch}>
+                                <MaterialIcons name="delete-outline" size={16} color={theme.error || '#ef4444'} />
+                              </TouchableOpacity>
+                            </View>
                           )}
                         </View>
                       </View>
@@ -521,6 +560,22 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontSize: 11,
     color: theme.onPrimary,
   },
+  deleteMyReviewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.25)',
+  },
+  deleteMyReviewBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.error || '#ef4444',
+  },
   reviewsSection: { gap: 12 },
   sectionTitle: { fontFamily: Fonts.headlineBold, fontSize: 12, color: `${theme.primary}CC`, letterSpacing: 1.5 },
   reviewCard: { flexDirection: 'row', gap: 12, backgroundColor: theme.surface, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: theme.borderSubtle },
@@ -545,6 +600,11 @@ const useStyles = (theme: any) => StyleSheet.create({
     padding: 4,
     borderRadius: 6,
     backgroundColor: `${theme.primary}20`,
+  },
+  trashTouch: {
+    padding: 4,
+    borderRadius: 6,
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
   },
   revAvatar: { width: 36, height: 36, borderRadius: 18 },
   revContent: { flex: 1 },

@@ -32,12 +32,126 @@ export default function ProfileScreen() {
     setRefreshing(false);
   };
 
+  const stats = user?.stats || {};
+  const matchesPlayed = stats.matchesPlayed ?? 0;
+  const wins = stats.wins ?? 0;
+  const mvpCount = stats.mvpCount ?? 0;
+  const cleanSheets = stats.cleanSheets ?? 0;
+  const goals = stats.goals ?? 0;
+  const reliability = stats.reliabilityScore ?? 100;
+  const winRate = matchesPlayed > 0 ? Math.round((wins / matchesPlayed) * 100) : 0;
+
   const BADGES: BadgeData[] = [
-    { id: '1', title: 'Gol Makinesi', subtitle: '10+ Gol Attı', icon: 'bolt', color: theme.primary, earned: true, progress: 100, reqCount: '10 Gol', unlockedAt: '14 Mayıs 2026' },
-    { id: '2', title: 'Sadık Organizatör', subtitle: '100 Maç Ayarlama', icon: 'calendar-today', color: theme.secondary, earned: true, progress: 100, reqCount: '100 Maç', unlockedAt: '28 Haziran 2026' },
-    { id: '3', title: 'MVP Koleksiyoncusu', subtitle: '5 Maçın Adamı Seçildi', icon: 'emoji-events', color: theme.warning, earned: true, progress: 100, reqCount: '5 MVP', unlockedAt: '12 Temmuz 2026' },
-    { id: '4', title: 'Geçilmez Duvar', subtitle: '3 Maç Gol Yemedi', icon: 'security', color: theme.error, earned: false, progress: 66, reqCount: '3 Maç' },
-    { id: '5', title: 'Fair Play Lideri', subtitle: '%95+ Centilmenlik Skoru', icon: 'verified', color: theme.tertiary, earned: true, progress: 100, reqCount: '%95', unlockedAt: '01 Ağustos 2026' },
+    {
+      id: '1',
+      title: 'İlk Düdük',
+      subtitle: 'İlk Halısaha Maçı Tamamlandı',
+      icon: 'sports-soccer',
+      color: theme.primary,
+      earned: matchesPlayed >= 1,
+      progress: Math.min(100, Math.round((matchesPlayed / 1) * 100)),
+      reqCount: '1 Maç',
+      unlockedAt: matchesPlayed >= 1 ? 'Kazanıldı ⚽️' : undefined,
+    },
+    {
+      id: '2',
+      title: 'Halısaha Müdavimi',
+      subtitle: '5 Maç Barajı Aşıldı',
+      icon: 'repeat',
+      color: theme.secondary,
+      earned: matchesPlayed >= 5,
+      progress: Math.min(100, Math.round((matchesPlayed / 5) * 100)),
+      reqCount: '5 Maç',
+      unlockedAt: matchesPlayed >= 5 ? 'Kazanıldı 🌟' : undefined,
+    },
+    {
+      id: '3',
+      title: 'Kıdemli Krampon',
+      subtitle: '10 Maç Başarıyla Tamamlandı',
+      icon: 'military-tech',
+      color: '#38bdf8',
+      earned: matchesPlayed >= 10,
+      progress: Math.min(100, Math.round((matchesPlayed / 10) * 100)),
+      reqCount: '10 Maç',
+      unlockedAt: matchesPlayed >= 10 ? 'Kazanıldı 🥉' : undefined,
+    },
+    {
+      id: '4',
+      title: 'Demir Adam (20 Maç)',
+      subtitle: '20 Halısaha Maçı Tamamlandı',
+      icon: 'shield',
+      color: '#f59e0b',
+      earned: matchesPlayed >= 20,
+      progress: Math.min(100, Math.round((matchesPlayed / 20) * 100)),
+      reqCount: '20 Maç',
+      unlockedAt: matchesPlayed >= 20 ? 'Kazanıldı 🥈' : undefined,
+    },
+    {
+      id: '5',
+      title: 'Halısaha Efsanesi',
+      subtitle: '50 Maçlık Muhteşem Kariyer',
+      icon: 'workspace-premium',
+      color: '#ec4899',
+      earned: matchesPlayed >= 50,
+      progress: Math.min(100, Math.round((matchesPlayed / 50) * 100)),
+      reqCount: '50 Maç',
+      unlockedAt: matchesPlayed >= 50 ? 'Kazanıldı 👑' : undefined,
+    },
+    {
+      id: '6',
+      title: 'MVP Koleksiyoncusu',
+      subtitle: '5 Kez Maçın Adamı Seçildi',
+      icon: 'emoji-events',
+      color: theme.warning,
+      earned: mvpCount >= 5,
+      progress: Math.min(100, Math.round((mvpCount / 5) * 100)),
+      reqCount: '5 MVP',
+      unlockedAt: mvpCount >= 5 ? 'Kazanıldı 🏆' : undefined,
+    },
+    {
+      id: '7',
+      title: 'Geçilmez Duvar',
+      subtitle: '3 Maç Gol Yemeden Bitirildi',
+      icon: 'security',
+      color: theme.error,
+      earned: cleanSheets >= 3,
+      progress: Math.min(100, Math.round((cleanSheets / 3) * 100)),
+      reqCount: '3 Clean Sheet',
+      unlockedAt: cleanSheets >= 3 ? 'Kazanıldı 🧤' : undefined,
+    },
+    {
+      id: '8',
+      title: 'Fair Play Lideri',
+      subtitle: '%95+ Centilmenlik Skoru',
+      icon: 'verified',
+      color: theme.tertiary,
+      earned: reliability >= 95 && matchesPlayed >= 3,
+      progress: Math.min(100, reliability),
+      reqCount: '%95 Centilmenlik',
+      unlockedAt: reliability >= 95 && matchesPlayed >= 3 ? 'Kazanıldı 🤝' : undefined,
+    },
+    {
+      id: '9',
+      title: 'Kazanma Ustası',
+      subtitle: '%70+ Galibiyet Oranı',
+      icon: 'trending-up',
+      color: '#10b981',
+      earned: matchesPlayed >= 5 && winRate >= 70,
+      progress: matchesPlayed >= 5 ? Math.min(100, winRate) : Math.min(100, Math.round((matchesPlayed / 5) * 100)),
+      reqCount: '%70 Galibiyet (Min 5 Maç)',
+      unlockedAt: matchesPlayed >= 5 && winRate >= 70 ? 'Kazanıldı 🔥' : undefined,
+    },
+    {
+      id: '10',
+      title: 'Gol Makinesi',
+      subtitle: '10+ Gol Atıldı',
+      icon: 'bolt',
+      color: theme.primary,
+      earned: goals >= 10,
+      progress: Math.min(100, Math.round((goals / 10) * 100)),
+      reqCount: '10 Gol',
+      unlockedAt: goals >= 10 ? 'Kazanıldı ⚡️' : undefined,
+    },
   ];
 
   const handleAvatarChange = async () => {

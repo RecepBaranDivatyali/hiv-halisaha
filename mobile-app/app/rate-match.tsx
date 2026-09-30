@@ -224,7 +224,8 @@ export default function RateMatchScreen() {
         ratedPlayerId: selectedPlayer?.id,
         ratedPlayerName: selectedPlayer?.name,
         rating,
-        mvpNominee: isMvp ? (selectedPlayer?.name || 'MVP') : undefined,
+        isMvp,
+        mvpNominee: isMvp ? selectedPlayer?.id : undefined,
         comment: activeTags.join(', ')
       });
       
