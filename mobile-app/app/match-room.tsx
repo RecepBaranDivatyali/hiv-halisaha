@@ -371,6 +371,7 @@ export default function MatchRoomScreen() {
   }, [activeMatch?.slots, benchA, benchB, user?.uid, isOrganizer]);
 
   const [isGkFree, setIsGkFree] = useState(activeMatch?.isGkFree ?? false);
+  const [isRotatingGk, setIsRotatingGk] = useState(activeMatch?.isRotatingGk ?? false);
 
   React.useEffect(() => {
     if (activeMatch?.isGkFree !== undefined) {
@@ -378,11 +379,18 @@ export default function MatchRoomScreen() {
     }
   }, [activeMatch?.isGkFree]);
 
+  React.useEffect(() => {
+    if (activeMatch?.isRotatingGk !== undefined) {
+      setIsRotatingGk(activeMatch.isRotatingGk);
+    }
+  }, [activeMatch?.isRotatingGk]);
+
   // Dynamic players and fee calculation based on match mode
   const modePlayersPerTeam = parseInt(matchMode.split('v')[0], 10) || 7;
   const targetPerTeam = modePlayersPerTeam;
   const totalPlayersCount = modePlayersPerTeam * 2;
-  const activePayersCount = isGkFree ? Math.max(1, totalPlayersCount - 2) : totalPlayersCount;
+  // Kale dönmeliyse herkes öder (GK muafiyeti geçersiz). Aksi hâlde isGkFree ise 2 kaleci muaf.
+  const activePayersCount = (!isRotatingGk && isGkFree) ? Math.max(1, totalPlayersCount - 2) : totalPlayersCount;
   const perPlayerFee = Math.round(totalMatchFee / activePayersCount);
 
   // Player counts & missing calculations for Team A & Team B
@@ -466,7 +474,7 @@ export default function MatchRoomScreen() {
     Object.entries(slots).forEach(([slotKey, slotData]) => {
       if (!slotData || !slotData.uid) return;
       const isGk = slotKey.includes('KALECI');
-      const isExempt = isGkFree && isGk;
+      const isExempt = isGkFree && isGk && !isRotatingGk;
       const isPaid = Boolean(slotData.paid) || slotData.paymentStatus === 'paid';
       const paymentStatus: 'paid' | 'pending_approval' | 'unpaid' | 'cash_on_pitch' | 'exempt' = isExempt
         ? 'exempt'
@@ -511,7 +519,7 @@ export default function MatchRoomScreen() {
     appendBench(benchB, 'B');
 
     return list;
-  }, [activeMatch?.slots, benchA, benchB, isGkFree, perPlayerFee]);
+  }, [activeMatch?.slots, benchA, benchB, isGkFree, isRotatingGk, perPlayerFee]);
 
   const collectedPaidAmount = rosterPayments
     .filter((p) => p.paymentStatus === 'paid')
@@ -1055,7 +1063,7 @@ export default function MatchRoomScreen() {
       setUserSlot(slotKey);
       
       const isGkSlot = slotKey.includes('KALECI');
-      const isExemptGk = Boolean(isGkFree && isGkSlot);
+      const isExemptGk = Boolean(isGkFree && isGkSlot && !isRotatingGk);
 
       // After successful join, prompt for payment (unless exempt GK)
       if (isExemptGk) {
@@ -1408,7 +1416,7 @@ export default function MatchRoomScreen() {
       : (occupant?.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuCGEgY_XdNWMIj9yAYPG31RfO-rUvIt9prSpOqQHShIufOnkDbrYIlyKE5OZY68gsCgDSnwxHtMW-j19KupMZmC1tNOq2QEesdu0Hh1zinr1P_g8cyWt1cHFNPGGmiuhIZPaOmTY8ssYbYKbbtC1nP9RVOEgPKgWBYWiA4E6WPsGYKqCpqU3aMljt6lAwmwmmFRefyWbWiaAfQTMPcUlEPjZEzau9MIBiNfLMhzwyqoMX1Po75F4qVfsV9hLp3_uervSUefQPNM33cr');
 
     const isGk = slotKey.includes('KALECI');
-    const isSlotExempt = isGkFree && isGk;
+    const isSlotExempt = isGkFree && isGk && !isRotatingGk;
     const isPaid = occupant?.paid || occupant?.paymentStatus === 'paid';
     const isPending = occupant?.paymentStatus === 'pending_approval';
     const isCash = occupant?.paymentStatus === 'cash_on_pitch';
@@ -1512,6 +1520,12 @@ export default function MatchRoomScreen() {
         >
           {isOccupied ? (isSurplus ? `⚡ ${occupant?.name}` : occupant?.name) : roleName}
         </Text>
+        {/* Kale Dönmeli Badge: Kaleci slotundaki kişi gerçek kaleci değil */}
+        {isGk && isRotatingGk && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 1 }}>
+            <Text style={{ fontSize: 8, color: '#f59e0b', fontWeight: 'bold', letterSpacing: 0.2 }}>🔄 Dönüşümlü</Text>
+          </View>
+        )}
         {(isOccupied || isMySlot) && (
           <TouchableOpacity 
             style={[styles.slotPaymentPill, { backgroundColor: `${badgeColor}22`, borderColor: badgeColor }]}
@@ -1543,7 +1557,7 @@ export default function MatchRoomScreen() {
           onClose={() => setDirectPayVisible(false)}
           matchId={activeMatchId}
           isGoalkeeper={Boolean(userSlot?.includes('KALECI'))}
-          isGkFree={isGkFree}
+          isGkFree={isGkFree && !isRotatingGk}
           organizerName={activeMatch?.organizer || 'Kaptan'}
           organizerIban={activeMatch?.organizerIban}
           organizerIbanName={activeMatch?.organizerIbanName}
@@ -2513,6 +2527,81 @@ export default function MatchRoomScreen() {
                 )}
               </View>
 
+              {/* Kale Dönmeli Toggle */}
+              <View style={styles.gkFreeCompactRow}>
+                <View style={styles.gkFreeLeft}>
+                  <Text style={{ fontSize: 16 }}>🔄</Text>
+                  <View>
+                    <Text style={styles.gkFreeCompactTitle}>Kale Dönmeli</Text>
+                    <Text style={styles.gkFreeCompactSub}>
+                      {isRotatingGk
+                        ? `Herkes Ücret Öder • Dönüşümlü kaleci var`
+                        : `Kapalı • Kaleci sabit`}
+                    </Text>
+                  </View>
+                </View>
+                {isOrganizer ? (
+                  <Switch
+                    value={isRotatingGk}
+                    onValueChange={async (val) => {
+                      if (val) {
+                        Alert.alert(
+                          '🔄 Kale Dönmeli',
+                          'Kale dönmeli açılırsa kaleci slotundaki kişi de dahil herkes ücret öder. Onaylıyor musun?',
+                          [
+                            { text: 'İptal', style: 'cancel' },
+                            {
+                              text: 'Evet, Aç',
+                              onPress: async () => {
+                                setIsRotatingGk(true);
+                                if (activeMatchId) {
+                                  try {
+                                    await dbService.updateMatchRotatingGk(activeMatchId, true);
+                                    await dbService.sendMessage(`match_${activeMatchId}`, {
+                                      senderId: user?.uid || 'anon',
+                                      senderName: 'Organizatör',
+                                      text: `🔄 [Kale Dönmeli]: Kaleci sabit değil, herkes dönüşümlü kaleye giriyor. Kaleci slotundaki oyuncu da dahil herkes ₺${Math.round(totalMatchFee / totalPlayersCount)} ücret öder.`,
+                                      type: 'system',
+                                    });
+                                  } catch {
+                                    setIsRotatingGk(false);
+                                    console.error('Kale dönmeli açma hatası');
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        );
+                      } else {
+                        setIsRotatingGk(false);
+                        if (activeMatchId) {
+                          try {
+                            await dbService.updateMatchRotatingGk(activeMatchId, false);
+                            await dbService.sendMessage(`match_${activeMatchId}`, {
+                              senderId: user?.uid || 'anon',
+                              senderName: 'Organizatör',
+                              text: `🧤 [Kale Dönmeli]: Kale dönmeli iptal edildi. Kaleci sabit olarak belirlendi.`,
+                              type: 'system',
+                            });
+                          } catch {
+                            setIsRotatingGk(true);
+                            console.error('Kale dönmeli kapatma hatası');
+                          }
+                        }
+                      }
+                    }}
+                    trackColor={{ false: theme.surfaceContainerHighest, true: '#f59e0b' }}
+                    thumbColor={isRotatingGk ? '#fff' : theme.textMuted}
+                  />
+                ) : (
+                  <View style={[styles.miniGkBadge, { backgroundColor: isRotatingGk ? '#f59e0b26' : theme.surfaceContainerHighest }]}>
+                    <Text style={[styles.miniGkBadgeText, { color: isRotatingGk ? '#f59e0b' : theme.textMuted }]}>
+                      {isRotatingGk ? 'DÖNÜŞÜMLÜ' : 'SABİT'}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
               {/* 1. KAPTAN IBAN BİLGİSİ & KOPYALAMA KARTI */}
               <Text style={[styles.paymentLabel, { marginTop: 14 }]}>1. KAPTAN IBAN & FAST BİLGİSİ</Text>
               <View style={styles.ibanCardWrap}>
@@ -2672,7 +2761,7 @@ export default function MatchRoomScreen() {
                 if (!userSlot) return null;
                 const myP = rosterPayments.find(p => p.slotKey === userSlot);
                 if (!myP) return null;
-                if (myP.isGk && isGkFree) {
+                if (myP.isGk && isGkFree && !isRotatingGk) {
                   return (
                     <View style={styles.myPayNoticeCard}>
                       <MaterialIcons name="sports-handball" size={20} color={theme.secondary} />

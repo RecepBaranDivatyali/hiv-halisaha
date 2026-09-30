@@ -57,6 +57,7 @@ export interface MatchModel {
   captainBName?: string | null;
   isSubscription?: boolean;
   isGkFree?: boolean;
+  isRotatingGk?: boolean; // Kale dönmeli: kaleci slotundaki kişi kaleci değil, herkes ücret öder
   teamAHidden?: boolean;
   teamBHidden?: boolean;
   teamAFormation?: string;
@@ -415,7 +416,7 @@ export const dbService = {
         }
 
         const isGkSlot = slotKey.includes('KALECI');
-        const defaultStatus = (data.isGkFree && isGkSlot) ? 'exempt' : 'unpaid';
+        const defaultStatus = (data.isGkFree && isGkSlot && !data.isRotatingGk) ? 'exempt' : 'unpaid';
         const updates: Record<string, any> = {
           [`slots.${slotKey}`]: {
             ...player,
@@ -499,6 +500,20 @@ export const dbService = {
       return true;
     } catch (error) {
       console.error("Kaleci muafiyet güncelleme hatası:", error);
+      throw error;
+    }
+  },
+
+  updateMatchRotatingGk: async (matchId: string, isRotatingGk: boolean) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      await updateDoc(matchRef, {
+        isRotatingGk,
+        updatedAt: serverTimestamp()
+      });
+      return true;
+    } catch (error) {
+      console.error("Kale dönmeli güncelleme hatası:", error);
       throw error;
     }
   },

@@ -134,11 +134,15 @@ export function MatchDetailModal({ match, isOpen, onClose, onUpdate }) {
               <div className="text-xs font-bold uppercase text-white/40">Format & Kaleci</div>
               <div className="mt-1 text-sm font-bold text-white flex items-center gap-2">
                 <span>{match.matchFormatType === 'two_captains' ? 'İki Kaptanlı' : 'Tek Organizatör'}</span>
-                {match.isGkFree && (
+                {match.isRotatingGk ? (
+                  <span className="rounded bg-[#f59e0b]/15 px-2 py-0.5 text-[10px] font-bold text-[#f59e0b]">
+                    🔄 Kale Dönmeli
+                  </span>
+                ) : match.isGkFree ? (
                   <span className="rounded bg-[#8eff71]/15 px-2 py-0.5 text-[10px] font-bold text-[#8eff71]">
                     🧤 Ücretsiz GK
                   </span>
-                )}
+                ) : null}
               </div>
             </div>
             <div className="rounded-2xl border border-white/5 bg-[#171A24] p-4">
