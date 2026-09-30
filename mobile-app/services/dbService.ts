@@ -93,7 +93,9 @@ export interface MatchModel {
     } | null;
   };
   createdAt?: any;
+  cancelledAt?: string;
 }
+
 
 export interface ClubChallengeModel {
   id?: string;
@@ -399,6 +401,8 @@ export const dbService = {
   joinMatchSlot: async (matchId: string, slotKey: string, player: { uid: string; name: string; avatar?: string; position?: string; joinedAt?: number }) => {
     try {
       const matchRef = doc(db, 'matches', matchId);
+      let isRosterFull = false;
+
       await runTransaction(db, async (transaction) => {
         const matchDoc = await transaction.get(matchRef);
         if (!matchDoc.exists()) {
@@ -457,10 +461,24 @@ export const dbService = {
 
         if (countDelta !== 0) {
           updates.joinedPlayersCount = increment(countDelta);
+          const newCount = (data.joinedPlayersCount || 0) + countDelta;
+          const requiredCount = data.totalRequiredPlayers || 14;
+          if (newCount >= requiredCount) {
+            isRosterFull = true;
+          }
         }
 
         transaction.update(matchRef, updates);
       });
+
+      if (isRosterFull) {
+        await dbService.sendMessage(matchId, {
+          senderId: 'system',
+          senderName: 'Sistem',
+          text: 'Kadro tamamlandı, maç oynamaya hazır!'
+        }).catch(err => console.warn("Sistem mesajı gönderilemedi:", err));
+      }
+
       return true;
     } catch (error) {
       console.error("Mevkiye katılma hatası:", error);
@@ -1073,6 +1091,31 @@ export const dbService = {
         status: 'pending',
         createdAt: serverTimestamp()
       });
+
+      if (challengeData.toClubId) {
+        try {
+          const clubRef = doc(db, 'clubs', challengeData.toClubId);
+          const clubSnap = await getDoc(clubRef);
+          if (clubSnap.exists()) {
+            const clubData = clubSnap.data() as ClubModel;
+            if (clubData.captainId) {
+              const notifRef = doc(collection(db, 'notifications'));
+              await setDoc(notifRef, {
+                userId: clubData.captainId,
+                type: 'club_challenge',
+                title: '⚔️ Meydan Okuma Geldi!',
+                body: `${challengeData.fromClubName} kulübü size meydan okuyor! Kabul etmek için kulüp sayfanızı ziyaret edin.`,
+                challengeId: docRef.id,
+                read: false,
+                createdAt: serverTimestamp(),
+              });
+            }
+          }
+        } catch (err) {
+          console.warn("Meydan okuma bildirimi gönderilemedi:", err);
+        }
+      }
+
       return { id: docRef.id, ...challengeData };
     } catch (error) {
       console.error("Meydan okuma gönderme hatası:", error);
@@ -1680,12 +1723,30 @@ export const dbService = {
   requestToJoinClub: async (clubId: string, applicant: { uid: string; name: string; avatar?: string; position?: string; rating?: number }) => {
     try {
       const clubRef = doc(db, 'clubs', clubId);
+      const clubSnap = await getDoc(clubRef);
+      if (!clubSnap.exists()) throw new Error("Kulüp bulunamadı");
+      const clubData = clubSnap.data() as ClubModel;
+
       await updateDoc(clubRef, {
         joinRequests: arrayUnion({
           ...applicant,
           requestedAt: Date.now()
         })
       });
+
+      if (clubData.captainId) {
+        const notifRef = doc(collection(db, 'notifications'));
+        await setDoc(notifRef, {
+          userId: clubData.captainId,
+          type: 'club_join_request',
+          title: 'Yeni Üyelik İsteği',
+          body: `${applicant.name} kulübünüze katılmak istiyor.`,
+          clubId: clubId,
+          read: false,
+          createdAt: serverTimestamp(),
+        });
+      }
+
       return true;
     } catch (error) {
       console.error("Kulübe katılma isteği hatası:", error);

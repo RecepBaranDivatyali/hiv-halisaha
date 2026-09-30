@@ -490,6 +490,17 @@ export default function HomeScreen() {
             style={styles.seekingBeaconActiveCard} 
             onPress={() => setMatchSeekingVisible(true)}
           >
+            <TouchableOpacity
+              style={{ position: 'absolute', top: 8, right: 8, padding: 6, zIndex: 10 }}
+              onPress={async () => {
+                if (user?.uid) {
+                  await dbService.updateUserProfile(user.uid, { isLookingForMatch: false });
+                  saveUser({ ...user, isLookingForMatch: false });
+                }
+              }}
+            >
+              <MaterialIcons name="close" size={18} color={theme.textMuted} />
+            </TouchableOpacity>
             <View style={styles.beaconActiveLeft}>
               <View style={styles.beaconPulseIcon}>
                 <View style={styles.beaconDotInner} />

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, RefreshControl } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, RefreshControl, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
@@ -113,33 +113,36 @@ export default function ResultsScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent} 
+      <FlatList
+        data={loading || error ? [] : searchTab === 'Oyuncu' ? players : searchTab === 'Rakip' ? opponents : matches}
+        keyExtractor={(item, index) => item.id || item.uid || String(index)}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
-      >
-        {/* Search Status/Summary */}
-        <View style={styles.statusBox}>
-          <Text style={styles.statusTitle}>
-            EŞLEŞEN <Text style={{ color: theme.primary }}>{tabTitle} {posName}</Text>
-          </Text>
-          <Text style={styles.statusDesc}>
-            {loading ? 'Aranıyor...' : `${resultsCount} Sonuç Bulundu (${params.city || 'Tüm Şehirler'}${params.timeFrame ? ` • ${params.timeFrame}` : ''})`}
-          </Text>
-        </View>
-
-        {/* Dynamic List */}
-        <View style={styles.listContainer}>
-          {loading ? (
-            [1, 2, 3].map((i) => (
-              <View key={i} style={[styles.playerCard, { padding: 16, borderLeftColor: theme.border }]}>
-                <Skeleton width={50} height={50} borderRadius={25} style={{ marginRight: 12 }} />
-                <View style={{ flex: 1, gap: 8 }}>
-                  <Skeleton width="60%" height={16} />
-                  <Skeleton width="40%" height={12} />
+        ListHeaderComponent={
+          <View style={[styles.statusBox, { marginBottom: 12 }]}>
+            <Text style={styles.statusTitle}>
+              EŞLEŞEN <Text style={{ color: theme.primary }}>{tabTitle} {posName}</Text>
+            </Text>
+            <Text style={styles.statusDesc}>
+              {loading ? 'Aranıyor...' : `${resultsCount} Sonuç Bulundu (${params.city || 'Tüm Şehirler'}${params.timeFrame ? ` • ${params.timeFrame}` : ''})`}
+            </Text>
+          </View>
+        }
+        ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.listContainer}>
+              {[1, 2, 3].map((i) => (
+                <View key={i} style={[styles.playerCard, { padding: 16, borderLeftColor: theme.border }]}>
+                  <Skeleton width={50} height={50} borderRadius={25} style={{ marginRight: 12 }} />
+                  <View style={{ flex: 1, gap: 8 }}>
+                    <Skeleton width="60%" height={16} />
+                    <Skeleton width="40%" height={12} />
+                  </View>
                 </View>
-              </View>
-            ))
+              ))}
+            </View>
           ) : error ? (
             <View style={{ alignItems: 'center', paddingVertical: 50, gap: 16 }}>
               <MaterialIcons name="error-outline" size={60} color={theme.error} />
@@ -153,7 +156,7 @@ export default function ResultsScreen() {
                 <Text style={{ fontFamily: Fonts.headlineBold, color: theme.onPrimary, fontSize: 14 }}>TEKRAR DENE</Text>
               </TouchableOpacity>
             </View>
-          ) : resultsCount === 0 ? (
+          ) : (
             <View style={{ alignItems: 'center', paddingVertical: 60, gap: 16 }}>
               <MaterialIcons name="search-off" size={64} color={theme.surfaceContainerHighest} />
               <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 18, color: theme.textMuted, textAlign: 'center' }}>
@@ -163,117 +166,126 @@ export default function ResultsScreen() {
                 Farklı şehir veya pozisyon filtreleri deneyebilirsiniz.
               </Text>
             </View>
-          ) : (
-            <>
-              {searchTab === 'Oyuncu' && players.map((player, idx) => (
-                <Animated.View key={player.id || idx} entering={FadeInRight.delay(idx * 80).springify()}>
-                  <Bouncable 
-                    style={[styles.playerCard, player.isLookingForMatch && styles.playerCardHighlight]} 
-                    onPress={() => router.push({ pathname: '/chat-detail', params: { userName: player.name, recipientId: player.id } })}
-                  >
-                    <Image source={{ uri: player.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG' }} style={styles.playerAvatar} />
-                    <View style={styles.playerInfo}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <Text style={styles.playerName}>{player.name}</Text>
-                        {player.isLookingForMatch && (
-                          <View style={styles.lookingMiniBadge}>
-                            <View style={styles.greenDot} />
-                            <Text style={styles.lookingMiniBadgeText}>Maç Arıyor</Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text style={styles.playerPos}>{player.position || 'Oyuncu'} • {player.city || 'İSTANBUL'}{player.district ? ` / ${player.district}` : ''}</Text>
-                      {player.isLookingForMatch && player.availableNote ? (
-                        <Text style={styles.playerAvailableNote} numberOfLines={1}>💬 "{player.availableNote}"</Text>
-                      ) : null}
+          )
+        }
+        renderItem={({ item, index: idx }) => {
+          if (searchTab === 'Oyuncu') {
+            const player = item;
+            return (
+              <Animated.View entering={FadeInRight.delay(idx * 80).springify()}>
+                <Bouncable 
+                  style={[styles.playerCard, player.isLookingForMatch && styles.playerCardHighlight]} 
+                  onPress={() => router.push({ pathname: '/chat-detail', params: { userName: player.name, recipientId: player.id } })}
+                >
+                  <Image source={{ uri: player.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG' }} style={styles.playerAvatar} />
+                  <View style={styles.playerInfo}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <Text style={styles.playerName}>{player.name}</Text>
+                      {player.isLookingForMatch && (
+                        <View style={styles.lookingMiniBadge}>
+                          <View style={styles.greenDot} />
+                          <Text style={styles.lookingMiniBadgeText}>Maç Arıyor</Text>
+                        </View>
+                      )}
                     </View>
-                    <View style={styles.playerRatingBox}>
-                      <Text style={styles.playerRating}>{player.rating || '8.5'}</Text>
-                      <MaterialIcons name="star" size={12} color={theme.primary} />
+                    <Text style={styles.playerPos}>{player.position || 'Oyuncu'} • {player.city || 'İSTANBUL'}{player.district ? ` / ${player.district}` : ''}</Text>
+                    {player.isLookingForMatch && player.availableNote ? (
+                      <Text style={styles.playerAvailableNote} numberOfLines={1}>💬 "{player.availableNote}"</Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.playerRatingBox}>
+                    <Text style={styles.playerRating}>{player.rating || '8.5'}</Text>
+                    <MaterialIcons name="star" size={12} color={theme.primary} />
+                  </View>
+                </Bouncable>
+              </Animated.View>
+            );
+          }
+          
+          if (searchTab === 'Rakip') {
+            const opp = item;
+            return (
+              <Animated.View entering={FadeInRight.delay(idx * 80).springify()}>
+                <Bouncable style={[styles.playerCard, { borderLeftWidth: 3, borderLeftColor: opp.hasReservation ? '#22c55e' : (opp.color || theme.primary) }]} onPress={() => router.push({ pathname: '/my-club', params: { clubId: opp.id } })}>
+                  <View style={[styles.playerAvatar, { backgroundColor: `${opp.color || theme.primary}20`, alignItems: 'center', justifyContent: 'center' }]}>
+                    <MaterialIcons name="shield" size={24} color={opp.color || theme.primary} />
+                  </View>
+                  <View style={styles.playerInfo}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <Text style={styles.playerName}>{opp.name}</Text>
+                      {opp.hasReservation ? (
+                        <View style={styles.reservedBadge}>
+                          <MaterialIcons name="verified" size={11} color="#22c55e" />
+                          <Text style={styles.reservedBadgeText}>Sahası Hazır</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.noResBadge}>
+                          <MaterialIcons name="location-searching" size={11} color="#f59e0b" />
+                          <Text style={styles.noResBadgeText}>Saha Aranıyor</Text>
+                        </View>
+                      )}
                     </View>
-                  </Bouncable>
-                </Animated.View>
-              ))}
+                    <Text style={styles.playerPos}>Seviye: {opp.level || 1} • {opp.membersCount || 10} Üye • {opp.city || 'Ankara'}</Text>
+                    {opp.reservationDetails ? (
+                      <Text style={styles.playerAvailableNote} numberOfLines={1}>🏟️ {opp.reservationDetails}</Text>
+                    ) : null}
+                  </View>
+                  <View style={[styles.playerRatingBox, { backgroundColor: theme.surfaceContainerHighest }]}>
+                    <Text style={styles.playerRating}>{opp.points || 100} PK</Text>
+                  </View>
+                </Bouncable>
+              </Animated.View>
+            );
+          }
 
-              {searchTab === 'Rakip' && opponents.map((opp, idx) => (
-                <Animated.View key={opp.id || idx} entering={FadeInRight.delay(idx * 80).springify()}>
-                  <Bouncable style={[styles.playerCard, { borderLeftWidth: 3, borderLeftColor: opp.hasReservation ? '#22c55e' : (opp.color || theme.primary) }]} onPress={() => router.push({ pathname: '/my-club', params: { clubId: opp.id } })}>
-                    <View style={[styles.playerAvatar, { backgroundColor: `${opp.color || theme.primary}20`, alignItems: 'center', justifyContent: 'center' }]}>
-                      <MaterialIcons name="shield" size={24} color={opp.color || theme.primary} />
+          if (searchTab === 'Maç') {
+            const match = item;
+            return (
+              <Animated.View entering={FadeInRight.delay(idx * 80).springify()}>
+                <Bouncable style={[styles.playerCard, { borderLeftWidth: 3, borderLeftColor: match.hasReservation ? '#22c55e' : match.isPitchFlexible ? '#f59e0b' : theme.primary }]} onPress={() => router.push({ pathname: '/match-room', params: { matchId: match.id } })}>
+                  <View style={[styles.playerAvatar, { backgroundColor: `${theme.primary}15`, alignItems: 'center', justifyContent: 'center' }]}>
+                    <MaterialIcons name="sports-soccer" size={24} color={match.hasReservation ? '#22c55e' : theme.primary} />
+                  </View>
+                  <View style={styles.playerInfo}>
+                    <Text style={styles.playerName}>{match.arena}</Text>
+                    <Text style={styles.playerPos}>{match.dateTime} • {match.mode}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                      {match.hasReservation ? (
+                        <View style={styles.reservedBadge}>
+                          <MaterialIcons name="verified" size={11} color="#22c55e" />
+                          <Text style={styles.reservedBadgeText}>✓ Rezerve (Saha Hazır)</Text>
+                        </View>
+                      ) : match.isPitchFlexible ? (
+                        <View style={styles.flexiblePitchBadge}>
+                          <MaterialIcons name="location-searching" size={11} color="#f59e0b" />
+                          <Text style={styles.flexiblePitchBadgeText}>📍 Saha Aranıyor</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.noResBadge}>
+                          <MaterialIcons name="hourglass-empty" size={11} color="#f59e0b" />
+                          <Text style={styles.noResBadgeText}>⚠️ Rezervasyon Yok</Text>
+                        </View>
+                      )}
+                      {match.isTimeFlexible && (
+                        <View style={styles.flexibleTimeBadge}>
+                          <MaterialIcons name="schedule" size={11} color="#38bdf8" />
+                          <Text style={styles.flexibleTimeBadgeText}>⏳ Saat Esnek</Text>
+                        </View>
+                      )}
                     </View>
-                    <View style={styles.playerInfo}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <Text style={styles.playerName}>{opp.name}</Text>
-                        {opp.hasReservation ? (
-                          <View style={styles.reservedBadge}>
-                            <MaterialIcons name="verified" size={11} color="#22c55e" />
-                            <Text style={styles.reservedBadgeText}>Sahası Hazır</Text>
-                          </View>
-                        ) : (
-                          <View style={styles.noResBadge}>
-                            <MaterialIcons name="location-searching" size={11} color="#f59e0b" />
-                            <Text style={styles.noResBadgeText}>Saha Aranıyor</Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text style={styles.playerPos}>Seviye: {opp.level || 1} • {opp.membersCount || 10} Üye • {opp.city || 'Ankara'}</Text>
-                      {opp.reservationDetails ? (
-                        <Text style={styles.playerAvailableNote} numberOfLines={1}>🏟️ {opp.reservationDetails}</Text>
-                      ) : null}
-                    </View>
-                    <View style={[styles.playerRatingBox, { backgroundColor: theme.surfaceContainerHighest }]}>
-                      <Text style={styles.playerRating}>{opp.points || 100} PK</Text>
-                    </View>
-                  </Bouncable>
-                </Animated.View>
-              ))}
+                  </View>
+                  <View style={[styles.playerRatingBox, { backgroundColor: theme.surfaceContainerHighest }]}>
+                    <Text style={styles.playerRating}>{match.joinedPlayersCount}/{match.totalRequiredPlayers}</Text>
+                    <MaterialIcons name="group" size={12} color={theme.textMuted} />
+                  </View>
+                </Bouncable>
+              </Animated.View>
+            );
+          }
 
-              {searchTab === 'Maç' && matches.map((match, idx) => (
-                <Animated.View key={match.id || idx} entering={FadeInRight.delay(idx * 80).springify()}>
-                  <Bouncable style={[styles.playerCard, { borderLeftWidth: 3, borderLeftColor: match.hasReservation ? '#22c55e' : match.isPitchFlexible ? '#f59e0b' : theme.primary }]} onPress={() => router.push({ pathname: '/match-room', params: { matchId: match.id } })}>
-                    <View style={[styles.playerAvatar, { backgroundColor: `${theme.primary}15`, alignItems: 'center', justifyContent: 'center' }]}>
-                      <MaterialIcons name="sports-soccer" size={24} color={match.hasReservation ? '#22c55e' : theme.primary} />
-                    </View>
-                    <View style={styles.playerInfo}>
-                      <Text style={styles.playerName}>{match.arena}</Text>
-                      <Text style={styles.playerPos}>{match.dateTime} • {match.mode}</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                        {match.hasReservation ? (
-                          <View style={styles.reservedBadge}>
-                            <MaterialIcons name="verified" size={11} color="#22c55e" />
-                            <Text style={styles.reservedBadgeText}>✓ Rezerve (Saha Hazır)</Text>
-                          </View>
-                        ) : match.isPitchFlexible ? (
-                          <View style={styles.flexiblePitchBadge}>
-                            <MaterialIcons name="location-searching" size={11} color="#f59e0b" />
-                            <Text style={styles.flexiblePitchBadgeText}>📍 Saha Aranıyor</Text>
-                          </View>
-                        ) : (
-                          <View style={styles.noResBadge}>
-                            <MaterialIcons name="hourglass-empty" size={11} color="#f59e0b" />
-                            <Text style={styles.noResBadgeText}>⚠️ Rezervasyon Yok</Text>
-                          </View>
-                        )}
-                        {match.isTimeFlexible && (
-                          <View style={styles.flexibleTimeBadge}>
-                            <MaterialIcons name="schedule" size={11} color="#38bdf8" />
-                            <Text style={styles.flexibleTimeBadgeText}>⏳ Saat Esnek</Text>
-                          </View>
-                        )}
-                      </View>
-                    </View>
-                    <View style={[styles.playerRatingBox, { backgroundColor: theme.surfaceContainerHighest }]}>
-                      <Text style={styles.playerRating}>{match.joinedPlayersCount}/{match.totalRequiredPlayers}</Text>
-                      <MaterialIcons name="group" size={12} color={theme.textMuted} />
-                    </View>
-                  </Bouncable>
-                </Animated.View>
-              ))}
-            </>
-          )}
-        </View>
-
-      </ScrollView>
+          return null;
+        }}
+      />
     </SafeAreaView>
   );
 }

@@ -31,6 +31,22 @@ export default function ClubsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [clubsList, setClubsList] = useState<ClubModel[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const { collection, query, where, onSnapshot } = require('firebase/firestore');
+    const { db } = require('@/services/firebaseConfig');
+    
+    const q = query(
+      collection(db, 'users', user.uid, 'notifications'),
+      where('read', '==', false)
+    );
+    const unsubscribe = onSnapshot(q, (snapshot: any) => {
+      setUnreadCount(snapshot.docs.length);
+    });
+    return () => unsubscribe();
+  }, [user?.uid]);
 
   const loadClubs = React.useCallback(async () => {
     setIsLoading(true);
@@ -205,7 +221,7 @@ export default function ClubsScreen() {
           accessibilityRole="button"
         >
           <MaterialIcons name="notifications" size={24} color={theme.primary} />
-          <View style={styles.notifBadge} />
+          {unreadCount > 0 && <View style={styles.notifBadge} />}
         </TouchableOpacity>
       </View>
 

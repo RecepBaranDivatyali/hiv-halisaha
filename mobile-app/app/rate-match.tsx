@@ -164,22 +164,12 @@ export default function RateMatchScreen() {
       Alert.alert('Yetki Gerekli', 'Maç skorunu sadece organizatör veya takım kaptanları güncelleyebilir.');
       return;
     }
-    let nextA = scoreA;
-    let nextB = scoreB;
     if (team === 'A') {
-      nextA = Math.max(0, scoreA + delta);
-      setScoreA(nextA);
+      setScoreA(prev => Math.max(0, prev + delta));
     } else {
-      nextB = Math.max(0, scoreB + delta);
-      setScoreB(nextB);
+      setScoreB(prev => Math.max(0, prev + delta));
     }
-    if (params.matchId) {
-      dbService.updateMatch(params.matchId, { 
-        score: `${nextA} - ${nextB}`, 
-        formaGoluTeam,
-        status: 'completed' 
-      }).catch(() => {});
-    }
+    // Skor yalnızca "Kaydet" butonuyla DB'ye yazılır — burada sadece yerel state güncellenir
   };
 
   const handleFormaGoluSelect = (team: 'A' | 'B') => {
@@ -187,16 +177,10 @@ export default function RateMatchScreen() {
       Alert.alert('Yetki Gerekli', 'Forma golü bilgisini sadece organizatör veya takım kaptanları belirleyebilir.');
       return;
     }
-    const nextVal = formaGoluTeam === team ? null : team;
-    setFormaGoluTeam(nextVal);
-    if (params.matchId) {
-      dbService.updateMatch(params.matchId, { 
-        formaGoluTeam: nextVal,
-        score: `${scoreA} - ${scoreB}`,
-        status: 'completed' 
-      }).catch(() => {});
-    }
+    setFormaGoluTeam(prev => prev === team ? null : team);
+    // DB'ye yazım yalnızca "Kaydet" butonunda yapılır
   };
+
 
   const toggleTag = (tag: string) => {
     if (activeTags.includes(tag)) {
@@ -295,7 +279,22 @@ export default function RateMatchScreen() {
       {/* TopAppBar */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity style={styles.iconBtnHover} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.iconBtnHover} onPress={() => {
+            const rateableRoster = roster.filter(p => p.id !== user?.uid);
+            const evaluatedCount = Object.keys(evaluatedPlayers).length;
+            if (rateableRoster.length > 0 && evaluatedCount < rateableRoster.length) {
+              Alert.alert(
+                'Değerlendirme Tamamlanmadı',
+                `${rateableRoster.length - evaluatedCount} oyuncuyu henüz değerlendirmediniz. Çıkmak istediğinize emin misiniz?`,
+                [
+                  { text: 'Devam Et', style: 'cancel' },
+                  { text: 'Çık', style: 'destructive', onPress: () => router.back() },
+                ]
+              );
+            } else {
+              router.back();
+            }
+          }}>
             <MaterialIcons name="arrow-back" size={24} color={theme.primary} />
           </TouchableOpacity>
           <Text style={styles.brandTitle}>MAÇ DEĞERLENDİR</Text>

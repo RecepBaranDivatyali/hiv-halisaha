@@ -122,17 +122,20 @@ export default function MatchRoomScreen() {
 
   // Zaman gelince (maçın bitme dakikası gelince) maç odası değil de maçı değerlendirme kısmı açılsın
   React.useEffect(() => {
-    if (activeMatch && hasMatchEnded) {
-      router.replace({
-        pathname: '/rate-match',
-        params: {
-          matchId: activeMatchId,
-          matchScore: activeMatch.score || '',
-          isOrganizer: isOrganizer ? 'true' : 'false'
-        }
-      });
+    if (activeMatch && hasMatchEnded && activeMatchId && !isCompleted) {
+      const alreadyReviewed = user?.dismissedReviews?.includes(activeMatchId);
+      if (!alreadyReviewed) {
+        router.replace({
+          pathname: '/rate-match',
+          params: {
+            matchId: activeMatchId,
+            matchScore: activeMatch.score || '',
+            isOrganizer: isOrganizer ? 'true' : 'false'
+          }
+        });
+      }
     }
-  }, [hasMatchEnded, activeMatchId, isOrganizer]);
+  }, [hasMatchEnded, activeMatchId, isOrganizer, user?.dismissedReviews, isCompleted, activeMatch]);
 
   // Zaman gelmeden "Maçı Bitir ve Skor Gir" butonu gelmesin
   const canFinishMatch = Boolean(isOrganizer && hasMatchEnded && !isCompleted);
@@ -975,7 +978,22 @@ export default function MatchRoomScreen() {
         joinedAt: Date.now()
       });
       setUserSlot(slotKey);
-      Alert.alert('✓ Takıma Katıldınız', `${activeTeam} Takımı ${slotLabel} mevkisine yerleştiniz.`);
+      
+      // After successful join, prompt for payment
+      if (perPlayerFee > 0) {
+        setTimeout(() => {
+          Alert.alert(
+            '✅ Kadroya Katıldın!',
+            `Maç ücretin: ₺${perPlayerFee}. Şimdi ödeme yapmak ister misin?`,
+            [
+              { text: 'Sonra', style: 'cancel' },
+              { text: 'Ödeme Yap', onPress: () => setDirectPayVisible(true) },
+            ]
+          );
+        }, 500);
+      } else {
+        Alert.alert('✓ Takıma Katıldınız', `${activeTeam} Takımı ${slotLabel} mevkisine yerleştiniz.`);
+      }
     } catch {
       Alert.alert('Hata', 'Takıma katılırken bir sorun oluştu.');
     }
@@ -1235,7 +1253,14 @@ export default function MatchRoomScreen() {
 
     const executeDelete = async () => {
       try {
-        await deleteMatch(activeMatchId);
+        // Soft delete: mark as cancelled instead of hard deleting
+        await dbService.updateMatch(activeMatchId, { status: 'cancelled', cancelledAt: new Date().toISOString() });
+        // Notify all participants via match chat
+        await dbService.sendMessage(`match_${activeMatchId}`, {
+          text: '❌ Maç organizatör tarafından iptal edildi.',
+          senderId: 'system',
+          senderName: 'Sistem'
+        });
         await reloadMatches();
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
           window.alert('Maçınız başarıyla iptal edildi.');

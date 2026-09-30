@@ -6,6 +6,8 @@ import { Fonts } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/use-auth';
 import { dbService } from '@/services/dbService';
+import { db } from '@/services/firebaseConfig';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 interface InvitePlayerModalProps {
   visible: boolean;
@@ -43,9 +45,28 @@ export const InvitePlayerModal: React.FC<InvitePlayerModalProps> = ({ visible, o
     return nameMatch || posMatch;
   });
 
-  const handleInvite = (player: any) => {
-    setInvitedIds(prev => [...prev, player.id]);
-    Alert.alert('✅ Davet Gönderildi', `${player.name || 'Oyuncu'} kullanıcısına kulüp daveti iletildi.`);
+  const handleInvite = async (player: any) => {
+    if (!user?.clubId) {
+      Alert.alert('Hata', 'Kulüp bilginiz bulunamadı.');
+      return;
+    }
+    try {
+      setLoading(true);
+      await addDoc(collection(db, 'users', player.id, 'notifications'), {
+        type: 'club_invite',
+        clubId: user.clubId,
+        clubName: user.clubName || 'Kulüp',
+        read: false,
+        createdAt: serverTimestamp(),
+      });
+      setInvitedIds(prev => [...prev, player.id]);
+      Alert.alert('✅ Davet Gönderildi', `${player.name || 'Oyuncu'} kullanıcısına kulüp daveti iletildi.`);
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Hata', 'Davet gönderilemedi.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

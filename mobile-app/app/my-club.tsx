@@ -203,8 +203,8 @@ export default function MyClubScreen() {
 
   const openCaptainLeaveModal = () => {
     const currentUserId = effectiveUserId;
-    const otherMembers = (clubData?.members || []).filter(
-      (m: string) => m && m !== currentUserId && m !== user?.email && m !== user?.uid
+    const otherMembers = membersList.filter(
+      (m: any) => m && m.uid !== currentUserId && m.uid !== user?.email && m.uid !== user?.uid
     );
 
     if (otherMembers.length === 0) {
@@ -218,17 +218,29 @@ export default function MyClubScreen() {
         actionType: 'leave_captain_delete',
       });
     } else {
-      const randomCaptain = otherMembers[Math.floor(Math.random() * otherMembers.length)];
-      setConfirmModal({
-        visible: true,
-        title: 'Kaptanlıktan ve Kulüpten Ayrıl',
-        message: 'Kulüpten ayrıldığınızda kaptanlık rastgele seçilen başka bir kulüp üyesine devredilecektir. Onaylıyor musunuz?',
-        confirmText: 'Devret ve Ayrıl',
-        confirmColor: '#f59e0b',
-        icon: 'exit-to-app',
-        actionType: 'leave_captain_transfer',
-        targetCaptainId: randomCaptain,
-      });
+      const options = otherMembers.slice(0, 3).map((member: any) => ({
+        text: member.name || 'Kulüp Üyesi',
+        onPress: () => {
+          setConfirmModal({
+            visible: true,
+            title: 'Kaptanlıktan ve Kulüpten Ayrıl',
+            message: `Kulüpten ayrıldığınızda kaptanlık ${member.name || 'seçilen üyeye'} devredilecektir. Onaylıyor musunuz?`,
+            confirmText: 'Devret ve Ayrıl',
+            confirmColor: '#f59e0b',
+            icon: 'exit-to-app',
+            actionType: 'leave_captain_transfer',
+            targetCaptainId: member.uid,
+          });
+        }
+      }));
+      
+      options.push({ text: 'İptal', style: 'cancel', onPress: () => {} } as any);
+
+      Alert.alert(
+        'Yeni Kaptan Seç',
+        'Lütfen kaptanlığı devretmek istediğiniz üyeyi seçin:',
+        options
+      );
     }
   };
 
