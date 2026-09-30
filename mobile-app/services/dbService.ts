@@ -1099,7 +1099,7 @@ export const dbService = {
           if (clubSnap.exists()) {
             const clubData = clubSnap.data() as ClubModel;
             if (clubData.captainId) {
-              const notifRef = doc(collection(db, 'notifications'));
+              const notifRef = doc(collection(db, 'users', clubData.captainId, 'notifications'));
               await setDoc(notifRef, {
                 userId: clubData.captainId,
                 type: 'club_challenge',
@@ -1735,7 +1735,7 @@ export const dbService = {
       });
 
       if (clubData.captainId) {
-        const notifRef = doc(collection(db, 'notifications'));
+        const notifRef = doc(collection(db, 'users', clubData.captainId, 'notifications'));
         await setDoc(notifRef, {
           userId: clubData.captainId,
           type: 'club_join_request',

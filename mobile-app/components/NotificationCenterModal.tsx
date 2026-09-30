@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 import { useRouter } from 'expo-router';
+import { useAuth } from '@/hooks/use-auth';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, writeBatch } from 'firebase/firestore';
+import { db } from '@/services/firebaseConfig';
 
 export interface NotificationItem {
   id: string;
@@ -31,15 +34,62 @@ const DEFAULT_NOTIFS: NotificationItem[] = [
 export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = ({ visible, onClose }) => {
   const router = useRouter();
   const { theme } = useTheme();
+  const { user } = useAuth();
   const styles = useStyles(theme);
   const [notifs, setNotifs] = useState<NotificationItem[]>(DEFAULT_NOTIFS);
+  const [firestoreNotifs, setFirestoreNotifs] = useState<NotificationItem[]>([]);
 
-  const markAllRead = () => {
+  useEffect(() => {
+    if (!visible || !user?.uid) return;
+    try {
+      const q = query(
+        collection(db, 'users', user.uid, 'notifications'),
+        orderBy('createdAt', 'desc')
+      );
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const items: NotificationItem[] = snapshot.docs.map(d => {
+          const data = d.data();
+          return {
+            id: d.id,
+            type: data.type === 'club_challenge' ? 'alert' : data.type === 'club_invite' ? 'match' : 'reminder',
+            title: data.title || 'BİLDİRİM',
+            message: data.body || data.message || '',
+            time: 'Yeni',
+            read: Boolean(data.read),
+            route: data.type === 'club_challenge' || data.type === 'club_invite' ? '/my-club' : (data.route || '/(tabs)'),
+          };
+        });
+        setFirestoreNotifs(items);
+      }, (err) => {
+        console.warn('Bildirim dinleme hatası:', err);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn('Bildirim bağlantı hatası:', e);
+    }
+  }, [visible, user?.uid]);
+
+  const activeNotifs = firestoreNotifs.length > 0 ? firestoreNotifs : notifs;
+
+  const markAllRead = async () => {
     setNotifs(prev => prev.map(n => ({ ...n, read: true })));
+    const currentUserId = user?.uid;
+    if (currentUserId && firestoreNotifs.length > 0) {
+      try {
+        const batch = writeBatch(db);
+        firestoreNotifs.filter(n => !n.read).forEach(n => {
+          batch.update(doc(db, 'users', currentUserId, 'notifications', n.id), { read: true });
+        });
+        await batch.commit();
+      } catch (e) {
+        console.warn('Tümünü okundu işaretleme hatası:', e);
+      }
+    }
   };
 
   const clearAll = () => {
     setNotifs([]);
+    setFirestoreNotifs([]);
   };
 
   const getItemIcon = (type: NotificationItem['type']) => {
@@ -55,8 +105,17 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
     }
   };
 
-  const handleItemPress = (item: NotificationItem) => {
+  const handleItemPress = async (item: NotificationItem) => {
     setNotifs(prev => prev.map(n => n.id === item.id ? { ...n, read: true } : n));
+    setFirestoreNotifs(prev => prev.map(n => n.id === item.id ? { ...n, read: true } : n));
+    const currentUserId = user?.uid;
+    if (currentUserId && firestoreNotifs.some(n => n.id === item.id)) {
+      try {
+        await updateDoc(doc(db, 'users', currentUserId, 'notifications', item.id), { read: true });
+      } catch (e) {
+        console.warn('Okundu işaretleme hatası:', e);
+      }
+    }
     const targetRoute = item.route;
     onClose();
     if (targetRoute) {
@@ -72,7 +131,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
     }
   };
 
-  const unreadCount = notifs.filter(n => !n.read).length;
+  const unreadCount = activeNotifs.filter(n => !n.read).length;
 
   if (!visible) return null;
 
@@ -95,7 +154,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
           </View>
 
           {/* Action Row */}
-          {notifs.length > 0 && (
+          {activeNotifs.length > 0 && (
             <View style={styles.actionRow}>
               <TouchableOpacity style={styles.actionLink} onPress={markAllRead}>
                 <MaterialIcons name="done-all" size={16} color={theme.primary} />
@@ -110,13 +169,13 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
 
           {/* Notifications List */}
           <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-            {notifs.length === 0 ? (
+            {activeNotifs.length === 0 ? (
               <View style={styles.emptyBox}>
                 <MaterialIcons name="notifications-off" size={48} color={theme.surfaceContainerHighest} />
                 <Text style={styles.emptyText}>Henüz bildiriminiz yok</Text>
               </View>
             ) : (
-              notifs.map((item) => {
+              activeNotifs.map((item) => {
                 const iconInfo = getItemIcon(item.type);
                 return (
                   <TouchableOpacity
