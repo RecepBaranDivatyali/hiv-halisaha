@@ -70,6 +70,8 @@ export interface MatchModel {
   score?: string;
   formaGoluTeam?: 'A' | 'B' | null; // Forma (yelek) golünü atan takım; berabere biterse galip sayılır
   joinTerms?: number;
+  teamAJoinTerms?: number;
+  teamBJoinTerms?: number;
   benchA?: BenchPlayer[];
   benchB?: BenchPlayer[];
   reserves?: {
@@ -1000,6 +1002,21 @@ export const dbService = {
       return true;
     } catch (error) {
       console.error("Maç katılım şartları güncelleme hatası:", error);
+      throw error;
+    }
+  },
+
+  updateTeamJoinTerms: async (matchId: string, team: 'A' | 'B', joinTerms: number) => {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      const field = team === 'A' ? 'teamAJoinTerms' : 'teamBJoinTerms';
+      await updateDoc(matchRef, {
+        [field]: joinTerms,
+        updatedAt: serverTimestamp()
+      });
+      return true;
+    } catch (error) {
+      console.error(`Takım ${team} katılım şartları güncelleme hatası:`, error);
       throw error;
     }
   },

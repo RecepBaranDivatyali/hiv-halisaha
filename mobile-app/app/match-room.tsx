@@ -31,6 +31,13 @@ interface PlayerPayment {
   isGk: boolean;
 }
 
+const JOIN_TERMS_LABELS = [
+  'Herkese Açık',
+  'İstekle Katılma',
+  'Davetle Katılma',
+  'Katılma Kapalı'
+];
+
 export default function MatchRoomScreen() {
   const router = useRouter();
   const { theme } = useTheme();
@@ -130,6 +137,8 @@ export default function MatchRoomScreen() {
   // Zaman gelmeden "Maçı Bitir ve Skor Gir" butonu gelmesin
   const canFinishMatch = Boolean(isOrganizer && hasMatchEnded && !isCompleted);
   const [joinTerms, setJoinTerms] = useState(activeMatch?.joinTerms ?? 0);
+  const [teamAJoinTerms, setTeamAJoinTerms] = useState<number>(activeMatch?.teamAJoinTerms ?? activeMatch?.joinTerms ?? 0);
+  const [teamBJoinTerms, setTeamBJoinTerms] = useState<number>(activeMatch?.teamBJoinTerms ?? 0);
   const [userSlot, setUserSlot] = useState<string | null>(null);
   const [activeTeam, setActiveTeam] = useState<'A' | 'B'>('A');
   const hasInitialTeamSet = React.useRef(false);
@@ -165,9 +174,9 @@ export default function MatchRoomScreen() {
 
   // Role & Permissions:
   // In single organizer mode (tek organizatör): Organizer can manage BOTH Team A and Team B.
-  // In two captains mode: Captain A manages Team A, Captain B manages Team B.
+  // In two captains mode: Captain A manages Team A, Captain B manages Team B (or Organizer if no Captain B yet).
   const canManageTeamA = isOrganizer || isCaptainA;
-  const canManageTeamB = isTwoCaptainsMode ? isCaptainB : isOrganizer;
+  const canManageTeamB = isTwoCaptainsMode ? (isCaptainB || (!hasCaptainB && isOrganizer)) : isOrganizer;
   const canManageActiveTeam = activeTeam === 'A' ? canManageTeamA : canManageTeamB;
 
   // Placement state: Selected bench player waiting to be assigned to a pitch slot
@@ -220,6 +229,9 @@ export default function MatchRoomScreen() {
           setRemoteMatch(doc);
           if (doc.totalFee) setTotalMatchFee(doc.totalFee);
           if (doc.joinTerms !== undefined) setJoinTerms(doc.joinTerms);
+          if (doc.teamAJoinTerms !== undefined) setTeamAJoinTerms(doc.teamAJoinTerms);
+          else if (doc.joinTerms !== undefined) setTeamAJoinTerms(doc.joinTerms);
+          if (doc.teamBJoinTerms !== undefined) setTeamBJoinTerms(doc.teamBJoinTerms);
         }
       });
       return () => {
@@ -317,6 +329,18 @@ export default function MatchRoomScreen() {
   const totalPlayersCount = modePlayersPerTeam * 2;
   const activePayersCount = isGkFree ? Math.max(1, totalPlayersCount - 2) : totalPlayersCount;
   const perPlayerFee = Math.round(totalMatchFee / activePayersCount);
+
+  // Player counts & missing calculations for Team A & Team B
+  const matchSlots = activeMatch?.slots || {};
+  const teamAPlayers = Object.keys(matchSlots).filter(k => 
+    (k.startsWith('A_') || (!k.startsWith('B_') && ['FORVET', 'OS_SOL', 'OS_SAG', 'DEF_SOL', 'DEF_SAG', 'KALECI', 'KAPTAN', 'OS_ORTA'].includes(k))) && matchSlots[k]
+  );
+  const teamBPlayers = Object.keys(matchSlots).filter(k => k.startsWith('B_') && matchSlots[k]);
+  const teamACount = teamAPlayers.length;
+  const teamBCount = teamBPlayers.length;
+  const teamAMissing = Math.max(0, modePlayersPerTeam - (teamACount + benchA.length));
+  const teamBMissing = Math.max(0, modePlayersPerTeam - (teamBCount + benchB.length));
+  const activeTeamMissing = activeTeam === 'A' ? teamAMissing : teamBMissing;
 
   // All squad members for the active team (pitch slots + bench), sorted chronologically by joinedAt
   const activeTeamAllPlayers = React.useMemo(() => {
@@ -894,6 +918,53 @@ export default function MatchRoomScreen() {
       return;
     }
 
+    // Check target team's join terms before joining
+    const targetTeamTerms = isTwoCaptainsMode 
+      ? (activeTeam === 'A' ? teamAJoinTerms : teamBJoinTerms)
+      : joinTerms;
+
+    const canManageTargetTeam = activeTeam === 'A' ? canManageTeamA : canManageTeamB;
+
+    // 3: Katılma Kapalı
+    if (targetTeamTerms === 3 && !canManageTargetTeam) {
+      Alert.alert(
+        '🔒 Katılma Kapalı',
+        `${activeTeam} Takımı için yeni oyuncu katılımı takım kaptanı tarafından kapatılmıştır.`
+      );
+      return;
+    }
+
+    // 1: İstekle Katılma
+    if (targetTeamTerms === 1 && !canManageTargetTeam) {
+      const requesterName = user?.name || auth.currentUser?.displayName || 'Oyuncu';
+      Alert.alert(
+        '📩 İstek Gönderildi',
+        `${activeTeam} Takımı "İstekle Katılma" modundadır. Katılım talebiniz takım kaptanına iletildi. Kaptan sizi kadroya yerleştirebilir.`,
+        [{ text: 'Tamam' }]
+      );
+      dbService.sendMessage(`match_${targetMatchId}`, {
+        senderId: effUid,
+        senderName: requesterName,
+        text: `🙋‍♂️ [Katılım İsteği]: ${requesterName}, ${activeTeam} Takımı ${slotLabel} mevkisine katılmak için istek gönderdi.`
+      }).catch(console.error);
+      return;
+    }
+
+    // 2: Davetle Katılma
+    if (targetTeamTerms === 2 && !canManageTargetTeam) {
+      const proceed = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          '✉️ Davetle Katılma',
+          `${activeTeam} Takımına sadece kaptan tarafından davet edilen oyuncular katılabilir. Kaptan tarafından davet edildiniz mi?`,
+          [
+            { text: 'Hayır, Vazgeç', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Evet, Davetliyim (Katıl)', onPress: () => resolve(true) }
+          ]
+        );
+      });
+      if (!proceed) return;
+    }
+
     // If user is not yet in the team at all:
     try {
       await dbService.joinMatchSlot(targetMatchId, slotKey, {
@@ -963,6 +1034,47 @@ export default function MatchRoomScreen() {
     const targetMatchId = params.matchId || fallbackMatch?.id;
     if (!targetMatchId || targetMatchId === 'demo-match') return;
 
+    const targetTeamTerms = isTwoCaptainsMode 
+      ? (activeTeam === 'A' ? teamAJoinTerms : teamBJoinTerms)
+      : joinTerms;
+
+    if (targetTeamTerms === 3 && !canManageActiveTeam) {
+      Alert.alert(
+        '🔒 Katılma Kapalı',
+        `${activeTeam} Takımı için yedek kulübesine katılım kapatılmıştır.`
+      );
+      return;
+    }
+
+    if (targetTeamTerms === 1 && !canManageActiveTeam) {
+      const requesterName = user?.name || auth.currentUser?.displayName || 'Oyuncu';
+      Alert.alert(
+        '📩 İstek Gönderildi',
+        `${activeTeam} Takımı kulübesine katılım isteğiniz kaptana iletildi.`,
+        [{ text: 'Tamam' }]
+      );
+      dbService.sendMessage(`match_${targetMatchId}`, {
+        senderId: effUid,
+        senderName: requesterName,
+        text: `🙋‍♂️ [Yedek İsteği]: ${requesterName}, ${activeTeam} Takımı kulübesine katılmak istiyor.`
+      }).catch(console.error);
+      return;
+    }
+
+    if (targetTeamTerms === 2 && !canManageActiveTeam) {
+      const proceed = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          '✉️ Davetle Katılma',
+          `${activeTeam} Takımı kulübesine sadece davet edilen oyuncular katılabilir. Kaptan tarafından davet edildiniz mi?`,
+          [
+            { text: 'Hayır, Vazgeç', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Evet, Davetliyim', onPress: () => resolve(true) }
+          ]
+        );
+      });
+      if (!proceed) return;
+    }
+
     try {
       await dbService.joinTeamBench(targetMatchId, activeTeam, {
         uid: effUid,
@@ -1011,11 +1123,40 @@ export default function MatchRoomScreen() {
     );
   };
 
-  const handleConfirmTerms = async () => {
-    if (params.matchId) {
+  const handleConfirmTeamTerms = async (team: 'A' | 'B') => {
+    const targetMatchId = params.matchId || fallbackMatch?.id;
+    const termsValue = team === 'A' ? teamAJoinTerms : teamBJoinTerms;
+    const termsName = JOIN_TERMS_LABELS[termsValue] || 'Herkese Açık';
+
+    if (targetMatchId && targetMatchId !== 'demo-match') {
       try {
-        await dbService.updateMatchTerms(params.matchId, joinTerms);
-        Alert.alert('✓ Şartlar Kaydedildi', 'Maç katılım kuralları başarıyla güncellendi.', [{ text: 'Tamam' }]);
+        await dbService.updateTeamJoinTerms(targetMatchId, team, termsValue);
+        await dbService.sendMessage(`match_${targetMatchId}`, {
+          senderId: currentUid || 'anon',
+          senderName: team === 'A' ? (activeMatch?.captainAName || activeMatch?.organizer || 'A Kaptanı') : (activeMatch?.captainBName || 'B Kaptanı'),
+          text: `🔒 [Katılım Şartı]: ${team} Takımı katılım şartı "${termsName}" olarak güncellendi.`
+        });
+        Alert.alert('✓ Şartlar Kaydedildi', `${team} Takımı katılım şartı "${termsName}" olarak güncellendi.`, [{ text: 'Tamam' }]);
+      } catch {
+        Alert.alert('Hata', 'Katılım şartları güncellenirken bir sorun oluştu.');
+      }
+    } else {
+      Alert.alert('✓ Şartlar Onaylandı', `${team} Takımı katılım şartı kaydedildi.`, [{ text: 'Tamam' }]);
+    }
+  };
+
+  const handleConfirmTerms = async () => {
+    const targetMatchId = params.matchId || fallbackMatch?.id;
+    const termsName = JOIN_TERMS_LABELS[joinTerms] || 'Herkese Açık';
+    if (targetMatchId && targetMatchId !== 'demo-match') {
+      try {
+        await dbService.updateMatchTerms(targetMatchId, joinTerms);
+        await dbService.sendMessage(`match_${targetMatchId}`, {
+          senderId: currentUid || 'anon',
+          senderName: activeMatch?.organizer || 'Organizatör',
+          text: `🔒 [Katılım Şartı]: Maç katılım şartı "${termsName}" olarak güncellendi.`
+        });
+        Alert.alert('✓ Şartlar Kaydedildi', `Maç katılım kuralları "${termsName}" olarak güncellendi.`, [{ text: 'Tamam' }]);
       } catch {
         Alert.alert('Hata', 'Katılım şartları güncellenirken bir sorun oluştu.');
       }
@@ -1062,8 +1203,23 @@ export default function MatchRoomScreen() {
   // WhatsApp & Social Share
   const handleShareMatch = async () => {
     try {
-      const remainingCount = Math.max(0, totalPlayersCount - rosterPayments.length);
-      const shareMessage = `⚽ H.İ.V. Halısaha Maç Daveti!\n\n🏟️ Saha: ${matchArena} (${matchCity})\n📅 Tarih: ${matchDateTime}\n👥 Format: ${matchMode} (${remainingCount > 0 ? `${remainingCount} oyuncu aranıyor!` : 'Kadro dolmak üzere!'})\n💰 Ücret: ₺${perPlayerFee} / Kişi\n\nKadroya katılıp mevkini seçmek için hemen maça katıl!`;
+      let teamText = '';
+      if (isTwoCaptainsMode) {
+        if (activeTeam === 'A') {
+          teamText = teamAMissing > 0 
+            ? `🛡️ A Takımı için ${teamAMissing} oyuncu aranıyor!` 
+            : '🛡️ A Takımı kadrosu dolmak üzere!';
+        } else {
+          teamText = teamBMissing > 0 
+            ? `⚔️ B Takımı (Rakip) için ${teamBMissing} oyuncu aranıyor!` 
+            : '⚔️ B Takımı kadrosu dolmak üzere!';
+        }
+      } else {
+        const remainingCount = Math.max(0, totalPlayersCount - rosterPayments.length);
+        teamText = remainingCount > 0 ? `${remainingCount} oyuncu aranıyor!` : 'Kadro dolmak üzere!';
+      }
+
+      const shareMessage = `⚽ H.İ.V. Halısaha Maç Daveti!\n\n🏟️ Saha: ${matchArena} (${matchCity})\n📅 Tarih: ${matchDateTime}\n👥 Format: ${matchMode} (${teamText})\n💰 Ücret: ₺${perPlayerFee} / Kişi\n\nKadroya katılıp mevkini seçmek için hemen maça katıl!`;
       await Share.share({
         message: shareMessage,
         title: `${matchArena} Halısaha Maçı`,
@@ -1114,15 +1270,6 @@ export default function MatchRoomScreen() {
       ]
     );
   };
-
-  // Player counts for Team A & Team B
-  const matchSlots = activeMatch?.slots || {};
-  const teamAPlayers = Object.keys(matchSlots).filter(k => 
-    (k.startsWith('A_') || (!k.startsWith('B_') && ['FORVET', 'OS_SOL', 'OS_SAG', 'DEF_SOL', 'DEF_SAG', 'KALECI', 'KAPTAN', 'OS_ORTA'].includes(k))) && matchSlots[k]
-  );
-  const teamBPlayers = Object.keys(matchSlots).filter(k => k.startsWith('B_') && matchSlots[k]);
-  const teamACount = teamAPlayers.length;
-  const teamBCount = teamBPlayers.length;
 
   const renderSlotItem = (keySuffix: string, roleName: string, numberStr: string) => {
     const slotKey = `${activeTeam}_${keySuffix}`;
@@ -1638,10 +1785,10 @@ export default function MatchRoomScreen() {
               <MaterialIcons name="shield" size={18} color={activeTeam === 'A' ? theme.primary : theme.textMuted} />
               <View style={{ alignItems: 'center' }}>
                 <Text style={[styles.teamTabText, activeTeam === 'A' && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
-                  A TAKIMI
+                  {isTwoCaptainsMode ? '🛡️ A TAKIMI (BİZ)' : 'A TAKIMI'}
                 </Text>
                 <Text style={{ fontFamily: Fonts.label, fontSize: 9, color: activeTeam === 'A' ? theme.primary : theme.textMuted }}>
-                  👑 ORGANİZATÖR
+                  {isTwoCaptainsMode ? `👑 ${activeMatch?.organizer || 'ORGANİZATÖR'}` : '👑 ORGANİZATÖR'}
                 </Text>
               </View>
               <View style={[styles.teamCountBadge, activeTeam === 'A' && { backgroundColor: `${theme.primary}33` }]}>
@@ -1657,7 +1804,7 @@ export default function MatchRoomScreen() {
               <MaterialIcons name="shield" size={18} color={activeTeam === 'B' ? theme.secondary : theme.textMuted} />
               <View style={{ alignItems: 'center' }}>
                 <Text style={[styles.teamTabText, activeTeam === 'B' && { color: theme.secondary, fontFamily: Fonts.headlineBold }]}>
-                  B TAKIMI
+                  {isTwoCaptainsMode ? '⚔️ B TAKIMI (RAKİP)' : 'B TAKIMI'}
                 </Text>
                 <Text style={{ fontFamily: Fonts.label, fontSize: 9, color: activeTeam === 'B' ? theme.secondary : theme.textMuted }}>
                   {activeMatch?.captainBName ? `⭐ ${activeMatch.captainBName}` : (isTwoCaptainsMode ? '⭐ RAKİP KAPTAN' : 'KARMA KADRO')}
@@ -1738,9 +1885,15 @@ export default function MatchRoomScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.shareRosterTitle}>
-                  {rosterPayments.length >= totalPlayersCount 
-                    ? '🏆 KADRO TAMAMLANDI (DOLDU)' 
-                    : `📢 ${totalPlayersCount - rosterPayments.length} OYUNCU EKSİK • ARKADAŞLARINI ÇAĞIR`}
+                  {isTwoCaptainsMode
+                    ? (activeTeamMissing === 0
+                        ? (activeTeam === 'A' ? '🛡️ A TAKIMI KADROSU DOLDU' : '⚔️ B TAKIMI KADROSU DOLDU')
+                        : (activeTeam === 'A'
+                            ? `📢 A TAKIMI: ${activeTeamMissing} OYUNCU EKSİK • KADROYA ÇAĞIR`
+                            : `⚔️ B TAKIMI (RAKİP): ${activeTeamMissing} OYUNCU EKSİK • RAKİP BUL`))
+                    : (rosterPayments.length >= totalPlayersCount
+                        ? '🏆 KADRO TAMAMLANDI (DOLDU)'
+                        : `📢 ${totalPlayersCount - rosterPayments.length} OYUNCU EKSİK • ARKADAŞLARINI ÇAĞIR`)}
                 </Text>
                 <Text style={styles.shareRosterSub}>
                   WhatsApp&apos;ta kadro davetini tek tıkla paylaşın
@@ -2092,23 +2245,71 @@ export default function MatchRoomScreen() {
             );
           })()}
 
-          {/* Match Settings & Conditions - Only Captain/Organizer can edit */}
-          {isOrganizer && (
+          {/* Match Settings & Conditions */}
+          {(isOrganizer || isCaptainB) && (
             <View style={styles.termsBox}>
-              <Text style={styles.termsBoxTitle}>MAÇA KATILMA ŞARTLARI (KAPTAN YÖNETİMİ)</Text>
-              <View style={styles.termsList}>
-                {['Davetle Katılma', 'İstekle Katılma', 'Katılma Kapalı'].map((term, idx) => (
-                  <TouchableOpacity key={idx} style={styles.termRow} onPress={() => setJoinTerms(idx)}>
-                    <View style={[styles.radioOutline, joinTerms === idx && styles.radioActive]}>
-                      {joinTerms === idx && <View style={styles.radioInner} />}
-                    </View>
-                    <Text style={[styles.termText, joinTerms === idx && { color: theme.text }]}>{term}</Text>
+              {isTwoCaptainsMode ? (
+                <>
+                  <Text style={styles.termsBoxTitle}>MAÇA KATILMA ŞARTLARI (TAKIM BAZLI)</Text>
+                  
+                  {/* A Takımı Şartları — Organizatör/Captain A yönetir */}
+                  {canManageTeamA && (
+                    <>
+                      <Text style={[styles.paymentLabel, { marginBottom: 8 }]}>🛡️ A TAKIMI (BİZ) — KATILIM ŞARTI</Text>
+                      <View style={styles.termsList}>
+                        {JOIN_TERMS_LABELS.map((term, idx) => (
+                          <TouchableOpacity key={idx} style={styles.termRow} onPress={() => setTeamAJoinTerms(idx)}>
+                            <View style={[styles.radioOutline, teamAJoinTerms === idx && styles.radioActive]}>
+                              {teamAJoinTerms === idx && <View style={styles.radioInner} />}
+                            </View>
+                            <Text style={[styles.termText, teamAJoinTerms === idx && { color: theme.text }]}>{term}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                      <TouchableOpacity style={styles.confirmBtn} onPress={() => handleConfirmTeamTerms('A')}>
+                        <Text style={styles.confirmBtnText}>A TAKIMI ŞARTINI KAYDET</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+
+                  {/* B Takımı Şartları — Captain B yönetir (veya Organizatör kaptan atanmadan önce) */}
+                  {canManageTeamB && (
+                    <>
+                      <Text style={[styles.paymentLabel, { marginTop: canManageTeamA ? 20 : 0, marginBottom: 8 }]}>⚔️ B TAKIMI (RAKİP) — KATILIM ŞARTI</Text>
+                      <View style={styles.termsList}>
+                        {JOIN_TERMS_LABELS.map((term, idx) => (
+                          <TouchableOpacity key={idx} style={styles.termRow} onPress={() => setTeamBJoinTerms(idx)}>
+                            <View style={[styles.radioOutline, teamBJoinTerms === idx && { borderColor: theme.secondary }]}>
+                              {teamBJoinTerms === idx && <View style={[styles.radioInner, { backgroundColor: theme.secondary }]} />}
+                            </View>
+                            <Text style={[styles.termText, teamBJoinTerms === idx && { color: theme.text }]}>{term}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                      <TouchableOpacity style={[styles.confirmBtn, { borderColor: `${theme.secondary}4D` }]} onPress={() => handleConfirmTeamTerms('B')}>
+                        <Text style={[styles.confirmBtnText, { color: theme.secondary }]}>B TAKIMI ŞARTINI KAYDET</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Text style={styles.termsBoxTitle}>MAÇA KATILMA ŞARTLARI (KAPTAN YÖNETİMİ)</Text>
+                  <View style={styles.termsList}>
+                    {JOIN_TERMS_LABELS.map((term, idx) => (
+                      <TouchableOpacity key={idx} style={styles.termRow} onPress={() => setJoinTerms(idx)}>
+                        <View style={[styles.radioOutline, joinTerms === idx && styles.radioActive]}>
+                          {joinTerms === idx && <View style={styles.radioInner} />}
+                        </View>
+                        <Text style={[styles.termText, joinTerms === idx && { color: theme.text }]}>{term}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmTerms}>
+                    <Text style={styles.confirmBtnText}>ŞARTLARI KAYDET</Text>
                   </TouchableOpacity>
-                ))}
-              </View>
-              <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmTerms}>
-                <Text style={styles.confirmBtnText}>ŞARTLARI KAYDET</Text>
-              </TouchableOpacity>
+                </>
+              )}
             </View>
           )}
         </View>
