@@ -170,14 +170,16 @@ export default function ClubsScreen() {
     }
   };
 
-  const filteredClubs = clubsList.filter(c => {
-    const matchesSearch = 
-      !searchQuery.trim() ||
-      (c.name && c.name.toLocaleLowerCase('tr').includes(searchQuery.toLocaleLowerCase('tr'))) ||
-      (c.desc && c.desc.toLocaleLowerCase('tr').includes(searchQuery.toLocaleLowerCase('tr')));
-    const matchesCity = selectedCityFilter === 'Tümü' || (c.city && c.city.toLocaleLowerCase('tr') === selectedCityFilter.toLocaleLowerCase('tr'));
-    return matchesSearch && matchesCity;
-  });
+  const filteredClubs = clubsList
+    .filter(c => {
+      const matchesSearch = 
+        !searchQuery.trim() ||
+        (c.name && c.name.toLocaleLowerCase('tr').includes(searchQuery.toLocaleLowerCase('tr'))) ||
+        (c.desc && c.desc.toLocaleLowerCase('tr').includes(searchQuery.toLocaleLowerCase('tr')));
+      const matchesCity = selectedCityFilter === 'Tümü' || (c.city && c.city.toLocaleLowerCase('tr') === selectedCityFilter.toLocaleLowerCase('tr'));
+      return matchesSearch && matchesCity;
+    })
+    .sort((a, b) => (b.points || 0) - (a.points || 0));
 
   return (
     <SafeAreaView style={styles.container}>
@@ -463,23 +465,47 @@ export default function ClubsScreen() {
                     }}
                   >
                     <View style={styles.clubCardTop}>
-                      {club.logo ? (
-                        <Image source={{ uri: club.logo }} style={styles.clubLogoImg} />
-                      ) : (
-                        <View style={[styles.clubIconCircle, { backgroundColor: `${club.color || theme.primary}20` }]}>
-                          <MaterialIcons name="shield" size={28} color={club.color || theme.primary} />
+                      <View style={{ position: 'relative' }}>
+                        {club.logo ? (
+                          <Image source={{ uri: club.logo }} style={styles.clubLogoImg} />
+                        ) : (
+                          <View style={[styles.clubIconCircle, { backgroundColor: `${club.color || theme.primary}20` }]}>
+                            <MaterialIcons name="shield" size={28} color={club.color || theme.primary} />
+                          </View>
+                        )}
+                        <View style={{
+                          position: 'absolute',
+                          bottom: -4,
+                          left: -4,
+                          backgroundColor: idx === 0 ? '#eab308' : idx === 1 ? '#94a3b8' : idx === 2 ? '#d97706' : (theme.surfaceContainerHighest || '#1e293b'),
+                          borderRadius: 8,
+                          paddingHorizontal: 5,
+                          paddingVertical: 1,
+                          borderWidth: 1,
+                          borderColor: theme.borderSubtle,
+                        }}>
+                          <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 9, color: idx < 3 ? '#000000' : theme.text }}>
+                            {idx === 0 ? '🥇 #1' : idx === 1 ? '🥈 #2' : idx === 2 ? '🥉 #3' : `#${idx + 1}`}
+                          </Text>
                         </View>
-                      )}
+                      </View>
                       <View style={styles.clubTitleWrap}>
-                        <Text style={styles.clubNameTitle}>{club.name}</Text>
-                        <Text style={styles.clubDesc}>{club.desc}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <Text style={styles.clubNameTitle}>{club.name}</Text>
+                          {Boolean(club.city) && (
+                            <View style={{ backgroundColor: theme.surfaceContainerHighest || 'rgba(255,255,255,0.06)', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 }}>
+                              <Text style={{ fontFamily: Fonts.bodyBold, fontSize: 10, color: theme.textMuted }}>{club.city}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.clubDesc} numberOfLines={2}>{club.desc}</Text>
                       </View>
                       <MaterialIcons name="chevron-right" size={22} color={theme.textMuted} />
                     </View>
                     <View style={styles.clubCardFooter}>
                       <View>
-                        <Text style={styles.clubPointsText}>{club.points || 100} PK</Text>
-                        <Text style={styles.clubRankSub}>{club.rank || 'LİG TAKIMI'}</Text>
+                        <Text style={styles.clubPointsText}>{club.points || 0} PUAN</Text>
+                        <Text style={styles.clubRankSub}>LİG SIRASI: #{idx + 1}</Text>
                       </View>
                       {user?.clubId && user.clubId !== club.id ? (
                         <TouchableOpacity 

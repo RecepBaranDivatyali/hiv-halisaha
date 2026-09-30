@@ -386,12 +386,31 @@ export default function ProfileScreen() {
             {userMatches.length === 0 ? (
               <View style={{ alignItems: 'center', paddingVertical: 24, gap: 8 }}>
                 <MaterialIcons name="sports-soccer" size={36} color={theme.surfaceContainerHighest} />
-                <Text style={{ fontFamily: Fonts.body, fontSize: 13, color: theme.textMuted, textAlign: 'center' }}>
+                <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 14, color: theme.text, textAlign: 'center' }}>
                   Henüz maç geçmişin yok
                 </Text>
-                <Text style={{ fontFamily: Fonts.body, fontSize: 11, color: theme.textMuted, textAlign: 'center' }}>
+                <Text style={{ fontFamily: Fonts.body, fontSize: 12, color: theme.textMuted, textAlign: 'center', maxWidth: 260 }}>
                   Katıldığın veya organize ettiğin maçlar burada listelenecektir.
                 </Text>
+                <TouchableOpacity
+                  style={{
+                    marginTop: 8,
+                    backgroundColor: theme.primary,
+                    paddingHorizontal: 18,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                  onPress={() => router.push('/(tabs)/matches')}
+                  activeOpacity={0.85}
+                >
+                  <MaterialIcons name="search" size={16} color={theme.background} />
+                  <Text style={{ fontFamily: Fonts.headlineBold, color: theme.background, fontSize: 12 }}>
+                    MAÇLARI KEŞFET
+                  </Text>
+                </TouchableOpacity>
               </View>
             ) : userMatches.slice(0, 3).map((match) => {
               const isOrganizer = Boolean(

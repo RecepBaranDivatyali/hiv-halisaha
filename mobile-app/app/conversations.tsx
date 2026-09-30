@@ -154,10 +154,30 @@ export default function ConversationsScreen() {
 
           <View style={styles.listWrapSmall}>
             {conversations.length === 0 ? (
-              <View style={{ padding: 20, alignItems: 'center' }}>
-                <Text style={{ color: theme.textMuted, fontFamily: Fonts.body, fontSize: 13 }}>
-                  Henüz özel mesajınız yok. Arama ekranından bir oyuncuya mesaj gönderebilirsiniz.
+              <View style={{ padding: 24, alignItems: 'center', gap: 10 }}>
+                <MaterialIcons name="chat-bubble-outline" size={32} color={theme.surfaceContainerHighest} />
+                <Text style={{ color: theme.textMuted, fontFamily: Fonts.body, fontSize: 13, textAlign: 'center' }}>
+                  Henüz özel mesajınız yok. Arama ekranından bir oyuncu bulup mesajlaşabilirsiniz.
                 </Text>
+                <TouchableOpacity 
+                  style={{ 
+                    marginTop: 6, 
+                    backgroundColor: theme.primary, 
+                    paddingHorizontal: 16, 
+                    paddingVertical: 9, 
+                    borderRadius: 10, 
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    gap: 6 
+                  }}
+                  onPress={() => router.push({ pathname: '/(tabs)/search', params: { tab: 'Oyuncu' } })}
+                  activeOpacity={0.85}
+                >
+                  <MaterialIcons name="person-search" size={16} color={theme.onPrimary || theme.background} />
+                  <Text style={{ color: theme.onPrimary || theme.background, fontFamily: Fonts.headlineBold, fontSize: 12 }}>
+                    OYUNCU BUL
+                  </Text>
+                </TouchableOpacity>
               </View>
             ) : conversations.map((conv) => (
               <TouchableOpacity 

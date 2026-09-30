@@ -8,6 +8,7 @@ import { PitchReviewModal } from '@/components/PitchReviewModal';
 import { MatchStoryModal } from '@/components/MatchStoryModal';
 import { WeatherAlertCard } from '@/components/WeatherAlertCard';
 import { AppModal as Modal } from '@/components/AppModal';
+import { PlayerProfileModal, PlayerProfileData } from '@/components/PlayerProfileModal';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
@@ -161,6 +162,57 @@ export default function MatchRoomScreen() {
     targetSlotLabel: string;
     targetTeam: 'A' | 'B';
   } | null>(null);
+
+  // Player Profile Modal State
+  const [playerProfileModalVisible, setPlayerProfileModalVisible] = useState(false);
+  const [selectedPlayerForProfile, setSelectedPlayerForProfile] = useState<PlayerProfileData | null>(null);
+
+  // Flexible Pitch Picker State
+  const [pitchPickerVisible, setPitchPickerVisible] = useState(false);
+  const [pitchPickerSearch, setPitchPickerSearch] = useState('');
+  const [customPitchText, setCustomPitchText] = useState('');
+
+  const filteredPitchesList = React.useMemo(() => {
+    let list = PITCH_DATABASE;
+    if (activeMatch?.city) {
+      const matchCityLower = activeMatch.city.toLocaleLowerCase('tr');
+      const inCity = list.filter(p => p.city.toLocaleLowerCase('tr') === matchCityLower);
+      if (inCity.length > 0) {
+        list = inCity;
+      }
+    }
+    if (pitchPickerSearch.trim()) {
+      const q = pitchPickerSearch.toLocaleLowerCase('tr');
+      list = list.filter(p => 
+        p.name.toLocaleLowerCase('tr').includes(q) || 
+        (p.district && p.district.toLocaleLowerCase('tr').includes(q))
+      );
+    }
+    return list.slice(0, 30);
+  }, [activeMatch?.city, pitchPickerSearch]);
+
+  const handleConfirmPitchSelection = async (pitchName: string, pitchCity: string, pitchDistrict?: string) => {
+    setPitchPickerVisible(false);
+    if (!activeMatchId || activeMatchId === 'demo-match') return;
+    try {
+      await dbService.updateMatch(activeMatchId, {
+        arena: pitchName,
+        city: pitchCity,
+        district: pitchDistrict || '',
+        hasReservation: true,
+        isPitchFlexible: false,
+      });
+      await dbService.sendMessage(`match_${activeMatchId}`, {
+        senderId: 'system',
+        senderName: 'Sistem',
+        text: `🏟️ Maç sahası belirlendi: ${pitchName} (${pitchDistrict ? pitchDistrict + ', ' : ''}${pitchCity})`,
+        type: 'system',
+      });
+      Alert.alert('✓ Saha Belirlendi', `Maç sahası "${pitchName}" olarak belirlendi ve kadroya bildirildi.`);
+    } catch {
+      Alert.alert('Hata', 'Saha belirlenirken bir sorun oluştu.');
+    }
+  };
 
   // Tactical Formations (2-3-1, 3-2-1, 2-2-2, 3-1-2)
   // Bench state from active match
@@ -732,8 +784,13 @@ export default function MatchRoomScreen() {
     setUserSlot(null);
     if (targetMatchId && targetMatchId !== 'demo-match') {
       try {
-        await dbService.leaveMatchSlot(targetMatchId, slotKey, effUid);
-        if (penaltyPercent > 0 && effUid) {
+        const leaveResult = await dbService.leaveMatchSlot(targetMatchId, slotKey, effUid);
+        if (leaveResult?.wasPaid) {
+          Alert.alert(
+            'Mevkiden Ayrıldınız (İade Bilgisi)',
+            `${slotLabel} mevkisinden ayrıldınız.\n\n⚠️ Bu maç için daha önce ödeme yapmıştınız. Lütfen maç organizatörü ile iletişime geçerek ücret iadenizi talep ediniz. İade gerekliliği maç içi sohbete de bildirilmiştir.`
+          );
+        } else if (penaltyPercent > 0 && effUid) {
           const newScore = await dbService.updateUserReliability(effUid, penaltyPercent);
           Alert.alert(
             'Mevkiden Ayrıldınız',
@@ -843,6 +900,18 @@ export default function MatchRoomScreen() {
         const options: any[] = [
           { text: 'Vazgeç', style: 'cancel' },
           {
+            text: '👤 Profili Görüntüle',
+            onPress: () => {
+              setSelectedPlayerForProfile({
+                uid: existingOccupant.uid,
+                name: existingOccupant.name,
+                avatar: existingOccupant.avatar,
+                position: slotLabel,
+              });
+              setPlayerProfileModalVisible(true);
+            }
+          },
+          {
             text: '🔄 Yedek Kulübesine Çek',
             onPress: async () => {
               try {
@@ -863,7 +932,7 @@ export default function MatchRoomScreen() {
 
         if (isOrganizer && activeTeam === 'B' && existingOccupant.uid !== effUid) {
           const isSlotCapB = Boolean(activeMatch?.captainBId && activeMatch.captainBId === existingOccupant.uid);
-          options.splice(1, 0, {
+          options.splice(2, 0, {
             text: isSlotCapB ? '⭐ B Kaptanlığını Kaldır' : '⭐ B Takımı Kaptanı Yap',
             onPress: () => handleAssignCaptainB(existingOccupant.uid, existingOccupant.name)
           });
@@ -873,8 +942,14 @@ export default function MatchRoomScreen() {
         return;
       }
 
-      // Regular user trying to click someone else's slot
-      Alert.alert('Mevki Dolu', `Bu mevki ${existingOccupant.name} tarafından doldurulmuştur.`);
+      // Regular user clicking someone else's slot -> Open their profile modal
+      setSelectedPlayerForProfile({
+        uid: existingOccupant.uid,
+        name: existingOccupant.name,
+        avatar: existingOccupant.avatar,
+        position: slotLabel,
+      });
+      setPlayerProfileModalVisible(true);
       return;
     }
 
@@ -979,8 +1054,13 @@ export default function MatchRoomScreen() {
       });
       setUserSlot(slotKey);
       
-      // After successful join, prompt for payment
-      if (perPlayerFee > 0) {
+      const isGkSlot = slotKey.includes('KALECI');
+      const isExemptGk = Boolean(isGkFree && isGkSlot);
+
+      // After successful join, prompt for payment (unless exempt GK)
+      if (isExemptGk) {
+        Alert.alert('🧤 Kaleci Olarak Katıldınız!', `${activeTeam} Takımı Kalecisi olarak kadroya girdiniz. Bu maçta kaleciler ücretten muaftır!`);
+      } else if (perPlayerFee > 0) {
         setTimeout(() => {
           Alert.alert(
             '✅ Kadroya Katıldın!',
@@ -1703,9 +1783,21 @@ export default function MatchRoomScreen() {
                       <Text style={styles.venueResBadgeText}>Sahası Hazır</Text>
                     </View>
                   ) : activeMatch?.isPitchFlexible ? (
-                    <View style={styles.venueFlexBadge}>
-                      <MaterialIcons name="location-searching" size={11} color="#f59e0b" />
-                      <Text style={styles.venueFlexBadgeText}>Saha Aranıyor</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <View style={styles.venueFlexBadge}>
+                        <MaterialIcons name="location-searching" size={11} color="#f59e0b" />
+                        <Text style={styles.venueFlexBadgeText}>Saha Aranıyor</Text>
+                      </View>
+                      {isOrganizer && (
+                        <TouchableOpacity
+                          style={styles.setPitchActionBtn}
+                          onPress={() => setPitchPickerVisible(true)}
+                          activeOpacity={0.85}
+                        >
+                          <MaterialIcons name="edit-location-alt" size={12} color="#ffffff" />
+                          <Text style={styles.setPitchActionBtnText}>Sahayı Belirle</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   ) : null}
                 </View>
@@ -2173,12 +2265,24 @@ export default function MatchRoomScreen() {
                             </View>
                           )}
 
-                          <View style={[styles.benchCardAvatarWrap, isSurplus && { borderColor: '#f59e0b' }]}>
+                          <TouchableOpacity 
+                            style={[styles.benchCardAvatarWrap, isSurplus && { borderColor: '#f59e0b' }]}
+                            onPress={() => {
+                              setSelectedPlayerForProfile({
+                                uid: bp.uid,
+                                name: bp.name,
+                                avatar: bp.avatar,
+                                position: bp.position || 'Yedek',
+                              });
+                              setPlayerProfileModalVisible(true);
+                            }}
+                            activeOpacity={0.8}
+                          >
                             <Image 
                               source={{ uri: bp.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100' }} 
                               style={styles.benchCardAvatar} 
                             />
-                          </View>
+                          </TouchableOpacity>
 
                           <Text style={styles.benchCardName} numberOfLines={1}>
                             {bp.name} {isSelf ? '(Siz)' : ''}
@@ -3093,6 +3197,111 @@ export default function MatchRoomScreen() {
             </View>
           </View>
         </Modal>
+
+        {/* Oyuncu Profil Modalı */}
+        <PlayerProfileModal
+          visible={playerProfileModalVisible}
+          onClose={() => setPlayerProfileModalVisible(false)}
+          player={selectedPlayerForProfile}
+        />
+
+        {/* Saha Belirleme Modalı */}
+        <Modal
+          visible={pitchPickerVisible}
+          onRequestClose={() => setPitchPickerVisible(false)}
+          animationType="slide"
+          transparent
+        >
+          <View style={styles.scoreModalOverlay}>
+            <View style={[styles.scoreModalContent, { maxHeight: '85%', padding: 20 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <MaterialIcons name="stadium" size={24} color={theme.primary} />
+                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 16, color: theme.text }}>
+                    SAHAYI BELİRLE
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setPitchPickerVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <MaterialIcons name="close" size={20} color={theme.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={{ fontFamily: Fonts.body, fontSize: 12, color: theme.textMuted, marginBottom: 14 }}>
+                Maçın oynanacağı tesisi seçin veya aşağıya özel saha adı yazın.
+              </Text>
+
+              {/* Tesis Arama */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.surfaceContainerHighest, borderRadius: 12, paddingHorizontal: 12, height: 42, marginBottom: 12 }}>
+                <MaterialIcons name="search" size={18} color={theme.textMuted} style={{ marginRight: 8 }} />
+                <TextInput
+                  placeholder="Tesis veya ilçe ara..."
+                  placeholderTextColor={theme.textMuted}
+                  value={pitchPickerSearch}
+                  onChangeText={setPitchPickerSearch}
+                  style={{ flex: 1, color: theme.text, fontFamily: Fonts.body, fontSize: 13 }}
+                />
+                {Boolean(pitchPickerSearch) && (
+                  <TouchableOpacity onPress={() => setPitchPickerSearch('')}>
+                    <MaterialIcons name="clear" size={16} color={theme.textMuted} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Tesis Listesi */}
+              <ScrollView style={{ maxHeight: 220, width: '100%', marginBottom: 14 }} showsVerticalScrollIndicator={false}>
+                {filteredPitchesList.map(pitch => (
+                  <TouchableOpacity
+                    key={pitch.id}
+                    style={{ padding: 12, borderRadius: 10, backgroundColor: theme.surfaceContainerHighest, marginBottom: 8, borderWidth: 1, borderColor: theme.borderSubtle }}
+                    onPress={() => handleConfirmPitchSelection(pitch.name, pitch.city, pitch.district)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.text, flex: 1 }} numberOfLines={1}>
+                        {pitch.name}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                        <MaterialIcons name="star" size={12} color="#f59e0b" />
+                        <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 11, color: '#f59e0b' }}>{pitch.rating}</Text>
+                      </View>
+                    </View>
+                    <Text style={{ fontFamily: Fonts.body, fontSize: 11, color: theme.textMuted, marginTop: 2 }}>
+                      {pitch.district ? `${pitch.district}, ` : ''}{pitch.city}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Özel Saha Adı Girişi */}
+              <View style={{ width: '100%', borderTopWidth: 1, borderTopColor: theme.borderSubtle, paddingTop: 12 }}>
+                <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 11, color: theme.textMuted, marginBottom: 6, letterSpacing: 0.5 }}>
+                  VEYA ÖZEL SAHA ADI GİRİN:
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TextInput
+                    placeholder="Örn: Yıldız Halısaha..."
+                    placeholderTextColor={theme.textMuted}
+                    value={customPitchText}
+                    onChangeText={setCustomPitchText}
+                    style={{ flex: 1, height: 42, backgroundColor: theme.surfaceContainerHighest, borderRadius: 10, paddingHorizontal: 12, color: theme.text, fontFamily: Fonts.body, fontSize: 13, borderWidth: 1, borderColor: theme.borderSubtle }}
+                  />
+                  <TouchableOpacity
+                    style={{ backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center' }}
+                    onPress={() => {
+                      if (!customPitchText.trim()) {
+                        Alert.alert('Uyarı', 'Lütfen geçerli bir saha adı giriniz.');
+                        return;
+                      }
+                      handleConfirmPitchSelection(customPitchText.trim(), activeMatch?.city || 'İstanbul', activeMatch?.district || '');
+                    }}
+                  >
+                    <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.background }}>KAYDET</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -3226,6 +3435,20 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontFamily: Fonts.headlineBold,
     fontSize: 9,
     color: '#f59e0b',
+  },
+  setPitchActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#f59e0b',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  setPitchActionBtnText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 10,
+    color: '#000000',
   },
   venueMapBtn: {
     flexDirection: 'row',

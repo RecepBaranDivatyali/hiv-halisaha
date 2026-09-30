@@ -9,6 +9,7 @@ import Animated, { FadeInRight } from 'react-native-reanimated';
 import { useTheme } from '@/context/ThemeContext';
 import { dbService } from '@/services/dbService';
 import { Skeleton } from '@/components/Skeleton';
+import { PlayerProfileModal, PlayerProfileData } from '@/components/PlayerProfileModal';
 
 export default function ResultsScreen() {
   const { theme } = useTheme();
@@ -38,6 +39,8 @@ export default function ResultsScreen() {
   const [players, setPlayers] = useState<any[]>([]);
   const [matches, setMatches] = useState<any[]>([]);
   const [opponents, setOpponents] = useState<any[]>([]);
+  const [selectedPlayer, setSelectedPlayer] = useState<PlayerProfileData | null>(null);
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
 
   const fetchResults = React.useCallback(async () => {
     setLoading(true);
@@ -165,6 +168,24 @@ export default function ResultsScreen() {
               <Text style={{ fontFamily: Fonts.body, fontSize: 13, color: theme.textMuted, textAlign: 'center' }}>
                 Farklı şehir veya pozisyon filtreleri deneyebilirsiniz.
               </Text>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: theme.primary,
+                  paddingHorizontal: 20,
+                  paddingVertical: 10,
+                  borderRadius: 12,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  marginTop: 6,
+                }}
+                onPress={() => router.back()}
+              >
+                <MaterialIcons name="tune" size={16} color={theme.background} />
+                <Text style={{ fontFamily: Fonts.headlineBold, color: theme.background, fontSize: 13 }}>
+                  FİLTRELERİ DEĞİŞTİR
+                </Text>
+              </TouchableOpacity>
             </View>
           )
         }
@@ -175,7 +196,10 @@ export default function ResultsScreen() {
               <Animated.View entering={FadeInRight.delay(idx * 80).springify()}>
                 <Bouncable 
                   style={[styles.playerCard, player.isLookingForMatch && styles.playerCardHighlight]} 
-                  onPress={() => router.push({ pathname: '/chat-detail', params: { userName: player.name, recipientId: player.id } })}
+                  onPress={() => {
+                    setSelectedPlayer(player);
+                    setProfileModalVisible(true);
+                  }}
                 >
                   <Image source={{ uri: player.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5Hz5EJOWErh6AR8u9TjkJdGlp59VyudXCdt-0qrvris37DncsucN9d3WVAIfgM0woMTEEk-pP8Q5RGlqgm2JhZvt-QpZW6zMs29QUq1PnXZDgQhkS0v8jkJHRHGJRg114RpCo09yyL_w7PmiICIU-dlZ4qsb21WWDvr2QDUXk82sNqxgNK--BOb1nRROMskro5IlO--TYYeuXDPeznabVwYIaZ1BOChS3YuHQ98iMHna5Lv975P8F01HCX7lhZDzEKnS1YIpUHG' }} style={styles.playerAvatar} />
                   <View style={styles.playerInfo}>
@@ -285,6 +309,12 @@ export default function ResultsScreen() {
 
           return null;
         }}
+      />
+
+      <PlayerProfileModal
+        visible={profileModalVisible}
+        onClose={() => setProfileModalVisible(false)}
+        player={selectedPlayer}
       />
     </SafeAreaView>
   );

@@ -177,6 +177,7 @@ export interface MessageModel {
   senderName: string;
   senderAvatar?: string;
   text: string;
+  type?: 'system' | 'user' | 'text';
   createdAt: any;
 }
 
@@ -413,11 +414,13 @@ export const dbService = {
           throw new Error("Mevki zaten dolu!");
         }
 
+        const isGkSlot = slotKey.includes('KALECI');
+        const defaultStatus = (data.isGkFree && isGkSlot) ? 'exempt' : 'unpaid';
         const updates: Record<string, any> = {
           [`slots.${slotKey}`]: {
             ...player,
-            paid: data.slots?.[slotKey]?.paid ?? false,
-            paymentStatus: data.slots?.[slotKey]?.paymentStatus ?? 'unpaid',
+            paid: data.slots?.[slotKey]?.paid ?? (defaultStatus === 'exempt'),
+            paymentStatus: data.slots?.[slotKey]?.paymentStatus ?? defaultStatus,
             joinedAt: serverTimestamp()
           }
         };
@@ -533,6 +536,8 @@ export const dbService = {
   leaveMatchSlot: async (matchId: string, slotKey: string, userId?: string) => {
     try {
       const matchRef = doc(db, 'matches', matchId);
+      let wasPaid = false;
+      let playerName = 'Oyuncu';
       await runTransaction(db, async (transaction) => {
         const matchDoc = await transaction.get(matchRef);
         if (!matchDoc.exists()) {
@@ -545,12 +550,27 @@ export const dbService = {
         if (userId && data.slots[slotKey].uid !== userId) {
           throw new Error("Bu mevki size ait değil!");
         }
+        const slotData = data.slots[slotKey];
+        wasPaid = Boolean(slotData?.paid || slotData?.paymentStatus === 'paid' || slotData?.paymentStatus === 'pending_approval');
+        playerName = slotData?.name || 'Oyuncu';
+
         transaction.update(matchRef, {
           [`slots.${slotKey}`]: deleteField(),
           joinedPlayersCount: increment(-1)
         });
       });
-      return true;
+
+      if (wasPaid) {
+        // Maç içi sohbete iade bilgilendirmesi gönder
+        dbService.sendMessage(`match_${matchId}`, {
+          text: `⚠️ ${playerName} (Ödeme yapmıştı) kadrodan ayrıldı. Organizatör tarafından ücret iadesi yapılması gerekir.`,
+          senderId: 'system',
+          senderName: 'Sistem',
+          type: 'system',
+        }).catch(() => {});
+      }
+
+      return { success: true, wasPaid, playerName };
     } catch (error) {
       console.error("Mevkiden ayrılma hatası:", error);
       throw error;
@@ -1200,6 +1220,30 @@ export const dbService = {
       return { success: true, action: 'accept' as const, matchId: createdMatch.id };
     } catch (error) {
       console.error("Meydan okuma yanıtlama hatası:", error);
+      throw error;
+    }
+  },
+
+  sendClubInvite: async (clubId: string, targetUserId: string) => {
+    try {
+      const clubSnap = await getDoc(doc(db, 'clubs', clubId));
+      const clubData = clubSnap.exists() ? clubSnap.data() : null;
+      const clubName = clubData?.name || 'Kulüp';
+
+      const notifRef = doc(collection(db, 'users', targetUserId, 'notifications'));
+      await setDoc(notifRef, {
+        userId: targetUserId,
+        type: 'club_invite',
+        title: '🛡️ Kulüp Daveti',
+        body: `"${clubName}" sizi kulübüne katılmaya davet etti.`,
+        clubId: clubId,
+        clubName: clubName,
+        read: false,
+        createdAt: serverTimestamp(),
+      });
+      return true;
+    } catch (error) {
+      console.error("Kulüp daveti gönderme hatası:", error);
       throw error;
     }
   },

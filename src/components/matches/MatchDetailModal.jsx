@@ -130,7 +130,53 @@ export function MatchDetailModal({ match, isOpen, onClose, onUpdate }) {
               <div className="text-xs font-bold uppercase text-white/40">Toplam Saha Ücreti</div>
               <div className="mt-1 text-sm font-bold text-white">₺{match.totalFee || 2100}</div>
             </div>
+            <div className="rounded-2xl border border-white/5 bg-[#171A24] p-4">
+              <div className="text-xs font-bold uppercase text-white/40">Format & Kaleci</div>
+              <div className="mt-1 text-sm font-bold text-white flex items-center gap-2">
+                <span>{match.matchFormatType === 'two_captains' ? 'İki Kaptanlı' : 'Tek Organizatör'}</span>
+                {match.isGkFree && (
+                  <span className="rounded bg-[#8eff71]/15 px-2 py-0.5 text-[10px] font-bold text-[#8eff71]">
+                    🧤 Ücretsiz GK
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/5 bg-[#171A24] p-4">
+              <div className="text-xs font-bold uppercase text-white/40">Saha Durumu</div>
+              <div className="mt-1 text-sm font-bold text-white">
+                {match.hasReservation ? (
+                  <span className="text-[#8eff71]">✓ Sahası Hazır</span>
+                ) : match.isPitchFlexible ? (
+                  <span className="text-[#f59e0b]">🔍 Saha Aranıyor</span>
+                ) : (
+                  <span className="text-white/60">Standart</span>
+                )}
+              </div>
+            </div>
           </div>
+
+          {/* İki Kaptan ve Katılım Şartları */}
+          {(match.matchFormatType === 'two_captains' || match.captainBId || match.teamAJoinTerms !== undefined || match.teamBJoinTerms !== undefined) && (
+            <div className="rounded-2xl border border-white/5 bg-[#171A24] p-4 space-y-3">
+              <div className="text-xs font-bold uppercase text-white/40">Takım Kaptanları & Katılım Şartları</div>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="rounded-xl bg-white/[0.03] p-3 border border-white/5">
+                  <div className="font-bold text-[#8eff71]">A TAKIMI (Kaptan A)</div>
+                  <div className="text-white font-medium mt-1">{match.captainAName || match.organizer || 'Organizatör'}</div>
+                  <div className="text-white/40 text-[11px] mt-1">
+                    Şart: {['Herkese Açık', 'İstekle Katılma', 'Davetle Katılma', 'Katılma Kapalı'][match.teamAJoinTerms ?? match.joinTerms ?? 0]}
+                  </div>
+                </div>
+                <div className="rounded-xl bg-white/[0.03] p-3 border border-white/5">
+                  <div className="font-bold text-[#6e9bff]">B TAKIMI (Kaptan B)</div>
+                  <div className="text-white font-medium mt-1">{match.captainBName || (match.captainBId ? 'B Kaptanı' : 'Henüz Atanmadı')}</div>
+                  <div className="text-white/40 text-[11px] mt-1">
+                    Şart: {['Herkese Açık', 'İstekle Katılma', 'Davetle Katılma', 'Katılma Kapalı'][match.teamBJoinTerms ?? 0]}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Kadro / Roster List */}
           <div>
