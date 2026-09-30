@@ -195,7 +195,10 @@ export default function MatchesScreen() {
                 </TouchableOpacity>
               </View>
             ) : actualActiveMatches.map((match, idx) => {
-              const isOrganizer = (user?.uid && match.organizerId === user.uid) || match.organizer?.toLowerCase().includes('siz');
+              const isOrganizer = Boolean(
+                (user?.uid && match.organizerId === user.uid) ||
+                (user?.name && user.name.trim().length >= 2 && match.organizer?.toLowerCase() === user.name.trim().toLowerCase())
+              );
               const isCaptainB = Boolean(user?.uid && match.captainBId === user.uid);
               const isJoined = Boolean(user?.uid && match.slots && Object.values(match.slots).some(slot => slot?.uid === user.uid));
               

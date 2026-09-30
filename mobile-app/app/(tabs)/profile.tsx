@@ -381,7 +381,10 @@ export default function ProfileScreen() {
                 </Text>
               </View>
             ) : userMatches.slice(0, 3).map((match) => {
-              const isOrganizer = match.organizer?.toLowerCase().includes('siz');
+              const isOrganizer = Boolean(
+                (user?.uid && match.organizerId === user.uid) ||
+                (user?.name && user.name.trim().length >= 2 && match.organizer?.toLowerCase() === user.name.trim().toLowerCase())
+              );
               const barColor = isOrganizer ? theme.primary : theme.secondary;
               return (
                 <TouchableOpacity

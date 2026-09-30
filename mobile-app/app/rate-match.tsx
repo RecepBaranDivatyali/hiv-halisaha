@@ -28,7 +28,7 @@ const DEFAULT_AVATAR = 'https://lh3.googleusercontent.com/aida-public/AB6AXuDmL5
 export default function RateMatchScreen() {
   const router = useRouter();
   const { theme } = useTheme();
-  const { user } = useAuth();
+  const { user, saveUser } = useAuth();
   const styles = useStyles(theme);
   const params = useLocalSearchParams<{ matchId?: string; playerName?: string; playerAvatar?: string; matchScore?: string; isOrganizer?: string }>();
   const [scoreA, setScoreA] = useState(0);
@@ -243,6 +243,12 @@ export default function RateMatchScreen() {
           if (!list.includes(params.matchId)) {
             list.push(params.matchId);
             await AsyncStorage.setItem('@hiv_rated_matches', JSON.stringify(list));
+          }
+          if (user?.uid) {
+            await dbService.dismissMatchReview(user.uid, params.matchId);
+            await saveUser({
+              dismissedReviews: Array.from(new Set([...(user.dismissedReviews || []), params.matchId]))
+            });
           }
 
           // Değerlendirilen oyuncular haritasını güncelle

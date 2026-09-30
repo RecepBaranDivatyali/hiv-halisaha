@@ -40,7 +40,13 @@ export default function HomeScreen() {
   const [guideVisible, setGuideVisible] = useState(false);
   const [isGuideDismissed, setIsGuideDismissed] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
-  const [ratedMatches, setRatedMatches] = useState<string[]>([]);
+  const [ratedMatches, setRatedMatches] = useState<string[]>(user?.dismissedReviews || []);
+
+  useEffect(() => {
+    if (user?.dismissedReviews?.length) {
+      setRatedMatches(prev => Array.from(new Set([...prev, ...user.dismissedReviews!])));
+    }
+  }, [user?.dismissedReviews]);
 
   const showMatchCreatedFeedback = useCallback(() => {
     setCreatedMatchSuccessVisible(true);
@@ -101,10 +107,13 @@ export default function HomeScreen() {
     useCallback(() => {
       AsyncStorage.getItem('@hiv_rated_matches').then(val => {
         if (val) {
-          setRatedMatches(JSON.parse(val));
+          const list: string[] = JSON.parse(val);
+          setRatedMatches(Array.from(new Set([...list, ...(user?.dismissedReviews || [])])));
+        } else if (user?.dismissedReviews?.length) {
+          setRatedMatches(user.dismissedReviews);
         }
       }).catch(() => {});
-    }, [])
+    }, [user?.dismissedReviews])
   );
 
   const handleOpenGuide = () => {
@@ -122,9 +131,15 @@ export default function HomeScreen() {
 
   const handleDismissReview = async (matchId: string) => {
     try {
-      const updated = [...ratedMatches, matchId];
+      const updated = Array.from(new Set([...ratedMatches, matchId]));
       setRatedMatches(updated);
       await AsyncStorage.setItem('@hiv_rated_matches', JSON.stringify(updated));
+      if (user?.uid) {
+        await dbService.dismissMatchReview(user.uid, matchId);
+        await saveUser({
+          dismissedReviews: Array.from(new Set([...(user.dismissedReviews || []), matchId]))
+        });
+      }
     } catch (e) {
       console.log('Dismiss review error:', e);
     }
@@ -151,7 +166,6 @@ export default function HomeScreen() {
     const nameClean = name?.trim().toLowerCase();
 
     // 1. Organizatör kontrolü
-    if (m.organizer?.toLowerCase().includes('siz')) return true;
     if (uid && m.organizerId === uid) return true;
     if (nameClean && nameClean.length >= 2 && m.organizer?.toLowerCase() === nameClean) return true;
 
@@ -193,7 +207,8 @@ export default function HomeScreen() {
 
   // Kullanıcının kendi oluşturduğu maçlar (organizatör)
   const myMatches = matches.filter(m => 
-    m.organizer?.toLowerCase().includes('siz') || (user?.uid && m.organizerId === user.uid)
+    (user?.uid && m.organizerId === user.uid) ||
+    (user?.name && user.name.trim().length >= 2 && m.organizer?.toLowerCase() === user.name.trim().toLowerCase())
   );
 
   // 1. Bitmiş ama kullanıcı tarafından HENÜZ değerlendirilmemiş maçlar (YALNIZCA kullanıcının bizzat dahil olduğu maçlar)
@@ -205,7 +220,9 @@ export default function HomeScreen() {
   const unratedFinishedMatches = userFinishedMatches.filter(m => {
     if (!m.id || seenMatchIds.has(m.id)) return false;
     seenMatchIds.add(m.id);
-    return !ratedMatches.includes(m.id);
+    if (ratedMatches.includes(m.id)) return false;
+    if (user?.dismissedReviews?.includes(m.id)) return false;
+    return true;
   });
 
   // 2. Kullanıcının gerçekten yaklaşan (gelecek) aktif maçları - Kronolojik en yakından uzağa sıralı

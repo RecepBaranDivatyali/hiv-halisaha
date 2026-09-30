@@ -82,7 +82,7 @@ export default function MatchRoomScreen() {
   const isOrganizer = Boolean(
     (currentUid && activeMatch?.organizerId === currentUid) ||
     (currentUid && activeMatch?.captainAId === currentUid) ||
-    activeMatch?.organizer?.toLowerCase().includes('siz')
+    (user?.name && user.name.trim().length >= 2 && activeMatch?.organizer?.toLowerCase() === user.name.trim().toLowerCase())
   );
   const isCaptainA = isOrganizer || Boolean(currentUid && activeMatch?.captainAId === currentUid);
   const isCaptainB = Boolean(currentUid && activeMatch?.captainBId === currentUid);
@@ -1161,7 +1161,7 @@ export default function MatchRoomScreen() {
               const isOrg = occUid && (
                 occUid === activeMatch?.organizerId || 
                 occUid === activeMatch?.captainAId || 
-                (isOrganizer && (isMySlot || occupant?.name?.includes('Siz') || occupant?.name?.includes('Organizatör')))
+                (isOrganizer && isMySlot)
               );
               const isCapB = occUid && activeMatch?.captainBId && occUid === activeMatch.captainBId;
               if (isOrg) {

@@ -260,6 +260,21 @@ export const dbService = {
     }
   },
 
+  dismissMatchReview: async (userId: string, matchId: string) => {
+    try {
+      if (!userId || !matchId) return false;
+      const userRef = doc(db, 'users', userId);
+      await setDoc(userRef, {
+        dismissedReviews: arrayUnion(matchId),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      return true;
+    } catch (error) {
+      console.error("Maç değerlendirme bildirimi kapatma hatası:", error);
+      return false;
+    }
+  },
+
   // ==========================================
   // 2. MAÇ İŞLEMLERİ (MATCHES)
   // ==========================================

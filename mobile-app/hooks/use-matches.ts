@@ -18,7 +18,6 @@ export function isUserInMatchItem(m: any, uid?: string, name?: string): boolean 
   const nameClean = currentName?.trim().toLowerCase();
 
   // 1. Organizatör kontrolü
-  if (m.organizer?.toLowerCase().includes('siz')) return true;
   if (currentUid && m.organizerId === currentUid) return true;
   if (nameClean && nameClean.length >= 2 && m.organizer?.toLowerCase() === nameClean) return true;
 

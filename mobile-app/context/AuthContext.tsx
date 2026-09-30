@@ -44,6 +44,7 @@ export interface UserSession {
   availableDateUpdatedAt?: number;
   preferredDistrict?: string;
   availableNote?: string;
+  dismissedReviews?: string[];
 }
 
 export const INITIAL_USER: UserSession = {
