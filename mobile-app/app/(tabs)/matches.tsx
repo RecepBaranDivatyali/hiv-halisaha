@@ -48,6 +48,13 @@ export default function MatchesScreen() {
     .filter((m, i, arr) => arr.findIndex(x => x.id === m.id) === i)
     .sort((a, b) => parseTargetTimestamp(b.dateTime) - parseTargetTimestamp(a.dateTime));
 
+  // Kullanıcının daha önce en az 1 maça katılıp katılmadığı veya oluşturup oluşturmadığı
+  const hasEverPlayedOrCreated = Boolean(
+    actualPastMatches.length > 0 || 
+    (user?.stats?.matchesPlayed ?? 0) > 0 ||
+    matches.some(isUserMatch)
+  );
+
   const [menuVisible, setMenuVisible] = useState(false);
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [notifModalVisible, setNotifModalVisible] = useState(false);
@@ -185,13 +192,23 @@ export default function MatchesScreen() {
             ) : actualActiveMatches.length === 0 ? (
               <View style={{ alignItems: 'center', paddingVertical: 60, gap: 16 }}>
                 <MaterialIcons name="sports-soccer" size={64} color={theme.surfaceContainerHighest} />
-                <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 18, color: theme.textMuted, textAlign: 'center' }}>Henüz aktif maç yok</Text>
-                <Text style={{ fontFamily: Fonts.body, fontSize: 13, color: theme.textMuted, textAlign: 'center' }}>{"Sağ alttaki + butonuna basarak\nilk maçını oluştur!"}</Text>
+                <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 18, color: theme.textMuted, textAlign: 'center' }}>
+                  {activeFilter === 'mine' ? 'Dahil olduğun aktif maç yok' : 'Henüz aktif maç yok'}
+                </Text>
+                <Text style={{ fontFamily: Fonts.body, fontSize: 13, color: theme.textMuted, textAlign: 'center', maxWidth: 300, lineHeight: 19 }}>
+                  {hasEverPlayedOrCreated 
+                    ? (activeFilter === 'mine' 
+                        ? 'Şu anda dahil olduğun planlanmış bir maç bulunmuyor.\nYeni bir maç oluşturabilir veya aktif maçlara katılabilirsin.'
+                        : 'Şu anda planlanmış aktif bir maç bulunmuyor.\nYeni bir maç organize edebilirsin!')
+                    : 'Sağ alttaki + butonuna basarak\nilk maçını oluştur!'}
+                </Text>
                 <TouchableOpacity 
                   style={{ backgroundColor: theme.primary, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, marginTop: 8 }}
                   onPress={() => setCreateModalVisible(true)}
                 >
-                  <Text style={{ fontFamily: Fonts.headlineBold, color: theme.onPrimary, fontSize: 13 }}>İLK MAÇI OLUŞTUR</Text>
+                  <Text style={{ fontFamily: Fonts.headlineBold, color: theme.onPrimary, fontSize: 13 }}>
+                    {hasEverPlayedOrCreated ? 'YENİ MAÇ OLUŞTUR' : 'İLK MAÇI OLUŞTUR'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             ) : actualActiveMatches.map((match, idx) => {

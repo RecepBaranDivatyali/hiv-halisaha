@@ -543,10 +543,10 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.impactCard}>
-          {matches.length === 0 ? (
+          {matches.length === 0 && (user?.stats?.matchesPlayed ?? 0) === 0 && myMatches.length === 0 ? (
             <View style={styles.impactEmptyBox}>
               <MaterialIcons name="bar-chart" size={32} color={theme.surfaceContainerHighest} />
-              <Text style={styles.impactEmptyText}>İlk maçını oluşturunca istatistiklerin burada görünecek</Text>
+              <Text style={styles.impactEmptyText}>Maçlara katıldıkça veya maç kurdukça istatistiklerin burada görünecek</Text>
             </View>
           ) : (
             <>
