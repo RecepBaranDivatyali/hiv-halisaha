@@ -232,7 +232,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   // ── Maç Formatı ──────────────────────────────────────────────
   const [selectedMode, setSelectedMode] = useState('7v7');
   const [showAllModes, setShowAllModes] = useState(false);
-  const [matchFormatType, setMatchFormatType] = useState<'single_organizer' | 'two_captains'>('single_organizer');
+  const [matchFormatType, setMatchFormatType] = useState<'single_organizer' | 'two_captains'>('two_captains');
 
   // ── Format Uygunluk Kontrolü (Sarı & Kırmızı Uyarı) ──
   const formatWarning = useMemo(() => {
@@ -744,6 +744,28 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
             <View style={styles.section}>
               <Text style={styles.label}>ORGANİZASYON VE KAPTANLIK MODELİ</Text>
               <View style={styles.orgModelContainer}>
+                {/* 1. İki Takımlı Maç (Yaygın Model - ÜSTTE ve YEŞİL) */}
+                <TouchableOpacity
+                  style={[styles.orgModelCard, matchFormatType === 'two_captains' && styles.orgModelCardActive]}
+                  onPress={() => setMatchFormatType('two_captains')}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.orgModelHeader}>
+                    <MaterialIcons 
+                      name="military-tech" 
+                      size={20} 
+                      color={matchFormatType === 'two_captains' ? theme.primary : theme.textMuted} 
+                    />
+                    <Text style={[styles.orgModelTitle, matchFormatType === 'two_captains' && { color: theme.primary }]}>
+                      ⚔️ İki Takımlı Maç (Organizatör A vs Rakip B)
+                    </Text>
+                  </View>
+                  <Text style={styles.orgModelDesc}>
+                    A Takımı kaptanı sizsiniz. B Takımı için bir rakip kaptan belirlenebilir veya davet edilebilir. B Takımı payını rakip kaptanla koordine edebilirsiniz.
+                  </Text>
+                </TouchableOpacity>
+
+                {/* 2. Tek Organizatör (Karma Kadro) */}
                 <TouchableOpacity
                   style={[styles.orgModelCard, matchFormatType === 'single_organizer' && styles.orgModelCardActive]}
                   onPress={() => setMatchFormatType('single_organizer')}
@@ -761,26 +783,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                   </View>
                   <Text style={styles.orgModelDesc}>
                     Tüm oyuncuları ve her iki takımı tek başınıza koordine edersiniz. Karşı takımın ayrı bir kaptanı yoktur, tüm kasa doğrudan sizin sorumluluğunuzdadır.
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.orgModelCard, matchFormatType === 'two_captains' && styles.orgModelCardActive]}
-                  onPress={() => setMatchFormatType('two_captains')}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.orgModelHeader}>
-                    <MaterialIcons 
-                      name="military-tech" 
-                      size={20} 
-                      color={matchFormatType === 'two_captains' ? theme.secondary : theme.textMuted} 
-                    />
-                    <Text style={[styles.orgModelTitle, matchFormatType === 'two_captains' && { color: theme.secondary }]}>
-                      ⚔️ İki Takımlı Maç (Organizatör A vs Rakip B)
-                    </Text>
-                  </View>
-                  <Text style={styles.orgModelDesc}>
-                    A Takımı kaptanı sizsiniz. B Takımı için bir rakip kaptan belirlenebilir veya davet edilebilir. B Takımı payını rakip kaptanla koordine edebilirsiniz.
                   </Text>
                 </TouchableOpacity>
               </View>
