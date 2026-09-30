@@ -93,6 +93,21 @@ export interface MatchModel {
   createdAt?: any;
 }
 
+export interface ClubChallengeModel {
+  id?: string;
+  fromClubId?: string;
+  fromClubName: string;
+  toClubId?: string;
+  toClubName: string;
+  venue: string;
+  date: string;
+  senderId: string;
+  senderName: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  createdMatchId?: string;
+  createdAt?: any;
+}
+
 export interface ClubModel {
   id?: string;
   name: string;
@@ -112,6 +127,9 @@ export interface ClubModel {
   hasReservation?: boolean; // Kulübün hazır sahası/rezervasyonu var mı
   reservationDetails?: string; // Örn: "ODTÜ Halısaha - Çarşamba 21:00"
   availableDate?: string; // Oynamaya hazır olduğu tarih (örn: "24 Eylül", "Bugün")
+  inviteCode?: string;
+  joinPolicy?: 'open' | 'request' | 'invite' | 'closed';
+  joinRequests?: Array<{ uid: string; name: string; avatar?: string; position?: string; rating?: number; requestedAt: number }>;
   createdAt?: any;
 }
 
@@ -390,11 +408,25 @@ export const dbService = {
           });
         }
 
-        // Yedek listesindeyse, asil kadroya geçtiği için yedekten kaldır
+        // Yedek listesindeyse veya kulübedeyse (Bench), asil kadroya geçtiği için kaldır
         if (data.reserves && Array.isArray(data.reserves)) {
           const filtered = data.reserves.filter((r: any) => r.uid !== player.uid);
           if (filtered.length !== data.reserves.length) {
             updates.reserves = filtered;
+          }
+        }
+        if (data.benchA && Array.isArray(data.benchA)) {
+          const filteredA = data.benchA.filter((p: any) => p.uid !== player.uid);
+          if (filteredA.length !== data.benchA.length) {
+            updates.benchA = filteredA;
+            countDelta = 0; // Kulübedeydi, toplam katılımcı sayısı çift artmaz
+          }
+        }
+        if (data.benchB && Array.isArray(data.benchB)) {
+          const filteredB = data.benchB.filter((p: any) => p.uid !== player.uid);
+          if (filteredB.length !== data.benchB.length) {
+            updates.benchB = filteredB;
+            countDelta = 0; // Kulübedeydi, toplam katılımcı sayısı çift artmaz
           }
         }
 
@@ -490,6 +522,31 @@ export const dbService = {
         ...ratingData,
         createdAt: serverTimestamp()
       });
+
+      // Eğer MVP oyu verilmişse veya oyuncu puanlanmışsa oyuncunun profiline yansıt
+      const targetPlayerId = ratingData.ratedPlayerId || ratingData.mvpNominee;
+      if (targetPlayerId) {
+        try {
+          const userRef = doc(db, 'users', targetPlayerId);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            const uData = userSnap.data();
+            const currentRating = typeof uData.rating === 'number' ? uData.rating : 5.0;
+            const newRating = Number(((currentRating * 4 + ratingData.rating) / 5).toFixed(1));
+            const updates: Record<string, any> = {
+              rating: newRating,
+              updatedAt: serverTimestamp()
+            };
+            if (ratingData.mvpNominee && ratingData.mvpNominee === targetPlayerId) {
+              updates['stats.mvpCount'] = increment(1);
+            }
+            await updateDoc(userRef, updates);
+          }
+        } catch (uErr) {
+          console.warn("Kullanıcı profil MVP/rating güncelleme uyarısı:", uErr);
+        }
+      }
+
       return true;
     } catch (error) {
       console.error("Puan kaydetme hatası:", error);
@@ -506,6 +563,35 @@ export const dbService = {
   ) => {
     try {
       const matchRef = doc(db, 'matches', matchId);
+
+      // Kulübedeki oyuncu ise (BENCH_A_... veya BENCH_B_...)
+      if (slotKey.startsWith('BENCH_A_') || slotKey.startsWith('BENCH_B_')) {
+        const isTeamA = slotKey.startsWith('BENCH_A_');
+        const benchUid = slotKey.replace(isTeamA ? 'BENCH_A_' : 'BENCH_B_', '');
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(matchRef);
+          if (!snap.exists()) return;
+          const data = snap.data();
+          const targetBench = isTeamA ? (data.benchA || []) : (data.benchB || []);
+          const updatedBench = targetBench.map((bp: any) => {
+            if (bp.uid === benchUid) {
+              return {
+                ...bp,
+                paid,
+                ...(paymentStatus !== undefined ? { paymentStatus } : {}),
+                ...(paymentMethod !== undefined ? { paymentMethod } : {})
+              };
+            }
+            return bp;
+          });
+          tx.update(matchRef, {
+            [isTeamA ? 'benchA' : 'benchB']: updatedBench,
+            updatedAt: serverTimestamp()
+          });
+        });
+        return true;
+      }
+
       const updates: any = {
         [`slots.${slotKey}.paid`]: paid,
         updatedAt: serverTimestamp()
@@ -768,19 +854,24 @@ export const dbService = {
     }
   },
 
-  updateMatchScore: async (matchId: string, score: string) => {
+  updateMatchScore: async (matchId: string, score: string, formaGoluTeam?: 'A' | 'B' | null) => {
     try {
       const matchRef = doc(db, 'matches', matchId);
       const matchSnap = await getDoc(matchRef);
 
-      await updateDoc(matchRef, {
+      const updates: any = {
         score,
         status: 'completed',
         completedAt: serverTimestamp()
-      });
+      };
+      if (formaGoluTeam) {
+        updates.formaGoluTeam = formaGoluTeam;
+      }
+      await updateDoc(matchRef, updates);
 
       // Update player profile statistics (matchesPlayed, wins, losses, draws)
-      if (matchSnap.exists()) {
+      // Yalnızca maç daha önce tamamlanmamışsa istatistikleri artır (mükerrer artışı engelle)
+      if (matchSnap.exists() && matchSnap.data()?.status !== 'completed') {
         const data = matchSnap.data();
         const slots = data.slots || {};
         
@@ -801,6 +892,14 @@ export const dbService = {
           }
         });
 
+        // Kulübedeki (Bench) oyuncuları da dahil et
+        if (data.benchA && Array.isArray(data.benchA)) {
+          data.benchA.forEach((bp: any) => { if (bp?.uid) teamAPlayers.push(bp.uid); });
+        }
+        if (data.benchB && Array.isArray(data.benchB)) {
+          data.benchB.forEach((bp: any) => { if (bp?.uid) teamBPlayers.push(bp.uid); });
+        }
+
         const batch = writeBatch(db);
         
         const updatePlayerStats = (uid: string, result: 'win' | 'loss' | 'draw') => {
@@ -819,6 +918,12 @@ export const dbService = {
           teamAPlayers.forEach(uid => updatePlayerStats(uid, 'win'));
           teamBPlayers.forEach(uid => updatePlayerStats(uid, 'loss'));
         } else if (scoreB > scoreA) {
+          teamBPlayers.forEach(uid => updatePlayerStats(uid, 'win'));
+          teamAPlayers.forEach(uid => updatePlayerStats(uid, 'loss'));
+        } else if (formaGoluTeam === 'A') {
+          teamAPlayers.forEach(uid => updatePlayerStats(uid, 'win'));
+          teamBPlayers.forEach(uid => updatePlayerStats(uid, 'loss'));
+        } else if (formaGoluTeam === 'B') {
           teamBPlayers.forEach(uid => updatePlayerStats(uid, 'win'));
           teamAPlayers.forEach(uid => updatePlayerStats(uid, 'loss'));
         } else {
@@ -908,6 +1013,87 @@ export const dbService = {
     }
   },
 
+  getIncomingChallenges: async (clubId: string) => {
+    try {
+      const colRef = collection(db, 'club_challenges');
+      const q = query(colRef, where('toClubId', '==', clubId), where('status', '==', 'pending'), limit(20));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as ClubChallengeModel));
+    } catch (error) {
+      console.error("Gelen meydan okumalar çekme hatası:", error);
+      return [];
+    }
+  },
+
+  respondToClubChallenge: async (
+    challenge: ClubChallengeModel, 
+    action: 'accept' | 'reject', 
+    currentCaptain: { uid: string; name: string }
+  ) => {
+    try {
+      if (!challenge.id) throw new Error("Meydan okuma ID bulunamadı");
+      const chalRef = doc(db, 'club_challenges', challenge.id);
+
+      if (action === 'reject') {
+        await updateDoc(chalRef, {
+          status: 'rejected',
+          updatedAt: serverTimestamp()
+        });
+        return { success: true, action: 'reject' as const };
+      }
+
+      // Kabul edildiğinde otomatik 2 kaptanlı resmi maç oluştur
+      const createdMatch = await dbService.createMatch({
+        arena: challenge.venue || 'Halısaha',
+        dateTime: challenge.date,
+        mode: '7v7',
+        status: 'active',
+        matchFormatType: 'two_captains',
+        city: 'İstanbul',
+        fee: 150,
+        totalFee: 2100,
+        totalRequiredPlayers: 14,
+        joinedPlayersCount: 2,
+        organizer: challenge.senderName,
+        organizerId: challenge.senderId,
+        captainAId: challenge.senderId,
+        captainAName: `${challenge.fromClubName} (Kaptan ${challenge.senderName})`,
+        captainBId: currentCaptain.uid,
+        captainBName: `${challenge.toClubName} (Kaptan ${currentCaptain.name})`,
+        slots: {
+          A_OS_ORTA: {
+            uid: challenge.senderId,
+            name: challenge.senderName,
+            position: 'OS (Merkez)',
+            paid: false,
+            paymentStatus: 'unpaid',
+            joinedAt: Date.now()
+          },
+          B_OS_ORTA: {
+            uid: currentCaptain.uid,
+            name: currentCaptain.name,
+            position: 'OS (Merkez)',
+            paid: false,
+            paymentStatus: 'unpaid',
+            joinedAt: Date.now()
+          }
+        },
+        hasReservation: true
+      });
+
+      await updateDoc(chalRef, {
+        status: 'accepted',
+        createdMatchId: createdMatch.id,
+        updatedAt: serverTimestamp()
+      });
+
+      return { success: true, action: 'accept' as const, matchId: createdMatch.id };
+    } catch (error) {
+      console.error("Meydan okuma yanıtlama hatası:", error);
+      throw error;
+    }
+  },
+
   // ==========================================
   // 3. ARAMA VE FİLTRELEME (SEARCH)
   // ==========================================
@@ -942,12 +1128,23 @@ export const dbService = {
         );
       }
       if (criteria.position) {
+        const POSITION_VARIANTS: Record<string, string[]> = {
+          'KL': ['KL', 'KALECI', 'KALECİ', 'GK', 'GOALKEEPER'],
+          'DF': ['DF', 'DEFANS', 'STOPER', 'BEK', 'CB', 'LB', 'RB', 'DEFENCE'],
+          'OS': ['OS', 'ORTA SAHA', 'ORTASAHA', 'CM', 'CAM', 'CDM', 'MIDFIELD'],
+          'FV': ['FV', 'FORVET', 'SANTRAFOR', 'KANAT', 'ST', 'RW', 'LW', 'FORWARD'],
+        };
         const posList = criteria.position.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
         if (posList.length > 0) {
           players = players.filter((p: any) => {
             if (!p.position) return false;
             const pPos = p.position.toUpperCase();
-            return posList.some(targetPos => pPos.includes(targetPos));
+            return posList.some(targetPos => {
+              if (pPos.includes(targetPos)) return true;
+              const variants = POSITION_VARIANTS[targetPos];
+              if (variants && variants.some(v => pPos.includes(v))) return true;
+              return false;
+            });
           });
         }
       }
@@ -987,14 +1184,16 @@ export const dbService = {
           }
         }
       }
+      const now = Date.now();
+      // Süresi geçmiş sinyalleri pasif yap (tüm oyuncular listesinde ve sıralamada aktif gözükmesin)
+      players.forEach((p: any) => {
+        if (p.isLookingForMatch && p.availableUntil && p.availableUntil < now) {
+          p.isLookingForMatch = false;
+        }
+      });
+
       if (criteria.onlyLookingForMatch) {
-        const now = Date.now();
-        players = players.filter((p: any) => {
-          if (p.isLookingForMatch !== true) return false;
-          // Süresi dolmuş sinyalleri arama sonuçlarında gösterme
-          if (p.availableUntil && p.availableUntil < now) return false;
-          return true;
-        });
+        players = players.filter((p: any) => p.isLookingForMatch === true);
       }
       if (criteria.timeFrame && criteria.timeFrame !== 'Tümü' && criteria.timeFrame !== 'all') {
         const rawFrames = criteria.timeFrame.split(',').map(f => f.toLocaleLowerCase('tr').trim()).filter(Boolean);
@@ -1054,22 +1253,40 @@ export const dbService = {
         const diffList = criteria.difficulty.split(',').map(d => d.trim().toLocaleLowerCase('tr')).filter(Boolean);
         if (diffList.length > 0) {
           list = list.filter((m: any) => {
-            const mDiff = (m.difficulty || '').toLocaleLowerCase('tr');
+            if (!m.difficulty) return true;
+            const mDiff = m.difficulty.toLocaleLowerCase('tr');
             return diffList.some(d => mDiff.includes(d));
           });
         }
       }
       if (criteria.position) {
+        const POSITION_VARIANTS: Record<string, string[]> = {
+          'KL': ['KL', 'KALECI', 'KALECİ', 'GK', 'GOALKEEPER'],
+          'DF': ['DF', 'DEFANS', 'STOPER', 'BEK', 'CB', 'LB', 'RB'],
+          'OS': ['OS', 'ORTA SAHA', 'ORTASAHA', 'CM', 'CAM', 'CDM'],
+          'FV': ['FV', 'FORVET', 'SANTRAFOR', 'KANAT', 'ST', 'RW', 'LW'],
+        };
         const posList = criteria.position.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
         if (posList.length > 0) {
           list = list.filter((m: any) => {
             const checkSlot = (slot: any) => {
               if (!slot) return false;
               const slotPos = (slot.role || slot.position || '').toUpperCase();
-              return posList.some(p => slotPos.includes(p));
+              return posList.some(p => {
+                if (slotPos.includes(p)) return true;
+                const variants = POSITION_VARIANTS[p];
+                return variants && variants.some(v => slotPos.includes(v));
+              });
             };
             const hasOpenSlot = m.benchA?.some(checkSlot) || m.benchB?.some(checkSlot);
-            const hasReqPos = m.requiredPositions?.some((p: string) => posList.includes(p.toUpperCase()));
+            const hasReqPos = m.requiredPositions?.some((p: string) => {
+              const pUp = p.toUpperCase();
+              return posList.some(targetPos => {
+                if (pUp.includes(targetPos)) return true;
+                const variants = POSITION_VARIANTS[targetPos];
+                return variants && variants.some(v => pUp.includes(v));
+              });
+            });
             return hasOpenSlot || hasReqPos || !m.requiredPositions || m.requiredPositions.length === 0;
           });
         }
@@ -1094,11 +1311,28 @@ export const dbService = {
             const mLower = m.dateTime.toLocaleLowerCase('tr');
 
             return tfList.some(tf => {
+              const now = new Date();
               if (tf.includes('bugün')) {
-                return mLower.includes('bugün');
+                if (mLower.includes('bugün')) return true;
+                try {
+                  const mTs = parseTargetTimestamp(m.dateTime);
+                  const mDate = new Date(mTs);
+                  return mDate.toDateString() === now.toDateString();
+                } catch {
+                  return false;
+                }
               }
               if (tf.includes('yarın')) {
-                return mLower.includes('yarın');
+                if (mLower.includes('yarın')) return true;
+                try {
+                  const mTs = parseTargetTimestamp(m.dateTime);
+                  const mDate = new Date(mTs);
+                  const tmrw = new Date(now);
+                  tmrw.setDate(now.getDate() + 1);
+                  return mDate.toDateString() === tmrw.toDateString();
+                } catch {
+                  return false;
+                }
               }
               if (tf.includes('hafta sonu') || tf.includes('haftasonu')) {
                 if (mLower.includes('cumartesi') || mLower.includes('pazar')) return true;
@@ -1320,17 +1554,96 @@ export const dbService = {
   createClub: async (clubData: Omit<ClubModel, 'id'>) => {
     try {
       const clubsRef = collection(db, 'clubs');
+      const randSuffix = Math.floor(1000 + Math.random() * 9000);
+      const cleanPrefix = (clubData.name || 'HIV').replace(/[^a-zA-Z0-9]/g, '').slice(0, 3).toUpperCase() || 'HIV';
+      const generatedCode = `${cleanPrefix}-${randSuffix}`;
+
       const docRef = await addDoc(clubsRef, {
         ...clubData,
+        inviteCode: clubData.inviteCode || generatedCode,
+        joinPolicy: clubData.joinPolicy || 'open',
         points: clubData.points || 100,
         membersCount: 1,
         maxMembers: clubData.maxMembers || 50,
         level: 1,
         createdAt: serverTimestamp()
       });
-      return { id: docRef.id, ...clubData };
+      return { id: docRef.id, inviteCode: generatedCode, ...clubData };
     } catch (error) {
       console.error("Kulüp oluşturma hatası:", error);
+      throw error;
+    }
+  },
+
+  joinClubByInviteCode: async (inviteCode: string, userId: string, userName?: string) => {
+    try {
+      const cleanCode = inviteCode.trim().toUpperCase();
+      const clubsRef = collection(db, 'clubs');
+      const q = query(clubsRef, where('inviteCode', '==', cleanCode), limit(1));
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        throw new Error("Geçersiz davet kodu! Kulüp bulunamadı.");
+      }
+      const clubDoc = snap.docs[0];
+      const clubId = clubDoc.id;
+      const clubData = clubDoc.data() as ClubModel;
+      
+      await dbService.joinClub(clubId, userId, clubData.name);
+      return { id: clubId, ...clubData };
+    } catch (error) {
+      console.error("Davet kodu ile katılma hatası:", error);
+      throw error;
+    }
+  },
+
+  updateClubJoinPolicy: async (clubId: string, joinPolicy: 'open' | 'request' | 'invite' | 'closed') => {
+    try {
+      const clubRef = doc(db, 'clubs', clubId);
+      await updateDoc(clubRef, {
+        joinPolicy,
+        updatedAt: serverTimestamp()
+      });
+      return true;
+    } catch (error) {
+      console.error("Kulüp katılım politikası güncelleme hatası:", error);
+      throw error;
+    }
+  },
+
+  requestToJoinClub: async (clubId: string, applicant: { uid: string; name: string; avatar?: string; position?: string; rating?: number }) => {
+    try {
+      const clubRef = doc(db, 'clubs', clubId);
+      await updateDoc(clubRef, {
+        joinRequests: arrayUnion({
+          ...applicant,
+          requestedAt: Date.now()
+        })
+      });
+      return true;
+    } catch (error) {
+      console.error("Kulübe katılma isteği hatası:", error);
+      throw error;
+    }
+  },
+
+  respondToJoinRequest: async (clubId: string, applicant: { uid: string; name: string }, action: 'accept' | 'reject') => {
+    try {
+      const clubRef = doc(db, 'clubs', clubId);
+      const snap = await getDoc(clubRef);
+      if (!snap.exists()) throw new Error("Kulüp bulunamadı");
+      const cData = snap.data() as ClubModel;
+      const filteredRequests = (cData.joinRequests || []).filter(r => r.uid !== applicant.uid);
+
+      if (action === 'accept') {
+        await dbService.joinClub(clubId, applicant.uid, cData.name);
+      }
+
+      await updateDoc(clubRef, {
+        joinRequests: filteredRequests
+      });
+      return true;
+    } catch (error) {
+      console.error("Katılım isteğini yanıtlama hatası:", error);
       throw error;
     }
   },
@@ -1401,6 +1714,32 @@ export const dbService = {
     try {
       if (!clubId) return true;
       const clubRef = doc(db, 'clubs', clubId);
+
+      // Kulüp üyelerinin tümünün profilinden kulüp bilgilerini temizle
+      try {
+        const snap = await getDoc(clubRef);
+        if (snap.exists()) {
+          const cData = snap.data();
+          const allMembers: string[] = Array.isArray(cData.members) ? cData.members : [];
+          if (captainId && !allMembers.includes(captainId)) allMembers.push(captainId);
+          
+          const batch = writeBatch(db);
+          allMembers.forEach(mId => {
+            if (mId) {
+              const uRef = doc(db, 'users', mId);
+              batch.set(uRef, {
+                clubId: deleteField(),
+                clubName: deleteField(),
+                clubLogo: deleteField(),
+                updatedAt: serverTimestamp()
+              }, { merge: true });
+            }
+          });
+          await batch.commit().catch(e => console.warn("Üye profilleri temizleme uyarısı:", e));
+        }
+      } catch (err) {
+        console.warn("deleteClub üye temizleme hatası:", err);
+      }
 
       // Kulüp dokümanını doğrudan sil
       await deleteDoc(clubRef).catch((e) => console.warn("deleteDoc clubRef warning:", e));

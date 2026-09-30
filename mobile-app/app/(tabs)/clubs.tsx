@@ -71,19 +71,80 @@ export default function ClubsScreen() {
       Alert.alert('Giriş Yapın', 'Kulübe katılmak için lütfen giriş yapın.');
       return;
     }
-    if (user?.clubId === club.id) {
-      Alert.alert('Zaten Üyesiniz', `Zaten ${club.name} kulübünün bir üyesisiniz.`);
+    if (user?.clubId) {
+      if (user.clubId === club.id) {
+        Alert.alert('Zaten Üyesiniz', `Zaten ${club.name} kulübünün bir üyesisiniz.`);
+      } else {
+        Alert.alert(
+          'Mevcut Kulübünüz Var',
+          'Başka bir kulübe katılabilmek için önce mevcut kulübünüzden ayrılmanız veya kulübünüzü silmeniz gerekmektedir.'
+        );
+      }
       return;
     }
     if ((club.membersCount ?? 0) >= (club.maxMembers ?? 50)) {
       Alert.alert('Kulüp Dolu', 'Bu kulüp maksimum üye kapasitesine ulaşmıştır.');
       return;
     }
+
+    if (club.joinPolicy === 'closed') {
+      Alert.alert('Katılıma Kapalı', 'Bu kulüp şu an yeni üye alımına kapalıdır.');
+      return;
+    }
+
+    if (club.joinPolicy === 'invite') {
+      Alert.alert(
+        'Davet Kodu Gerekli',
+        `"${club.name}" kulübüne katılabilmek için kulübün davet kodunu girmeniz gerekmektedir.`,
+        [
+          { text: 'Vazgeç', style: 'cancel' },
+          {
+            text: 'Davet Kodunu Gir',
+            onPress: () => {
+              setClubActionTab('join');
+              setClubActionVisible(true);
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    if (club.joinPolicy === 'request') {
+      Alert.alert(
+        'Katılım İsteği',
+        `"${club.name}" onaylı katılım sistemine sahiptir. Kaptana katılım isteği gönderilsin mi?`,
+        [
+          { text: 'Vazgeç', style: 'cancel' },
+          {
+            text: 'İstek Gönder',
+            onPress: async () => {
+              try {
+                if (club.id && user?.uid) {
+                  await dbService.requestToJoinClub(club.id, {
+                    uid: user.uid,
+                    name: user.name || 'Oyuncu',
+                    avatar: user.avatar,
+                    position: user.position,
+                    rating: user.rating,
+                  });
+                  Alert.alert('İstek Gönderildi 📩', 'Katılım isteğiniz kulüp kaptanına iletildi.');
+                }
+              } catch {
+                Alert.alert('Hata', 'Katılım isteği iletilirken bir hata oluştu.');
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
+
     try {
       if (club.id) {
-        const uid = user.uid; // narrowed: user?.uid guard above already ensures user is defined
+        const uid = user.uid;
         await dbService.joinClub(club.id, uid, club.name);
-        await saveUser({ clubId: club.id, clubName: club.name });
+        await saveUser({ clubId: club.id, clubName: club.name, clubLogo: club.logo });
         Alert.alert('Tebrikler! ⚽️', `${club.name} kulübüne katıldınız!`);
         router.push('/my-club');
       }

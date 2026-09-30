@@ -152,15 +152,45 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
         setIsSubmitting(false);
       }
     } else {
+      if (!user?.uid) {
+        Alert.alert('Giriş Yapın', 'Kulübe katılmak için lütfen önce giriş yapın.');
+        return;
+      }
+      if (user?.clubId) {
+        Alert.alert('Zaten Kulübünüz Var', 'Başka bir kulübe katılabilmek için önce mevcut kulübünüzden ayrılmalı veya kulübünüzü silmelisiniz.');
+        return;
+      }
       if (!inviteCode.trim()) {
         Alert.alert('Eksik Bilgi', 'Lütfen davet kodunu girin.');
         return;
       }
-      Alert.alert(
-        'İstek İletildi ⚽',
-        `"${inviteCode.trim().toUpperCase()}" kodlu kulübe katılım isteğiniz iletildi. Kaptan onayladığında bildirim alacaksınız.`,
-        [{ text: 'Tamam', onPress: onClose }]
-      );
+      setIsSubmitting(true);
+      try {
+        const joined = await dbService.joinClubByInviteCode(inviteCode.trim(), user.uid, user.name);
+        await saveUser({
+          clubId: joined.id,
+          clubName: joined.name,
+          clubLogo: joined.logo
+        });
+        setInviteCode('');
+        onClose();
+        if (onSuccess) onSuccess();
+        Alert.alert(
+          'Tebrikler! ⚽️',
+          `"${joined.name}" kulübüne başarıyla katıldınız!`,
+          [
+            {
+              text: 'Kulübüme Git',
+              onPress: () => router.push('/my-club')
+            }
+          ]
+        );
+      } catch (err: any) {
+        console.error('Davet kodu katılım hatası:', err);
+        Alert.alert('Hata', err?.message || 'Geçersiz davet kodu veya kulübe katılırken sorun oluştu.');
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 

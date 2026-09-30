@@ -33,6 +33,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
   const { user } = useAuth();
   const styles = useStyles(theme);
 
+  const [selectedClub, setSelectedClub] = useState<ClubModel | null>(targetClub || null);
   const [selectedClubName, setSelectedClubName] = useState('');
   const [selectedVenue, setSelectedVenue] = useState('');
   const [selectedDate, setSelectedDate] = useState(DEFAULT_DATES[0]);
@@ -46,11 +47,14 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
 
   useEffect(() => {
     if (targetClub?.name) {
+      setSelectedClub(targetClub);
       setSelectedClubName(targetClub.name);
     } else if (clubsList.length > 0) {
       const other = clubsList.find(c => c.id !== user?.clubId) || clubsList[0];
+      setSelectedClub(other);
       setSelectedClubName(other.name);
     } else {
+      setSelectedClub(null);
       setSelectedClubName('Rakip Kulüp');
     }
 
@@ -65,13 +69,16 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
       return;
     }
 
+    const resolvedTargetClubId = targetClub?.id || selectedClub?.id;
+    const resolvedTargetClubName = targetClub?.name || selectedClub?.name || selectedClubName;
+
     setIsSubmitting(true);
     try {
       await dbService.sendClubChallenge({
         fromClubId: user.clubId || undefined,
         fromClubName: user.clubName || 'Kulübüm',
-        toClubId: targetClub?.id,
-        toClubName: selectedClubName,
+        toClubId: resolvedTargetClubId,
+        toClubName: resolvedTargetClubName,
         venue: selectedVenue || 'Halısaha',
         date: selectedDate,
         senderId: user.uid || 'anon',
@@ -80,7 +87,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
 
       Alert.alert(
         '⚔️ Meydan Okuma Gönderildi!',
-        `"${selectedClubName}" kulübüne maç teklifiniz iletildi.\n\n• Saha: ${selectedVenue}\n• Tarih: ${selectedDate}\n\nRakip kaptan onayladığında maç odası açılacaktır.`,
+        `"${resolvedTargetClubName}" kulübüne maç teklifiniz iletildi.\n\n• Saha: ${selectedVenue}\n• Tarih: ${selectedDate}\n\nRakip kaptan onayladığında maç odası açılacaktır.`,
         [{ text: 'Tamam', onPress: onClose }]
       );
     } catch {
@@ -128,8 +135,11 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
                   {clubsList.filter(c => c.id !== user?.clubId).slice(0, 4).map((c) => (
                     <TouchableOpacity
                       key={c.id || c.name}
-                      style={[styles.clubCard, selectedClubName === c.name && styles.clubCardActive]}
-                      onPress={() => setSelectedClubName(c.name)}
+                      style={[styles.clubCard, (selectedClub?.id === c.id || selectedClubName === c.name) && styles.clubCardActive]}
+                      onPress={() => {
+                        setSelectedClub(c);
+                        setSelectedClubName(c.name);
+                      }}
                     >
                       <MaterialIcons name="shield" size={20} color={selectedClubName === c.name ? '#a855f7' : theme.textMuted} />
                       <Text style={[styles.clubCardText, selectedClubName === c.name && styles.clubCardTextActive]}>{c.name}</Text>

@@ -184,7 +184,7 @@ export default function ResultsScreen() {
                       </View>
                       <Text style={styles.playerPos}>{player.position || 'Oyuncu'} • {player.city || 'İSTANBUL'}{player.district ? ` / ${player.district}` : ''}</Text>
                       {player.isLookingForMatch && player.availableNote ? (
-                        <Text style={styles.playerAvailableNote} numberOfLines={1}>💬 &quot;{player.availableNote}&quot;</Text>
+                        <Text style={styles.playerAvailableNote} numberOfLines={1}>💬 "{player.availableNote}"</Text>
                       ) : null}
                     </View>
                     <View style={styles.playerRatingBox}>

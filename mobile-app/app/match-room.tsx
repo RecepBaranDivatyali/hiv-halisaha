@@ -16,6 +16,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { dbService, MatchModel, BenchPlayer } from '@/services/dbService';
 import { auth } from '@/services/firebaseConfig';
 import { PITCH_DATABASE } from '@/config/pitches';
+import { parseTargetTimestamp } from '@/services/dateUtils';
 
 interface PlayerPayment {
   slotKey: string;
@@ -650,18 +651,9 @@ export default function MatchRoomScreen() {
   // Remaining hours calculation for tiered penalty
   const calculateHoursUntilMatch = (dateTimeStr: string): number => {
     try {
-      const timeMatch = dateTimeStr.match(/(\d{1,2}):(\d{2})/);
-      const now = new Date();
-      if (timeMatch) {
-        const h = parseInt(timeMatch[1], 10);
-        const m = parseInt(timeMatch[2], 10);
-        const target = new Date();
-        target.setHours(h, m, 0, 0);
-        if (target.getTime() < now.getTime()) {
-          target.setDate(target.getDate() + 1);
-        }
-        return (target.getTime() - now.getTime()) / (1000 * 3600);
-      }
+      const targetTs = parseTargetTimestamp(dateTimeStr);
+      const hoursLeft = (targetTs - Date.now()) / (1000 * 3600);
+      return hoursLeft > 0 ? hoursLeft : 0;
     } catch {}
     return 25; // Default: > 24 hours
   };
@@ -846,7 +838,6 @@ export default function MatchRoomScreen() {
     // If user is already on another pitch slot in this team:
     if (userSlot && userSlot !== slotKey) {
       try {
-        await dbService.leaveMatchSlot(targetMatchId, userSlot, effUid);
         await dbService.joinMatchSlot(targetMatchId, slotKey, {
           uid: effUid,
           name: user?.name || auth.currentUser?.displayName || 'Oyuncu',
@@ -1414,6 +1405,18 @@ export default function MatchRoomScreen() {
             </View>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {isOrganizer && activeMatch?.status !== 'completed' && (
+              <TouchableOpacity 
+                style={{ backgroundColor: `${theme.primary}26`, borderWidth: 1, borderColor: theme.primary, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }} 
+                onPress={() => setScoreModalVisible(true)} 
+                accessibilityLabel="Maçı Bitir ve Skor Gir" 
+                accessibilityRole="button"
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="sports-score" size={16} color={theme.primary} />
+                <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 11, color: theme.primary }}>BİTİR</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={styles.iconBtnHover} onPress={handleShareMatch} accessibilityLabel="Kadro Paylaş" accessibilityRole="button">
               <MaterialIcons name="share" size={20} color={theme.primary} />
             </TouchableOpacity>
@@ -1429,6 +1432,33 @@ export default function MatchRoomScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          {isOrganizer && activeMatch?.status !== 'completed' && (
+            <TouchableOpacity 
+              style={{ 
+                backgroundColor: `${theme.primary}18`, 
+                borderWidth: 1.5, 
+                borderColor: theme.primary, 
+                borderRadius: 14, 
+                paddingVertical: 14, 
+                paddingHorizontal: 16, 
+                flexDirection: 'row', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                gap: 8,
+                marginBottom: 10
+              }}
+              onPress={() => setScoreModalVisible(true)}
+              activeOpacity={0.85}
+              accessibilityLabel="Maçı Bitir ve Skor Gir"
+              accessibilityRole="button"
+            >
+              <MaterialIcons name="sports-score" size={22} color={theme.primary} />
+              <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.primary, letterSpacing: 0.5 }}>
+                MAÇI BİTİR VE SKOR GİR
+              </Text>
+            </TouchableOpacity>
+          )}
+
           {/* 1. Saha & Maç Bilgi Kartı (Saha Adı, İlçe/Şehir, Tarih/Saat, Format ve Rezervasyon Durumu) */}
           <TouchableOpacity 
             style={styles.venueInfoCard} 

@@ -203,7 +203,7 @@ export default function SearchScreen() {
       params: { 
         tab: activeTab, 
         pos: posParam, 
-        difficulty: diffParam, 
+        difficulty: activeTab === 'Rakip' ? diffParam : undefined, 
         level: minRating > 0 ? `${minRating.toFixed(1)}+` : undefined, 
         minRating: minRating > 0 ? minRating.toString() : undefined,
         maxRating: maxRating < 10 ? maxRating.toString() : undefined,
@@ -249,6 +249,8 @@ export default function SearchScreen() {
             setActiveRatingPreset('all');
             setSelectedDifficulties(['Eğlence']);
             setSelectedTimeFrames([]);
+            setReservationStatus('all');
+            setPlayerStatus('looking');
             Alert.alert('Filtreler Sıfırlandı', 'Arama kriterleri varsayılan değerlere döndürüldü.');
           }} 
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
