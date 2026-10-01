@@ -12,7 +12,23 @@
       "destination": "/admin/index.html"
     },
     {
-      "source": "/((?!admin|_expo|assets|favicon\\.ico|manifest\\.json|sw\\.js|icons).*)",
+      "source": "/privacy.html",
+      "destination": "/privacy.html"
+    },
+    {
+      "source": "/privacy",
+      "destination": "/privacy.html"
+    },
+    {
+      "source": "/delete-account.html",
+      "destination": "/delete-account.html"
+    },
+    {
+      "source": "/delete-account",
+      "destination": "/delete-account.html"
+    },
+    {
+      "source": "/((?!admin|_expo|assets|favicon\\.ico|manifest\\.json|sw\\.js|icons|privacy|delete-account).*)",
       "destination": "/index.html"
     }
   ],
