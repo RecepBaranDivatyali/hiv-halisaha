@@ -151,6 +151,7 @@ export default function MatchRoomScreen() {
   const [storyModalVisible, setStoryModalVisible] = useState(false);
   const [formationModalVisible, setFormationModalVisible] = useState(false);
   const [slotActionModalVisible, setSlotActionModalVisible] = useState(false);
+  const [cancelMatchModalVisible, setCancelMatchModalVisible] = useState(false);
   const [slotActionData, setSlotActionData] = useState<{
     slotKey: string;
     slotLabel: string;
@@ -1341,51 +1342,37 @@ export default function MatchRoomScreen() {
 
   // Organizer: Cancel / Delete Match
   const handleCancelMatch = () => {
-    if (!isOrganizer) return;
-
-    const executeDelete = async () => {
-      try {
-        // Soft delete: mark as cancelled instead of hard deleting
-        await dbService.updateMatch(activeMatchId, { status: 'cancelled', cancelledAt: new Date().toISOString() });
-        // Notify all participants via match chat
-        await dbService.sendMessage(`match_${activeMatchId}`, {
-          text: '❌ Maç organizatör tarafından iptal edildi.',
-          senderId: 'system',
-          senderName: 'Sistem'
-        });
-        await reloadMatches();
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-          window.alert('Maçınız başarıyla iptal edildi.');
-        } else {
-          Alert.alert('İptal Edildi', 'Maçınız başarıyla iptal edildi.');
-        }
-        router.replace('/(tabs)');
-      } catch (err) {
-        console.error('Maç iptal edilirken hata:', err);
-        Alert.alert('Hata', 'Maç iptal edilirken bir sorun oluştu.');
-      }
-    };
-
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const confirmed = window.confirm('Bu maçı yayından kaldırmak ve iptal etmek istediğinize emin misiniz? Bu işlem geri alınamaz.');
-      if (confirmed) {
-        executeDelete();
+    if (!isOrganizer) {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert('Yalnızca maç organizatörü maçı iptal edebilir.');
+      } else {
+        Alert.alert('Yetki Yok', 'Yalnızca maç organizatörü maçı iptal edebilir.');
       }
       return;
     }
+    setCancelMatchModalVisible(true);
+  };
 
-    Alert.alert(
-      'Maçı İptal Et',
-      'Bu maçı yayından kaldırmak ve iptal etmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        { 
-          text: 'Maçı İptal Et', 
-          style: 'destructive',
-          onPress: executeDelete
-        }
-      ]
-    );
+  const executeDeleteMatch = async () => {
+    setCancelMatchModalVisible(false);
+    try {
+      await deleteMatch(activeMatchId);
+      await dbService.sendMessage(`match_${activeMatchId}`, {
+        text: '❌ Maç organizatör tarafından iptal edildi.',
+        senderId: 'system',
+        senderName: 'Sistem'
+      }).catch(() => {});
+      await reloadMatches();
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert('Maçınız başarıyla iptal edildi.');
+      } else {
+        Alert.alert('İptal Edildi', 'Maçınız başarıyla iptal edildi.');
+      }
+      router.replace('/(tabs)/matches');
+    } catch (err) {
+      console.error('Maç iptal edilirken hata:', err);
+      Alert.alert('Hata', 'Maç iptal edilirken bir sorun oluştu.');
+    }
   };
 
   const renderSlotItem = (keySuffix: string, roleName: string, numberStr: string) => {
@@ -2224,6 +2211,103 @@ export default function MatchRoomScreen() {
               )}
             </View>
           </View>
+
+          {/* ⚡ KULLANICININ MEVKİ & AYRILMA / İPTAL AKSİYON KARTI */}
+          {(userSlot || isOrganizer) && (
+            <View style={{
+              marginHorizontal: 16,
+              marginTop: 12,
+              marginBottom: 10,
+              backgroundColor: theme.surfaceContainer,
+              borderWidth: 1,
+              borderColor: userSlot ? `${theme.primary}50` : 'rgba(239, 68, 68, 0.4)',
+              borderRadius: 16,
+              padding: 14,
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                  <MaterialIcons 
+                    name={userSlot ? "sports-soccer" : "admin-panel-settings"} 
+                    size={20} 
+                    color={userSlot ? theme.primary : '#ef4444'} 
+                  />
+                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.text }}>
+                    {userSlot 
+                      ? `${activeMatch?.slots?.[userSlot]?.position || userSlot.replace(/^[AB]_/, '')} Mevkisindesiniz`
+                      : 'Organizatör Yönetim Paneli'}
+                  </Text>
+                </View>
+                {userSlot && (
+                  <View style={{ backgroundColor: `${theme.primary}20`, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                    <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 10, color: theme.primary }}>KADRODASINIZ</Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {userSlot && (
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      height: 42,
+                      borderRadius: 10,
+                      backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                      borderWidth: 1,
+                      borderColor: 'rgba(239, 68, 68, 0.3)',
+                    }}
+                    onPress={() => {
+                      const hoursLeft = calculateHoursUntilMatch(matchDateTime);
+                      let penalty = 0;
+                      if (hoursLeft <= 2) penalty = 15;
+                      else if (hoursLeft <= 6) penalty = 8;
+                      else if (hoursLeft <= 24) penalty = 3;
+                      setSlotActionData({
+                        slotKey: userSlot,
+                        slotLabel: activeMatch?.slots?.[userSlot]?.position || userSlot.replace(/^[AB]_/, ''),
+                        penalty,
+                      });
+                      setSlotActionModalVisible(true);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <MaterialIcons name="logout" size={16} color="#ef4444" />
+                    <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: "#ef4444" }}>
+                      Mevkiden / Maçtan Ayrıl
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {isOrganizer && (
+                  <TouchableOpacity
+                    style={{
+                      flex: userSlot ? 1 : undefined,
+                      width: userSlot ? undefined : '100%',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      height: 42,
+                      borderRadius: 10,
+                      backgroundColor: 'rgba(239, 68, 68, 0.18)',
+                      borderWidth: 1,
+                      borderColor: '#ef4444',
+                    }}
+                    onPress={handleCancelMatch}
+                    activeOpacity={0.8}
+                  >
+                    <MaterialIcons name="delete-forever" size={17} color="#ef4444" />
+                    <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: "#ef4444" }}>
+                      Maçı İptal Et (Yayından Kaldır)
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )}
 
           {/* 🪑 YEDEK KULÜBESİ (TEAM BENCH) */}
           {(() => {
@@ -3230,6 +3314,50 @@ export default function MatchRoomScreen() {
                 <TouchableOpacity
                   style={{ height: 44, borderRadius: 12, backgroundColor: theme.surfaceContainerHighest, justifyContent: 'center', alignItems: 'center', marginTop: 4 }}
                   onPress={() => setSlotActionModalVisible(false)}
+                >
+                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.textMuted }}>
+                    Vazgeç
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Maç İptal Onay Modalı */}
+        <Modal
+          visible={cancelMatchModalVisible}
+          onRequestClose={() => setCancelMatchModalVisible(false)}
+          animationType="fade"
+          transparent
+        >
+          <View style={styles.scoreModalOverlay}>
+            <View style={styles.scoreModalContent}>
+              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(239, 68, 68, 0.15)', justifyContent: 'center', alignItems: 'center', marginBottom: 12 }}>
+                <MaterialIcons name="delete-forever" size={32} color={theme.error} />
+              </View>
+
+              <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 17, color: theme.text, textAlign: 'center', marginBottom: 6 }}>
+                MAÇI İPTAL ET
+              </Text>
+
+              <Text style={{ fontFamily: Fonts.body, fontSize: 13, color: theme.textMuted, textAlign: 'center', marginBottom: 20, lineHeight: 19 }}>
+                Bu maçı yayından kaldırmak ve iptal etmek istediğinize emin misiniz? Katılımcılara bildirim gönderilecek ve maç listeden silinecektir.
+              </Text>
+
+              <View style={{ width: '100%', gap: 10 }}>
+                <TouchableOpacity
+                  style={{ height: 48, borderRadius: 12, backgroundColor: theme.error, justifyContent: 'center', alignItems: 'center' }}
+                  onPress={executeDeleteMatch}
+                >
+                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 14, color: '#fff' }}>
+                    Evet, Maçı İptal Et
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{ height: 44, borderRadius: 12, backgroundColor: theme.surfaceContainerHighest, justifyContent: 'center', alignItems: 'center' }}
+                  onPress={() => setCancelMatchModalVisible(false)}
                 >
                   <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.textMuted }}>
                     Vazgeç

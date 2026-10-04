@@ -72,7 +72,7 @@ export function useMatches() {
       const cached = await AsyncStorage.getItem(MATCHES_CACHE_KEY);
       if (cached) {
         const parsed = JSON.parse(cached) as MatchItemFull[];
-        setMatches(parsed.filter(m => !isMatchPast(m.dateTime)));
+        setMatches(parsed.filter(m => !isMatchPast(m.dateTime) && m.status !== 'cancelled' && m.status !== 'completed'));
       }
 
       // 2. Firestore'dan güncel aktif ve geçmiş maçları çek (kullanıcıya özel geçmiş maçlar)
@@ -85,6 +85,7 @@ export function useMatches() {
       const pastFromActive: MatchItemFull[] = [];
 
       for (const m of ((remoteMatches as MatchItemFull[]) || [])) {
+        if (m.status === 'cancelled') continue;
         if (isMatchPast(m.dateTime) || m.status === 'completed') {
           // Sadece kullanıcının bizzat katıldığı geçmiş maçları ekle
           if (isUserInMatchItem(m, currentUid, currentName)) {
@@ -199,7 +200,7 @@ export function useMatches() {
 
   const deleteMatch = async (matchId: string) => {
     try {
-      await dbService.deleteMatch(matchId);
+      await dbService.updateMatch(matchId, { status: 'cancelled', cancelledAt: new Date().toISOString() });
     } catch (e) {
       console.log('Maç silme hatası (Firestore):', e);
     }

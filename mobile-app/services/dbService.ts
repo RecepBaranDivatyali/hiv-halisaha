@@ -559,18 +559,35 @@ export const dbService = {
           throw new Error("Maç bulunamadı!");
         }
         const data = matchDoc.data();
-        if (!data.slots || !data.slots[slotKey]) {
+        if (!data.slots) {
           throw new Error("Mevki zaten boş!");
         }
-        if (userId && data.slots[slotKey].uid !== userId) {
+
+        // Exact match or fallback by user UID or alias key
+        let targetKey = slotKey;
+        if (!data.slots[targetKey]) {
+          const alternateKey = Object.keys(data.slots).find(k => 
+            (userId && data.slots[k]?.uid === userId) ||
+            k === slotKey.replace(/^[AB]_/, '') ||
+            k === `A_${slotKey}` ||
+            k === `B_${slotKey}`
+          );
+          if (alternateKey) {
+            targetKey = alternateKey;
+          } else {
+            throw new Error("Mevki zaten boş!");
+          }
+        }
+
+        if (userId && data.slots[targetKey]?.uid && data.slots[targetKey].uid !== userId) {
           throw new Error("Bu mevki size ait değil!");
         }
-        const slotData = data.slots[slotKey];
+        const slotData = data.slots[targetKey];
         wasPaid = Boolean(slotData?.paid || slotData?.paymentStatus === 'paid' || slotData?.paymentStatus === 'pending_approval');
         playerName = slotData?.name || 'Oyuncu';
 
         transaction.update(matchRef, {
-          [`slots.${slotKey}`]: deleteField(),
+          [`slots.${targetKey}`]: deleteField(),
           joinedPlayersCount: increment(-1)
         });
       });

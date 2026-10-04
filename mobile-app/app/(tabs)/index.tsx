@@ -207,8 +207,10 @@ export default function HomeScreen() {
 
   // Kullanıcının kendi oluşturduğu maçlar (organizatör)
   const myMatches = matches.filter(m => 
-    (user?.uid && m.organizerId === user.uid) ||
-    (user?.name && user.name.trim().length >= 2 && m.organizer?.toLowerCase() === user.name.trim().toLowerCase())
+    m.status !== 'cancelled' && (
+      (user?.uid && m.organizerId === user.uid) ||
+      (user?.name && user.name.trim().length >= 2 && m.organizer?.toLowerCase() === user.name.trim().toLowerCase())
+    )
   );
 
   // 1. Bitmiş ama kullanıcı tarafından HENÜZ değerlendirilmemiş maçlar (YALNIZCA kullanıcının bizzat dahil olduğu maçlar)
