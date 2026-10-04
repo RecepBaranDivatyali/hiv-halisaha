@@ -338,6 +338,26 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
 
   const handleCreate = async () => {
     if (isSubmitting) return;
+
+    if (totalFeeNum <= 0 || isNaN(totalFeeNum)) {
+      Alert.alert('Geçersiz Ücret', 'Lütfen geçerli bir toplam halısaha ücreti giriniz.');
+      return;
+    }
+
+    if (isToday(selectedDate) && !isTimeFlexible && selectedTimeSlot) {
+      const parts = selectedTimeSlot.split('-')[0].trim().split(':');
+      const startHour = parseInt(parts[0], 10);
+      const startMin = parseInt(parts[1], 10) || 0;
+      if (!isNaN(startHour)) {
+        const slotDate = new Date();
+        slotDate.setHours(startHour, startMin, 0, 0);
+        if (slotDate.getTime() < Date.now()) {
+          Alert.alert('Geçersiz Saat', 'Seçtiğiniz maç saati geçmişte kalmıştır. Lütfen ileri bir saat dilimi seçiniz.');
+          return;
+        }
+      }
+    }
+
     setIsSubmitting(true);
     const dateStr = formatDateTR(selectedDate);
     const targetDistrict = isPitchFlexible 

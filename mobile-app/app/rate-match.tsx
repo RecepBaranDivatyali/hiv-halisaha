@@ -282,17 +282,30 @@ export default function RateMatchScreen() {
           <TouchableOpacity style={styles.iconBtnHover} onPress={() => {
             const rateableRoster = roster.filter(p => p.id !== user?.uid);
             const evaluatedCount = Object.keys(evaluatedPlayers).length;
+            const handleExit = () => {
+              if (params.matchId && user) {
+                saveUser({
+                  dismissedReviews: Array.from(new Set([...(user.dismissedReviews || []), params.matchId]))
+                }).catch(() => {});
+              }
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace('/(tabs)');
+              }
+            };
+
             if (rateableRoster.length > 0 && evaluatedCount < rateableRoster.length) {
               Alert.alert(
                 'Değerlendirme Tamamlanmadı',
                 `${rateableRoster.length - evaluatedCount} oyuncuyu henüz değerlendirmediniz. Çıkmak istediğinize emin misiniz?`,
                 [
                   { text: 'Devam Et', style: 'cancel' },
-                  { text: 'Çık', style: 'destructive', onPress: () => router.back() },
+                  { text: 'Çık', style: 'destructive', onPress: handleExit },
                 ]
               );
             } else {
-              router.back();
+              handleExit();
             }
           }}>
             <MaterialIcons name="arrow-back" size={24} color={theme.primary} />

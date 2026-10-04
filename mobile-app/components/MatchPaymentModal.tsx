@@ -234,7 +234,7 @@ export const MatchPaymentModal: React.FC<MatchPaymentModalProps> = ({
                       <View style={styles.tipBox}>
                         <MaterialIcons name="info-outline" size={14} color={theme.textMuted} />
                         <Text style={styles.tipText}>
-                          FAST ile gönderirken açıklama kısmına <Text style={{ color: theme.primary, fontWeight: 'bold' }}>&quot;{user?.name || 'Adınız'}&quot;</Text> yazmayı unutmayın.
+                          FAST ile gönderirken açıklama kısmına <Text style={{ color: theme.primary, fontWeight: 'bold' }}>"{user?.name || 'Adınız'}"</Text> yazmayı unutmayın.
                         </Text>
                       </View>
 

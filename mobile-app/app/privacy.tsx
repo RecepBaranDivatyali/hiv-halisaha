@@ -24,7 +24,7 @@ export default function PrivacyPolicyScreen() {
         <Text style={[styles.date, { color: theme.textMuted }]}>Son Güncelleme: 1 Ekim 2026</Text>
 
         <Text style={[styles.paragraph, { color: theme.text }]}>
-          H.İ.V Halısaha (&quot;Halısahaya İhtiyacım Var&quot;), kullanıcılarının gizliliğine ve kişisel verilerinin korunmasına büyük önem vermektedir. Bu Gizlilik Politikası, uygulamamızı kullandığınızda toplanan, işlenen ve korunan verilere ilişkin hak ve yükümlülüklerinizi açıklar.
+          H.İ.V Halısaha ("Halısahaya İhtiyacım Var"), kullanıcılarının gizliliğine ve kişisel verilerinin korunmasına büyük önem vermektedir. Bu Gizlilik Politikası, uygulamamızı kullandığınızda toplanan, işlenen ve korunan verilere ilişkin hak ve yükümlülüklerinizi açıklar.
         </Text>
 
         <Text style={[styles.sectionTitle, { color: theme.text }]}>1. Toplanan Bilgiler</Text>
@@ -49,7 +49,7 @@ export default function PrivacyPolicyScreen() {
 
         <Text style={[styles.sectionTitle, { color: theme.text }]}>4. Hesap ve Veri Silme Talebi</Text>
         <Text style={[styles.paragraph, { color: theme.text }]}>
-          Kullanıcılar diledikleri zaman hesaplarını ve ilişkili tüm kişisel verilerini silebilirler. Hesabınızı uygulama içinden &quot;Ayarlar &gt; Hesabımı Sil&quot; adımıyla veya bize doğrudan e-posta göndererek kalıcı olarak sildirebilirsiniz.
+          Kullanıcılar diledikleri zaman hesaplarını ve ilişkili tüm kişisel verilerini silebilirler. Hesabınızı uygulama içinden "Ayarlar → Hesabımı Sil" adımıyla veya bize doğrudan e-posta göndererek kalıcı olarak sildirebilirsiniz.
         </Text>
 
         <Text style={[styles.sectionTitle, { color: theme.text }]}>5. İletişim</Text>
