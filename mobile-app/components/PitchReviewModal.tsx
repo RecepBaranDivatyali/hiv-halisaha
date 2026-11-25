@@ -1,11 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, TextInput, Alert, Image, ActivityIndicator, TouchableWithoutFeedback } from 'react-native';
+import { 
+  StyleSheet, 
+  View, 
+  Text, 
+  TouchableOpacity, 
+  ScrollView, 
+  TextInput, 
+  Image, 
+  ActivityIndicator, 
+  TouchableWithoutFeedback,
+  KeyboardAvoidingView,
+  Platform
+} from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/use-auth';
 import { dbService } from '@/services/dbService';
+import { appAlert } from '@/services/appAlert';
 
 interface PitchReviewModalProps {
   pitchName?: string;
@@ -24,37 +37,44 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
   const [parkingRating, setParkingRating] = useState(5);
   const [userComment, setUserComment] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
-  const [, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const myReview = reviews.find(r => r.userId && user?.uid && r.userId === user.uid);
 
   useEffect(() => {
-    if (visible && pitchName) {
-      setLoading(true);
-      dbService.getPitchReviews(pitchName).then((remoteReviews) => {
-        if (remoteReviews && remoteReviews.length > 0) {
-          const mapped = remoteReviews.map(r => ({
-            id: r.id || Date.now().toString(),
-            userId: r.userId,
-            name: r.userName || 'Halısaha Oyuncusu',
-            rating: r.rating || 5,
-            criteria: r.criteria,
-            comment: r.comment,
-            date: 'Yeni',
-            avatar: r.userAvatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuCKH5OYGgw6kyLLpH5wMB9LQxlysnBPQOzGlTYgCblgjVquca3KkOX5eAQ0rqvOjVr9qEQGj-yP235XnroUuyzg7ZsmyIXWpDnxXISTalw3NzTDuw_ZmQX-Ne1hFDC0eysnPT4qZ1-8DGKiHIfmwdX8oJRjOJuuspWloG3YJSs7bU4_nXnrmNdlVphCmkNnCmyMAplXu8T0BShbsk-UUGhVj3_acb9UxRLlDA44DPG15QZILO7eSCKY16cXOu2I3DQjKW4ccIolcKzm',
-          }));
-          setReviews(mapped);
-        } else {
-          setReviews([]);
-        }
-      }).catch(err => {
-        console.error('Tesis yorumları yüklenemedi:', err);
-        setReviews([]);
-      }).finally(() => {
-        setLoading(false);
-      });
+    if (!visible || !pitchName) {
+      setShowAddForm(false);
+      return;
     }
+    let isMounted = true;
+    setLoading(true);
+    dbService.getPitchReviews(pitchName).then((remoteReviews) => {
+      if (!isMounted) return;
+      if (remoteReviews && remoteReviews.length > 0) {
+        const mapped = remoteReviews.map(r => ({
+          id: r.id || Date.now().toString(),
+          userId: r.userId,
+          name: r.userName || 'Halısaha Oyuncusu',
+          rating: r.rating || 5,
+          criteria: r.criteria,
+          comment: r.comment,
+          date: 'Yeni',
+          avatar: r.userAvatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuCKH5OYGgw6kyLLpH5wMB9LQxlysnBPQOzGlTYgCblgjVquca3KkOX5eAQ0rqvOjVr9qEQGj-yP235XnroUuyzg7ZsmyIXWpDnxXISTalw3NzTDuw_ZmQX-Ne1hFDC0eysnPT4qZ1-8DGKiHIfmwdX8oJRjOJuuspWloG3YJSs7bU4_nXnrmNdlVphCmkNnCmyMAplXu8T0BShbsk-UUGhVj3_acb9UxRLlDA44DPG15QZILO7eSCKY16cXOu2I3DQjKW4ccIolcKzm',
+        }));
+        setReviews(mapped);
+      } else {
+        setReviews([]);
+      }
+    }).catch(err => {
+      console.error('Tesis yorumları yüklenemedi:', err);
+      if (isMounted) setReviews([]);
+    }).finally(() => {
+      if (isMounted) setLoading(false);
+    });
+    return () => {
+      isMounted = false;
+    };
   }, [visible, pitchName]);
 
   const liveFormAverage = ((surfaceRating + showerRating + lightingRating + parkingRating) / 4).toFixed(1);
@@ -71,32 +91,38 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
   };
 
   const handleDeleteReview = () => {
-    if (!myReview) return;
-    Alert.alert('Değerlendirmeyi Sil', 'Yorumunuzu silmek istediğinize emin misiniz?', [
-      { text: 'Vazgeç', style: 'cancel' },
-      {
-        text: 'Evet, Sil',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            setSubmitting(true);
-            if (myReview.id && !myReview.id.startsWith('1') && !myReview.id.startsWith('2')) {
-              await dbService.deletePitchReview(myReview.id);
-            }
-            setReviews(prev => prev.filter(r => !(r.userId && user?.uid && r.userId === user.uid)));
-            Alert.alert('Silindi', 'Değerlendirmeniz silindi.');
-          } catch (e) {
-            console.error('Silme hatası:', e);
-            Alert.alert('Hata', 'Silinirken bir sorun oluştu.');
-          } finally {
-            setSubmitting(false);
-          }
-        },
-      },
-    ]);
+    if (!myReview || submitting) return;
+
+    const doDelete = async () => {
+      try {
+        setSubmitting(true);
+        if (myReview.id) {
+          await dbService.deletePitchReview(myReview.id);
+        }
+        setReviews(prev => prev.filter(r => !(r.userId && user?.uid && r.userId === user.uid)));
+        appAlert.alert('Silindi', 'Değerlendirmeniz silindi.');
+      } catch (e) {
+        console.error('Silme hatası:', e);
+        appAlert.alert('Hata', 'Silinirken bir sorun oluştu.');
+      } finally {
+        setSubmitting(false);
+      }
+    };
+
+    appAlert.confirm(
+      'Değerlendirmeyi Sil',
+      'Yorumunuzu silmek istediğinize emin misiniz?',
+      doDelete,
+      { confirmText: 'Evet, Sil', cancelText: 'Vazgeç', destructive: true }
+    );
   };
 
   const handleAddReview = async () => {
+    if (submitting) return;
+    if (!user?.uid) {
+      appAlert.alert('Giriş Gerekli', 'Değerlendirme yapabilmek için lütfen giriş yapın.');
+      return;
+    }
     setSubmitting(true);
     try {
       const avgNum = parseFloat(liveFormAverage);
@@ -110,18 +136,18 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
       const finalComment = userComment.trim();
       const reviewPayload = {
         pitchName,
-        userId: user?.uid || 'anon',
+        userId: user.uid,
         userName: user?.name || 'Siz (Oyuncu)',
         userAvatar: user?.avatar,
         rating: avgNum,
         criteria: criteriaObj,
         comment: finalComment,
       };
-      await dbService.savePitchReview(pitchName, reviewPayload);
+      const saved = await dbService.savePitchReview(pitchName, reviewPayload);
 
       const newRev = {
-        id: myReview?.id || Date.now().toString(),
-        userId: user?.uid,
+        id: saved?.id || myReview?.id || Date.now().toString(),
+        userId: user.uid,
         name: user?.name || 'Siz (Oyuncu)',
         rating: avgNum,
         criteria: criteriaObj,
@@ -132,10 +158,10 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
       setReviews(prev => [newRev, ...prev.filter(r => !(r.userId && user?.uid && r.userId === user.uid))]);
       setUserComment('');
       setShowAddForm(false);
-      Alert.alert(myReview ? '✅ Değerlendirme Güncellendi' : '✅ Değerlendirme Kaydedildi', myReview ? 'Tesis puanınız başarıyla güncellendi.' : 'Tesis puanınız başarıyla kaydedildi.');
+      appAlert.alert(myReview ? '✅ Değerlendirme Güncellendi' : '✅ Değerlendirme Kaydedildi', myReview ? 'Tesis puanınız başarıyla güncellendi.' : 'Tesis puanınız başarıyla kaydedildi.');
     } catch (e) {
       console.error('Yorum ekleme hatası:', e);
-      Alert.alert('Hata', 'Değerlendirmeniz kaydedilirken bir sorun oluştu.');
+      appAlert.alert('Hata', 'Değerlendirmeniz kaydedilirken bir sorun oluştu.');
     } finally {
       setSubmitting(false);
     }
@@ -162,8 +188,12 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
     : '-';
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
+    <Modal visible={visible} transparent animationType="slide" onClose={onClose} onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        style={{ flex: 1 }}
+      >
+        <View style={styles.overlay}>
         {/* Tap outside backdrop to close */}
         <TouchableWithoutFeedback onPress={onClose}>
           <View style={StyleSheet.absoluteFillObject} />
@@ -175,7 +205,7 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
             <View style={styles.headerTitleRow}>
               <MaterialIcons name="stadium" size={24} color={theme.primary} />
               <View style={styles.headerTextCol}>
-                <Text style={styles.headerTitle} numberOfLines={1}>{pitchName.toUpperCase()}</Text>
+                <Text style={styles.headerTitle} numberOfLines={1}>{pitchName.toLocaleUpperCase('tr-TR')}</Text>
                 <Text style={styles.headerSub}>TESİS PUANLARI & DEĞERLENDİRMELER</Text>
               </View>
             </View>
@@ -189,15 +219,27 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+          <ScrollView 
+            contentContainerStyle={styles.body} 
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* Overall Score Banner */}
             <View style={styles.scoreBanner}>
               <View style={styles.scoreLeft}>
                 <Text style={styles.bigScore}>{averageRating}</Text>
                 <View style={styles.starRow}>
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <MaterialIcons key={s} name="star" size={16} color={theme.primary} />
-                  ))}
+                  {[1, 2, 3, 4, 5].map((s) => {
+                    const filledCount = reviews.length > 0 ? Math.round(parseFloat(averageRating)) : 0;
+                    return (
+                      <MaterialIcons
+                        key={s}
+                        name={s <= filledCount ? 'star' : 'star-border'}
+                        size={16}
+                        color={s <= filledCount ? theme.primary : theme.textMuted}
+                      />
+                    );
+                  })}
                 </View>
                 <Text style={styles.totalCount}>{reviews.length} Değerlendirme</Text>
               </View>
@@ -230,11 +272,11 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
                     </View>
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <TouchableOpacity style={styles.deleteMyReviewBtn} onPress={handleDeleteReview} activeOpacity={0.8}>
+                    <TouchableOpacity style={styles.deleteMyReviewBtn} onPress={handleDeleteReview} disabled={submitting} activeOpacity={0.8}>
                       <MaterialIcons name="delete-outline" size={15} color={theme.error || '#ef4444'} />
                       <Text style={styles.deleteMyReviewBtnText}>SİL</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.editMyReviewBtn} onPress={handleOpenEdit} activeOpacity={0.8}>
+                    <TouchableOpacity style={styles.editMyReviewBtn} onPress={handleOpenEdit} disabled={submitting} activeOpacity={0.8}>
                       <MaterialIcons name="edit" size={15} color={theme.onPrimary} />
                       <Text style={styles.editMyReviewBtnText}>DÜZENLE</Text>
                     </TouchableOpacity>
@@ -313,7 +355,12 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
             {/* Reviews List */}
             <View style={styles.reviewsSection}>
               <Text style={styles.sectionTitle}>OYUNCU YORUMLARI ({reviews.length})</Text>
-              {reviews.length === 0 ? (
+              {loading ? (
+                <View style={styles.emptyReviewsBox}>
+                  <ActivityIndicator size="small" color={theme.primary} />
+                  <Text style={styles.emptyReviewsSub}>Yorumlar yükleniyor...</Text>
+                </View>
+              ) : reviews.length === 0 ? (
                 <View style={styles.emptyReviewsBox}>
                   <MaterialIcons name="rate-review" size={38} color={theme.surfaceContainerHighest} />
                   <Text style={styles.emptyReviewsTitle}>Henüz değerlendirme yapılmamış</Text>
@@ -345,10 +392,10 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
                           <Text style={styles.revDate}>{rev.date}</Text>
                           {isMine && (
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                              <TouchableOpacity onPress={handleOpenEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.pencilTouch}>
+                              <TouchableOpacity onPress={handleOpenEdit} disabled={submitting} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.pencilTouch}>
                                 <MaterialIcons name="edit" size={16} color={theme.primary} />
                               </TouchableOpacity>
-                              <TouchableOpacity onPress={handleDeleteReview} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.trashTouch}>
+                              <TouchableOpacity onPress={handleDeleteReview} disabled={submitting} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.trashTouch}>
                                 <MaterialIcons name="delete-outline" size={16} color={theme.error || '#ef4444'} />
                               </TouchableOpacity>
                             </View>
@@ -391,7 +438,8 @@ export const PitchReviewModal: React.FC<PitchReviewModalProps> = ({ pitchName = 
           </ScrollView>
         </View>
       </View>
-    </Modal>
+    </KeyboardAvoidingView>
+  </Modal>
   );
 };
 

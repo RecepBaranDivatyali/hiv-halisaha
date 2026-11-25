@@ -17,7 +17,6 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [themeType, setThemeType] = useState<ThemeType>('dark-neon');
-  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
     // Load saved theme
@@ -29,8 +28,6 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       } catch (e) {
         console.error('Error loading theme:', e);
-      } finally {
-        setIsLoaded(true);
       }
     };
     loadTheme();
@@ -44,8 +41,6 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.error('Error saving theme:', e);
     }
   };
-
-  if (!isLoaded) return null;
 
   const currentThemeColors = Themes[themeType] || Themes['dark-neon'];
 

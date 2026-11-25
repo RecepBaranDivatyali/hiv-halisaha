@@ -1,12 +1,24 @@
 import React, { useState } from 'react';
-import { X, Shield, Plus, Trophy, Award } from 'lucide-react';
-import { adminDbService } from '../../services/adminDbService';
+import { X, Shield } from 'lucide-react';
+import { adminDbService, generateInviteCode } from '../../services/adminDbService';
+
+const PRESET_COLORS = [
+  { label: 'Neon Yeşil', value: '#8eff71' },
+  { label: 'Elektrik Mavi', value: '#6e9bff' },
+  { label: 'Mercan Turuncu', value: '#ff7351' },
+  { label: 'Altın Sarı', value: '#f59e0b' },
+  { label: 'Mor', value: '#a855f7' },
+  { label: 'Turkuaz', value: '#06b6d4' },
+];
 
 export function CreateClubModal({ isOpen, onClose, onSuccess }) {
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
-  const [points, setPoints] = useState(15000);
+  const [city, setCity] = useState('İstanbul');
+  const [district, setDistrict] = useState('Beşiktaş');
+  const [points, setPoints] = useState(100);
   const [maxMembers, setMaxMembers] = useState(50);
+  const [joinPolicy, setJoinPolicy] = useState('open');
   const [level, setLevel] = useState(5);
   const [color, setColor] = useState('#8eff71');
   const [loading, setLoading] = useState(false);
@@ -18,14 +30,26 @@ export function CreateClubModal({ isOpen, onClose, onSuccess }) {
     if (!name.trim()) return;
     setLoading(true);
     try {
+      const cleanedName = name.trim();
+      const cleanedDesc = desc.trim();
+      const inviteCode = generateInviteCode(cleanedName);
+
       await adminDbService.createClub({
-        name: name.trim(),
-        desc: desc.trim(),
-        points: Number(points),
-        maxMembers: Number(maxMembers),
-        membersCount: 1,
-        level: Number(level),
-        color
+        name: cleanedName,
+        desc: cleanedDesc,
+        description: cleanedDesc,
+        city: city.trim(),
+        district: district.trim(),
+        points: Number(points) ?? 100,
+        maxMembers: Number(maxMembers) || 50,
+        members: [],
+        membersCount: 0,
+        joinPolicy: joinPolicy || 'open',
+        inviteCode,
+        captainId: '',
+        captainName: 'H.İ.V. Yönetim',
+        level: Number(level) || 1,
+        color: color || '#8eff71',
       });
       if (onSuccess) onSuccess();
       onClose();
@@ -58,9 +82,11 @@ export function CreateClubModal({ isOpen, onClose, onSuccess }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        <form onSubmit={handleSubmit} className="mt-6 space-y-4 max-h-[75vh] overflow-y-auto pr-1">
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">Kulüp İsmi</label>
+            <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">
+              Kulüp İsmi
+            </label>
             <input
               type="text"
               value={name}
@@ -72,7 +98,9 @@ export function CreateClubModal({ isOpen, onClose, onSuccess }) {
           </div>
 
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">Açıklama / Slogan</label>
+            <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">
+              Açıklama / Slogan
+            </label>
             <input
               type="text"
               value={desc}
@@ -82,9 +110,40 @@ export function CreateClubModal({ isOpen, onClose, onSuccess }) {
             />
           </div>
 
+          {/* Şehir & İlçe */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">Başlangıç Puanı</label>
+              <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">
+                Şehir
+              </label>
+              <input
+                type="text"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="İstanbul"
+                className="w-full rounded-xl border border-white/5 bg-[#171A24] px-4 py-2.5 text-xs font-medium text-white focus:border-[#8eff71]/40 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">
+                İlçe
+              </label>
+              <input
+                type="text"
+                value={district}
+                onChange={(e) => setDistrict(e.target.value)}
+                placeholder="Beşiktaş"
+                className="w-full rounded-xl border border-white/5 bg-[#171A24] px-4 py-2.5 text-xs font-medium text-white focus:border-[#8eff71]/40 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Başlangıç Puanı & Seviye */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">
+                Başlangıç Puanı
+              </label>
               <input
                 type="number"
                 value={points}
@@ -93,12 +152,76 @@ export function CreateClubModal({ isOpen, onClose, onSuccess }) {
               />
             </div>
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">Kulüp Seviyesi</label>
+              <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">
+                Kulüp Seviyesi
+              </label>
               <input
                 type="number"
+                min={1}
+                max={99}
                 value={level}
                 onChange={(e) => setLevel(e.target.value)}
                 className="w-full rounded-xl border border-white/5 bg-[#171A24] px-4 py-2.5 text-xs font-medium text-white focus:border-[#8eff71]/40 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Üye Kapasitesi & Katılım Politikası */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">
+                Maksimum Üye Limiti
+              </label>
+              <input
+                type="number"
+                min={5}
+                max={200}
+                value={maxMembers}
+                onChange={(e) => setMaxMembers(e.target.value)}
+                className="w-full rounded-xl border border-white/5 bg-[#171A24] px-4 py-2.5 text-xs font-medium text-white focus:border-[#8eff71]/40 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">
+                Katılım Politikası
+              </label>
+              <select
+                value={joinPolicy}
+                onChange={(e) => setJoinPolicy(e.target.value)}
+                className="w-full rounded-xl border border-white/5 bg-[#171A24] px-3 py-2.5 text-xs font-medium text-white focus:border-[#8eff71]/40 focus:outline-none"
+              >
+                <option value="open">Herkese Açık</option>
+                <option value="approval">Onaylı (İstekle)</option>
+                <option value="invite">Sadece Davetle</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Kulüp Rengi */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">
+              Kulüp Tema Rengi
+            </label>
+            <div className="flex items-center gap-2.5">
+              {PRESET_COLORS.map((preset) => (
+                <button
+                  key={preset.value}
+                  type="button"
+                  onClick={() => setColor(preset.value)}
+                  title={preset.label}
+                  className={`h-8 w-8 rounded-xl border-2 transition ${
+                    color === preset.value
+                      ? 'border-white scale-110 shadow-lg'
+                      : 'border-transparent opacity-70 hover:opacity-100'
+                  }`}
+                  style={{ backgroundColor: preset.value }}
+                />
+              ))}
+              <input
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                className="ml-auto h-8 w-10 cursor-pointer rounded-lg border border-white/10 bg-[#171A24] p-0.5"
               />
             </div>
           </div>

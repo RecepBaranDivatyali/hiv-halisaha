@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert, Image, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, Image, ActivityIndicator } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
-import { Bouncable } from '@/components/Bouncable';
 import { useTheme } from '@/context/ThemeContext';
 import { useImagePicker } from '@/hooks/use-image-picker';
 import { useAuth } from '@/hooks/use-auth';
 import { dbService } from '@/services/dbService';
 import { useRouter } from 'expo-router';
-import { auth } from '@/services/firebaseConfig';
+import { appAlert } from '@/services/appAlert';
+import { PRESET_CLUB_LOGOS as CLUB_LOGO_PRESETS } from '@/components/clubLogoPresets';
 
 interface ClubActionModalProps {
   visible: boolean;
@@ -19,21 +19,6 @@ interface ClubActionModalProps {
 }
 
 const CITIES = ['İstanbul', 'Ankara', 'İzmir', 'Bursa', 'Antalya', 'Adana', 'Trabzon', 'Eskişehir'];
-
-const PRESET_LOGOS = [
-  { id: '1', name: 'Kaplan', uri: 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=150&h=150&fit=crop' },
-  { id: '2', name: 'Kartal', uri: 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=150&h=150&fit=crop' },
-  { id: '3', name: 'Şimşek', uri: 'https://images.unsplash.com/photo-1517466787929-bc90951d0974?w=150&h=150&fit=crop' },
-  { id: '4', name: 'Aslan', uri: 'https://images.unsplash.com/photo-1551958219-acbc608c6377?w=150&h=150&fit=crop' },
-  { id: '5', name: 'Boğaziçi', uri: 'https://images.unsplash.com/photo-1518091043644-c1d4457512c6?w=150&h=150&fit=crop' },
-  { id: '6', name: 'Yıldız', uri: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=150&h=150&fit=crop' },
-  { id: '7', name: 'Kuzey Gücü', uri: 'https://images.unsplash.com/photo-1560272564-c83b66b1ad12?w=150&h=150&fit=crop' },
-  { id: '8', name: 'Demir Spor', uri: 'https://images.unsplash.com/photo-1517927033932-b3d18e61fb3a?w=150&h=150&fit=crop' },
-  { id: '9', name: 'Ateş Spor', uri: 'https://images.unsplash.com/photo-1543326727-cf6c39e8f84c?w=150&h=150&fit=crop' },
-  { id: '10', name: 'Kurtlar', uri: 'https://images.unsplash.com/photo-1511886929837-354d827aae26?w=150&h=150&fit=crop' },
-  { id: '11', name: 'Atlas FC', uri: 'https://images.unsplash.com/photo-1486286701208-1d58e9338013?w=150&h=150&fit=crop' },
-  { id: '12', name: 'Zirve Spor', uri: 'https://images.unsplash.com/photo-1575361204480-aadea25e6e68?w=150&h=150&fit=crop' },
-];
 
 export const ClubActionModal: React.FC<ClubActionModalProps> = ({ 
   visible, 
@@ -54,7 +39,7 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
   const [clubDesc, setClubDesc] = useState('');
   const [selectedCity, setSelectedCity] = useState(user?.city || 'İstanbul');
   const [citySelectorOpen, setCitySelectorOpen] = useState(false);
-  const [selectedLogo, setSelectedLogo] = useState<string>(PRESET_LOGOS[0].uri);
+  const [selectedLogo, setSelectedLogo] = useState<string>(CLUB_LOGO_PRESETS[0].uri);
   const [maxMembers, setMaxMembers] = useState<number>(25);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -76,7 +61,7 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
         setSelectedLogo(uri);
       }
     } catch {
-      Alert.alert('Hata', 'Logo seçilirken bir sorun oluştu.');
+      appAlert.alert('Hata', 'Logo seçilirken bir sorun oluştu.');
     }
   };
 
@@ -84,25 +69,30 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
     if (isSubmitting) return;
 
     if (activeTab === 'create') {
+      if (!user?.uid) {
+        appAlert.alert('Giriş Yapın', 'Kulüp kurabilmek için lütfen önce giriş yapın.');
+        return;
+      }
+
       if (user?.clubId) {
-        Alert.alert('Zaten Kulübünüz Var', 'Yeni bir kulüp kurabilmek için önce mevcut kulübünüzden ayrılmalı veya kulübünüzü silmelisiniz.');
+        appAlert.alert('Zaten Kulübünüz Var', 'Yeni bir kulüp kurabilmek için önce mevcut kulübünüzden ayrılmalı veya kulübünüzü silmelisiniz.');
         return;
       }
 
       if (!clubName.trim()) {
         setNameError('Lütfen kulüp adını giriniz.');
-        Alert.alert('Eksik Bilgi', 'Lütfen kulüp adını girin.');
+        appAlert.alert('Eksik Bilgi', 'Lütfen kulüp adını girin.');
         return;
       }
       setNameError('');
       setIsSubmitting(true);
       try {
-        const effectiveUid = user?.uid || auth.currentUser?.uid || user?.email || 'captain';
+        const effectiveUid = user.uid;
         const newClub = await dbService.createClub({
           name: clubName.trim(),
           desc: clubDesc.trim() || 'Halısaha Takımı',
           city: selectedCity,
-          logo: selectedLogo || PRESET_LOGOS[0].uri,
+          logo: selectedLogo || CLUB_LOGO_PRESETS[0].uri,
           captainId: effectiveUid,
           captainName: user?.name || 'Kaptan',
           color: theme.primary,
@@ -115,11 +105,16 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
         });
 
         if (newClub?.id) {
-          await saveUser({ 
-            clubId: newClub.id, 
-            clubName: newClub.name, 
-            clubLogo: newClub.logo || selectedLogo || PRESET_LOGOS[0].uri 
-          });
+          try {
+            await saveUser({ 
+              clubId: newClub.id, 
+              clubName: newClub.name, 
+              clubLogo: newClub.logo || selectedLogo || CLUB_LOGO_PRESETS[0].uri 
+            });
+          } catch (saveErr) {
+            console.error('Kullanıcı kulüp bilgisi kaydetme hatası:', saveErr);
+            appAlert.alert('Uyarı', 'Kulüp kuruldu ancak profil bilginiz güncellenirken bir sorun oluştu.');
+          }
         }
 
         const createdName = clubName.trim();
@@ -128,13 +123,14 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
         setClubName('');
         setClubDesc('');
         setNameError('');
-        setSelectedLogo(PRESET_LOGOS[0].uri);
+        setSelectedLogo(CLUB_LOGO_PRESETS[0].uri);
         onClose();
         if (onSuccess) onSuccess();
 
-        Alert.alert(
+        const successMsg = `"${createdName}" (${createdCity}) kulübünüz başarıyla kuruldu!`;
+        appAlert.alert(
           'Tebrikler! 🏆',
-          `"${createdName}" (${createdCity}) kulübünüz başarıyla kuruldu!`,
+          successMsg,
           [
             {
               text: 'Kulübüme Git',
@@ -144,41 +140,46 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
             },
           ]
         );
-
-        router.push('/my-club');
       } catch (err) {
         console.error('Kulüp kurma hatası:', err);
-        Alert.alert('Hata', 'Kulüp kurulurken bir sorun oluştu. Lütfen tekrar deneyin.');
+        appAlert.alert('Hata', 'Kulüp kurulurken bir sorun oluştu. Lütfen tekrar deneyin.');
       } finally {
         setIsSubmitting(false);
       }
     } else {
       if (!user?.uid) {
-        Alert.alert('Giriş Yapın', 'Kulübe katılmak için lütfen önce giriş yapın.');
+        appAlert.alert('Giriş Yapın', 'Kulübe katılmak için lütfen önce giriş yapın.');
         return;
       }
       if (user?.clubId) {
-        Alert.alert('Zaten Kulübünüz Var', 'Başka bir kulübe katılabilmek için önce mevcut kulübünüzden ayrılmalı veya kulübünüzü silmelisiniz.');
+        appAlert.alert('Zaten Kulübünüz Var', 'Başka bir kulübe katılabilmek için önce mevcut kulübünüzden ayrılmalı veya kulübünüzü silmelisiniz.');
         return;
       }
       if (!inviteCode.trim()) {
-        Alert.alert('Eksik Bilgi', 'Lütfen davet kodunu girin.');
+        appAlert.alert('Eksik Bilgi', 'Lütfen davet kodunu girin.');
         return;
       }
       setIsSubmitting(true);
       try {
         const joined = await dbService.joinClubByInviteCode(inviteCode.trim(), user.uid, user.name);
-        await saveUser({
-          clubId: joined.id,
-          clubName: joined.name,
-          clubLogo: joined.logo
-        });
+        try {
+          await saveUser({
+            clubId: joined.id,
+            clubName: joined.name,
+            clubLogo: joined.logo
+          });
+        } catch (saveErr) {
+          console.error('Kullanıcı kulüp bilgisi kaydetme hatası:', saveErr);
+          appAlert.alert('Uyarı', 'Kulübe katıldınız ancak profil bilginiz güncellenirken bir sorun oluştu.');
+        }
         setInviteCode('');
         onClose();
         if (onSuccess) onSuccess();
-        Alert.alert(
+
+        const joinMsg = `"${joined.name}" kulübüne başarıyla katıldınız!`;
+        appAlert.alert(
           'Tebrikler! ⚽️',
-          `"${joined.name}" kulübüne başarıyla katıldınız!`,
+          joinMsg,
           [
             {
               text: 'Kulübüme Git',
@@ -188,7 +189,8 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
         );
       } catch (err: any) {
         console.error('Davet kodu katılım hatası:', err);
-        Alert.alert('Hata', err?.message || 'Geçersiz davet kodu veya kulübe katılırken sorun oluştu.');
+        const errMsg = err?.message || 'Geçersiz davet kodu veya kulübe katılırken sorun oluştu.';
+        appAlert.alert('Hata', errMsg);
       } finally {
         setIsSubmitting(false);
       }
@@ -199,8 +201,15 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView 
         style={styles.overlay} 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'web' ? undefined : 'padding'}
       >
+        <TouchableOpacity
+          style={StyleSheet.absoluteFillObject}
+          activeOpacity={1}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Kapat"
+        />
         <View style={styles.modalContent}>
           {/* Header */}
           <View style={styles.header}>
@@ -234,7 +243,7 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
                   <View style={styles.activeLogoWrap}>
                     <Image source={{ uri: selectedLogo }} style={styles.activeLogoImg} />
                     <TouchableOpacity style={styles.uploadBadgeBtn} onPress={handleLogoSelect} activeOpacity={0.8}>
-                      <MaterialIcons name="photo-camera" size={14} color={theme.background} />
+                      <MaterialIcons name="photo-camera" size={14} color={theme.onPrimary} />
                     </TouchableOpacity>
                   </View>
                   <Text style={styles.selectedLogoHint}>Kulüp Arması Seçin veya Fotoğraf Yükleyin</Text>
@@ -250,7 +259,7 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
                     </TouchableOpacity>
                   </View>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetList}>
-                    {PRESET_LOGOS.map((p) => {
+                    {CLUB_LOGO_PRESETS.map((p) => {
                       const isChosen = selectedLogo === p.uri;
                       return (
                         <TouchableOpacity
@@ -262,7 +271,7 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
                           <Image source={{ uri: p.uri }} style={styles.presetThumb} />
                           {isChosen && (
                             <View style={styles.presetCheckBadge}>
-                              <MaterialIcons name="check" size={10} color={theme.background} />
+                              <MaterialIcons name="check" size={10} color={theme.onPrimary} />
                             </View>
                           )}
                           <Text style={[styles.presetName, isChosen && { color: theme.primary, fontFamily: Fonts.headlineBold }]} numberOfLines={1}>
@@ -398,14 +407,14 @@ export const ClubActionModal: React.FC<ClubActionModalProps> = ({
             >
               {isSubmitting ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  <ActivityIndicator size="small" color={theme.background} />
-                  <Text style={styles.submitBtnText}>KURULUYOR...</Text>
+                  <ActivityIndicator size="small" color={theme.onPrimary} />
+                  <Text style={styles.submitBtnText}>{activeTab === 'create' ? 'KURULUYOR...' : 'KATILINIYOR...'}</Text>
                 </View>
               ) : (
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  <MaterialIcons name={activeTab === 'create' ? "add-circle" : "send"} size={20} color={theme.background} />
+                  <MaterialIcons name={activeTab === 'create' ? "add-circle" : "login"} size={20} color={theme.onPrimary} />
                   <Text style={styles.submitBtnText}>
-                    {activeTab === 'create' ? 'KULÜBÜ KUR' : 'KATILMA İSTEĞİ GÖNDER'}
+                    {activeTab === 'create' ? 'KULÜBÜ KUR' : 'KULÜBE KATIL'}
                   </Text>
                 </View>
               )}

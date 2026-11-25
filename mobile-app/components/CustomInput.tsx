@@ -21,6 +21,8 @@ export const CustomInput: React.FC<CustomInputProps> = ({
   containerStyle,
   style,
   secureTextEntry,
+  onFocus,
+  onBlur,
   ...rest
 }) => {
   const { theme } = useTheme();
@@ -28,6 +30,7 @@ export const CustomInput: React.FC<CustomInputProps> = ({
   const [isFocused, setIsFocused] = useState(false);
 
   const isError = !!error;
+  const isMultiline = !!rest.multiline;
   const computedSecureTextEntry = isPassword ? !showPassword : secureTextEntry;
 
   return (
@@ -37,6 +40,7 @@ export const CustomInput: React.FC<CustomInputProps> = ({
       <View
         style={[
           styles.inputContainer,
+          isMultiline && styles.multilineInputContainer,
           {
             backgroundColor: theme.surface,
             borderColor: isError ? theme.error : isFocused ? theme.primary : theme.border,
@@ -55,13 +59,20 @@ export const CustomInput: React.FC<CustomInputProps> = ({
         <TextInput
           style={[
             styles.input,
+            isMultiline && styles.multilineInput,
             { color: theme.text },
             Platform.OS === 'web' && ({ outlineStyle: 'none', outlineWidth: 0, outline: 'none' } as any),
             style,
           ]}
           placeholderTextColor={theme.textMuted}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
+          onFocus={(e) => {
+            setIsFocused(true);
+            onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setIsFocused(false);
+            onBlur?.(e);
+          }}
           {...rest}
           secureTextEntry={computedSecureTextEntry}
         />
@@ -109,6 +120,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     height: 56,
   },
+  multilineInputContainer: {
+    height: undefined,
+    minHeight: 88,
+    alignItems: 'flex-start',
+    paddingVertical: 12,
+  },
   icon: {
     marginRight: 12,
   },
@@ -116,6 +133,10 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: Fonts.body,
     fontSize: 15,
+  },
+  multilineInput: {
+    textAlignVertical: 'top',
+    minHeight: 64,
   },
   eyeBtn: {
     padding: 8,

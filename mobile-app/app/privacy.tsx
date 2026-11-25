@@ -1,9 +1,11 @@
 import React from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, SafeAreaView } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Linking } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '@/context/ThemeContext';
 import { Fonts } from '@/constants/theme';
+import { safeBack } from '@/utils/navigation';
 
 export default function PrivacyPolicyScreen() {
   const { theme } = useTheme();
@@ -12,7 +14,7 @@ export default function PrivacyPolicyScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.header, { borderBottomColor: theme.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => safeBack(router, '/')} style={styles.backButton}>
           <MaterialIcons name="arrow-back" size={24} color={theme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text }]}>Gizlilik Politikası</Text>
@@ -24,7 +26,7 @@ export default function PrivacyPolicyScreen() {
         <Text style={[styles.date, { color: theme.textMuted }]}>Son Güncelleme: 1 Ekim 2026</Text>
 
         <Text style={[styles.paragraph, { color: theme.text }]}>
-          H.İ.V Halısaha ("Halısahaya İhtiyacım Var"), kullanıcılarının gizliliğine ve kişisel verilerinin korunmasına büyük önem vermektedir. Bu Gizlilik Politikası, uygulamamızı kullandığınızda toplanan, işlenen ve korunan verilere ilişkin hak ve yükümlülüklerinizi açıklar.
+          H.İ.V Halısaha (&quot;Halısahaya İhtiyacım Var&quot;), kullanıcılarının gizliliğine ve kişisel verilerinin korunmasına büyük önem vermektedir. Bu Gizlilik Politikası, uygulamamızı kullandığınızda toplanan, işlenen ve korunan verilere ilişkin hak ve yükümlülüklerinizi açıklar.
         </Text>
 
         <Text style={[styles.sectionTitle, { color: theme.text }]}>1. Toplanan Bilgiler</Text>
@@ -49,14 +51,23 @@ export default function PrivacyPolicyScreen() {
 
         <Text style={[styles.sectionTitle, { color: theme.text }]}>4. Hesap ve Veri Silme Talebi</Text>
         <Text style={[styles.paragraph, { color: theme.text }]}>
-          Kullanıcılar diledikleri zaman hesaplarını ve ilişkili tüm kişisel verilerini silebilirler. Hesabınızı uygulama içinden "Ayarlar → Hesabımı Sil" adımıyla veya bize doğrudan e-posta göndererek kalıcı olarak sildirebilirsiniz.
+          Kullanıcılar diledikleri zaman hesaplarını ve ilişkili tüm kişisel verilerini silebilirler. Hesabınızı uygulama içinden &quot;Ayarlar → Hesabımı Sil&quot; adımıyla veya bize doğrudan e-posta göndererek kalıcı olarak sildirebilirsiniz.
         </Text>
 
         <Text style={[styles.sectionTitle, { color: theme.text }]}>5. İletişim</Text>
         <Text style={[styles.paragraph, { color: theme.text }]}>
           Gizlilik politikamız veya kişisel verilerinizle ilgili her türlü soru ve talebiniz için bizimle iletişime geçebilirsiniz:
         </Text>
-        <Text style={[styles.bullet, { color: theme.primary, fontWeight: 'bold' }]}>E-posta: barandivatyali@gmail.com</Text>
+        <TouchableOpacity
+          onPress={() => { Linking.openURL('mailto:barandivatyali@gmail.com').catch(() => {}); }}
+          activeOpacity={0.7}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 4, paddingLeft: 8 }}
+        >
+          <MaterialIcons name="email" size={18} color={theme.primary} />
+          <Text style={[styles.bullet, { color: theme.primary, fontWeight: 'bold', paddingLeft: 0, marginBottom: 0 }]}>
+            E-posta: barandivatyali@gmail.com
+          </Text>
+        </TouchableOpacity>
         <Text style={[styles.bullet, { color: theme.text }]}>Geliştirici: Recep Baran Divatyalı</Text>
 
         <View style={{ height: 60 }} />

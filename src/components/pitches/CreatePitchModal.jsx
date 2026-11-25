@@ -4,6 +4,17 @@ import { adminDbService } from '../../services/adminDbService';
 
 const ALL_MODES = ['5v5', '6v6', '7v7', '8v8', '9v9', '10v10', '11v11'];
 
+function computeLastSlot(closingTime = '22:00') {
+  const raw = String(closingTime || '22:00').trim();
+  const [hStr, mStr] = raw.split(':');
+  const parsedH = parseInt(hStr, 10);
+  const h = Number.isNaN(parsedH) ? 22 : parsedH;
+  const m = (mStr || '00').padStart(2, '0');
+  const prevH = String((h + 23) % 24).padStart(2, '0');
+  const endH = String(((h % 24) + 24) % 24).padStart(2, '0');
+  return `${prevH}:${m}-${endH}:${m}`;
+}
+
 export function CreatePitchModal({ isOpen, onClose, onSuccess }) {
   const [name, setName] = useState('');
   const [city, setCity] = useState('Ankara');
@@ -25,6 +36,8 @@ export function CreatePitchModal({ isOpen, onClose, onSuccess }) {
   const [vestsProvided, setVestsProvided] = useState(true);
   const [showerAvailable, setShowerAvailable] = useState(true);
   const [parkingAvailable, setParkingAvailable] = useState(true);
+  const [cafeteriaAvailable, setCafeteriaAvailable] = useState(true);
+  const [wifiAvailable, setWifiAvailable] = useState(true);
 
   // Modes
   const [optimalModes, setOptimalModes] = useState(['7v7']);
@@ -40,19 +53,19 @@ export function CreatePitchModal({ isOpen, onClose, onSuccess }) {
 
   const handleToggleOptimal = (m) => {
     if (optimalModes.includes(m)) {
-      setOptimalModes(optimalModes.filter(item => item !== m));
+      setOptimalModes(optimalModes.filter((item) => item !== m));
     } else {
       setOptimalModes([...optimalModes, m]);
-      setTightModes(tightModes.filter(item => item !== m));
+      setTightModes(tightModes.filter((item) => item !== m));
     }
   };
 
   const handleToggleTight = (m) => {
     if (tightModes.includes(m)) {
-      setTightModes(tightModes.filter(item => item !== m));
+      setTightModes(tightModes.filter((item) => item !== m));
     } else {
       setTightModes([...tightModes, m]);
-      setOptimalModes(optimalModes.filter(item => item !== m));
+      setOptimalModes(optimalModes.filter((item) => item !== m));
     }
   };
 
@@ -63,10 +76,10 @@ export function CreatePitchModal({ isOpen, onClose, onSuccess }) {
       {
         id: `sf-${Date.now()}`,
         name: `Halı Saha ${nextNum}`,
-        surface: 'Suni Çim',
+        surface: surface || 'Suni Çim',
         slotType: 'full',
-        lastSlot: `${closingTime ? Number(closingTime.split(':')[0]) - 1 : 21}:00-${closingTime || '22:00'}`
-      }
+        lastSlot: computeLastSlot(closingTime),
+      },
     ]);
   };
 
@@ -87,34 +100,72 @@ export function CreatePitchModal({ isOpen, onClose, onSuccess }) {
     setLoading(true);
 
     try {
-      await adminDbService.createPitch({
+      const priceNum = hourlyFee !== '' && !Number.isNaN(Number(hourlyFee)) ? Number(hourlyFee) : 780;
+      const subPriceNum =
+        subscriberFee !== '' && !Number.isNaN(Number(subscriberFee))
+          ? Number(subscriberFee)
+          : Math.round(priceNum * 0.9);
+
+      const dynamicAmenities = [
+        parkingAvailable && 'Otopark',
+        showerAvailable && 'Duş',
+        cafeteriaAvailable && 'Kafeterya',
+        wifiAvailable && 'Wi-Fi',
+        vestsProvided && 'Yelek',
+        bootsRental && 'Krampon Kiralama',
+        glovesRental && 'Eldiven Kiralama',
+      ].filter(Boolean);
+
+      const equipmentRentalPayload = {
+        bootsRental: Boolean(bootsRental),
+        bootsFee: bootsRental && bootsFee !== '' ? Number(bootsFee) : 0,
+        glovesRental: Boolean(glovesRental),
+        glovesFee: glovesRental && glovesFee !== '' ? Number(glovesFee) : 0,
+        vestsProvided: Boolean(vestsProvided),
+        showerAvailable: Boolean(showerAvailable),
+        parkingAvailable: Boolean(parkingAvailable),
+        cafeteriaAvailable: Boolean(cafeteriaAvailable),
+        wifiAvailable: Boolean(wifiAvailable),
+      };
+
+      const cleanedSubFields = subFields.map((sf, idx) => ({
+        id: sf.id || `sf-${idx + 1}`,
+        name: (sf.name || `Halı Saha ${idx + 1}`).trim(),
+        surface: sf.surface || surface || 'Suni Çim',
+        slotType: sf.slotType || 'full',
+        lastSlot: sf.lastSlot || computeLastSlot(closingTime),
+      }));
+
+      const payload = {
         name: name.trim(),
         city: city.trim(),
         district: district.trim(),
-        surface,
-        hourlyFee: hourlyFee ? Number(hourlyFee) : 780,
-        pricePerHour: hourlyFee ? Number(hourlyFee) : 780,
-        subscriberFee: subscriberFee ? Number(subscriberFee) : undefined,
-        openingTime,
-        closingTime,
-        phone: phone.trim() || undefined,
-        address: address.trim() || undefined,
+        surface: surface || 'Yeni Nesil Suni Çim',
+        surfaceType: surface || 'Yeni Nesil Suni Çim',
+        hourlyFee: priceNum,
+        pricePerHour: priceNum,
+        price: priceNum,
+        hourlyRateNormal: priceNum,
+        subscriberFee: subPriceNum,
+        hourlyRateSubscriber: subPriceNum,
+        openingTime: openingTime || '09:00',
+        closingTime: closingTime || '22:00',
+        openTime: openingTime || '09:00',
+        closeTime: closingTime || '22:00',
+        phone: phone.trim(),
+        address: address.trim(),
         rating: Number(rating) || 4.8,
         reviewsCount: 0,
         optimalModes,
         tightModes,
-        equipmentRental: {
-          bootsRental,
-          bootsFee: bootsFee ? Number(bootsFee) : undefined,
-          glovesRental,
-          glovesFee: glovesFee ? Number(glovesFee) : undefined,
-          vestsProvided,
-          showerAvailable,
-          parkingAvailable,
-        },
-        subFields,
-        active: true
-      });
+        formats: optimalModes && optimalModes.length > 0 ? optimalModes : ['7v7'],
+        amenities: dynamicAmenities,
+        equipmentRental: equipmentRentalPayload,
+        subFields: cleanedSubFields,
+        active: true,
+      };
+
+      await adminDbService.createPitch(payload);
 
       if (onSuccess) onSuccess();
       onClose();
@@ -150,16 +201,28 @@ export function CreatePitchModal({ isOpen, onClose, onSuccess }) {
 
         {/* Scrollable Form */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">Tesis / Saha Adı</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              placeholder="Örn: ODTÜ Halı Saha Tesisleri"
-              className="w-full rounded-xl border border-white/5 bg-[#171A24] px-4 py-2.5 text-xs font-medium text-white focus:border-[#8eff71]/40 focus:outline-none"
-            />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">Tesis / Saha Adı</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                placeholder="Örn: ODTÜ Halı Saha Tesisleri"
+                className="w-full rounded-xl border border-white/5 bg-[#171A24] px-4 py-2.5 text-xs font-medium text-white focus:border-[#8eff71]/40 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">Zemin Türü</label>
+              <input
+                type="text"
+                value={surface}
+                onChange={(e) => setSurface(e.target.value)}
+                placeholder="Suni Çim"
+                className="w-full rounded-xl border border-white/5 bg-[#171A24] px-4 py-2.5 text-xs font-medium text-white focus:border-[#8eff71]/40 focus:outline-none"
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -185,6 +248,30 @@ export function CreatePitchModal({ isOpen, onClose, onSuccess }) {
             </div>
           </div>
 
+          {/* Telefon & Açık Adres */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">Telefon</label>
+              <input
+                type="text"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="0312 ... veya 0532 ..."
+                className="w-full rounded-xl border border-white/5 bg-[#171A24] px-4 py-2.5 text-xs font-medium text-white focus:border-[#8eff71]/40 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">Açık Adres</label>
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Mahalle, Cadde No..."
+                className="w-full rounded-xl border border-white/5 bg-[#171A24] px-4 py-2.5 text-xs font-medium text-white focus:border-[#8eff71]/40 focus:outline-none"
+              />
+            </div>
+          </div>
+
           {/* Ücretler */}
           <div className="rounded-2xl border border-white/5 bg-[#12141C] p-4 space-y-3">
             <h4 className="text-xs font-black uppercase tracking-wider text-[#8eff71]">Ücret Bilgileri (₺)</h4>
@@ -196,6 +283,7 @@ export function CreatePitchModal({ isOpen, onClose, onSuccess }) {
                   value={hourlyFee}
                   onChange={(e) => setHourlyFee(e.target.value)}
                   placeholder="780"
+                  min={0}
                   className="w-full rounded-xl border border-white/5 bg-[#171A24] px-3 py-2 text-xs font-medium text-white focus:border-[#8eff71]/40 focus:outline-none"
                 />
               </div>
@@ -206,6 +294,7 @@ export function CreatePitchModal({ isOpen, onClose, onSuccess }) {
                   value={subscriberFee}
                   onChange={(e) => setSubscriberFee(e.target.value)}
                   placeholder="700"
+                  min={0}
                   className="w-full rounded-xl border border-white/5 bg-[#171A24] px-3 py-2 text-xs font-medium text-white focus:border-[#8eff71]/40 focus:outline-none"
                 />
               </div>
@@ -232,7 +321,7 @@ export function CreatePitchModal({ isOpen, onClose, onSuccess }) {
                   type="text"
                   value={closingTime}
                   onChange={(e) => setClosingTime(e.target.value)}
-                  placeholder="22:00"
+                  placeholder="22:00 veya 00:00"
                   className="w-full rounded-xl border border-white/5 bg-[#171A24] px-3 py-2 text-xs font-medium text-white focus:border-[#8eff71]/40 focus:outline-none"
                 />
               </div>
@@ -245,7 +334,7 @@ export function CreatePitchModal({ isOpen, onClose, onSuccess }) {
             <div>
               <p className="text-[11px] font-bold text-white/70 mb-2">İdeal Formatlar (Yeşil):</p>
               <div className="flex flex-wrap gap-2">
-                {ALL_MODES.map(m => (
+                {ALL_MODES.map((m) => (
                   <button
                     type="button"
                     key={`create-opt-${m}`}
@@ -263,7 +352,7 @@ export function CreatePitchModal({ isOpen, onClose, onSuccess }) {
             <div>
               <p className="text-[11px] font-bold text-white/70 mb-2">Sıkışık Formatlar (Sarı Uyarı):</p>
               <div className="flex flex-wrap gap-2">
-                {ALL_MODES.map(m => (
+                {ALL_MODES.map((m) => (
                   <button
                     type="button"
                     key={`create-tight-${m}`}
@@ -331,7 +420,7 @@ export function CreatePitchModal({ isOpen, onClose, onSuccess }) {
             </div>
           </div>
 
-          {/* Ekipman Kiralama */}
+          {/* Ekipman Kiralama & Olanaklar */}
           <div className="rounded-2xl border border-white/5 bg-[#12141C] p-4 space-y-3">
             <h4 className="text-xs font-black uppercase tracking-wider text-[#8eff71]">Ekipman Kiralama & Olanaklar</h4>
             <div className="grid grid-cols-2 gap-3 text-xs">
@@ -401,6 +490,26 @@ export function CreatePitchModal({ isOpen, onClose, onSuccess }) {
                   className="rounded border-white/20 bg-[#171A24] text-[#8eff71]"
                 />
                 Otopark
+              </label>
+
+              <label className="flex items-center gap-2 text-white/80 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={cafeteriaAvailable}
+                  onChange={(e) => setCafeteriaAvailable(e.target.checked)}
+                  className="rounded border-white/20 bg-[#171A24] text-[#8eff71]"
+                />
+                Kafeterya
+              </label>
+
+              <label className="flex items-center gap-2 text-white/80 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={wifiAvailable}
+                  onChange={(e) => setWifiAvailable(e.target.checked)}
+                  className="rounded border-white/20 bg-[#171A24] text-[#8eff71]"
+                />
+                Wi-Fi
               </label>
             </div>
           </div>

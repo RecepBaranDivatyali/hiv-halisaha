@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, TextInput, Alert, Image, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, TextInput, Image, ActivityIndicator } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/use-auth';
 import { dbService } from '@/services/dbService';
+import { appAlert } from '@/services/appAlert';
+
+const normalizeTr = (s: string) => s.toLocaleLowerCase('tr-TR').replace(/\u0307/g, '');
 
 interface InvitePlayerModalProps {
   visible: boolean;
@@ -20,49 +23,57 @@ export const InvitePlayerModal: React.FC<InvitePlayerModalProps> = ({ visible, o
   const [invitedIds, setInvitedIds] = useState<string[]>([]);
   const [players, setPlayers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [invitingId, setInvitingId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (visible) {
-      setLoading(true);
-      dbService.searchPlayers({}).then((res) => {
-        const otherPlayers = res.filter((p: any) => p.id && (!user?.uid || p.id !== user.uid));
-        setPlayers(otherPlayers);
-      }).catch(err => {
-        console.error('Oyuncu listesi yükleme hatası:', err);
-        setPlayers([]);
-      }).finally(() => {
-        setLoading(false);
-      });
-    }
-  }, [visible, user?.uid]);
+    if (!visible) return;
+    let isMounted = true;
+    setLoading(true);
+    dbService.searchPlayers({}).then((res) => {
+      if (!isMounted) return;
+      const otherPlayers = res.filter(
+        (p: any) => p.id && (!user?.uid || p.id !== user.uid) && (!user?.clubId || p.clubId !== user.clubId)
+      );
+      setPlayers(otherPlayers);
+    }).catch(err => {
+      console.error('Oyuncu listesi yükleme hatası:', err);
+      if (isMounted) setPlayers([]);
+    }).finally(() => {
+      if (isMounted) setLoading(false);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [visible, user?.uid, user?.clubId]);
 
   const filteredPlayers = players.filter(p => {
-    const q = searchQuery.toLowerCase();
-    const nameMatch = (p.name || '').toLowerCase().includes(q);
-    const posMatch = (p.position || '').toLowerCase().includes(q);
+    const q = normalizeTr(searchQuery);
+    const nameMatch = normalizeTr(p.name || '').includes(q);
+    const posMatch = normalizeTr(p.position || '').includes(q);
     return nameMatch || posMatch;
   });
 
   const handleInvite = async (player: any) => {
+    if (invitingId) return;
     if (!user?.clubId) {
-      Alert.alert('Hata', 'Kulüp bilginiz bulunamadı.');
+      appAlert.alert('Hata', 'Kulüp bilginiz bulunamadı.');
       return;
     }
     try {
-      setLoading(true);
+      setInvitingId(player.id);
       await dbService.sendClubInvite(user.clubId, player.id);
-      setInvitedIds(prev => [...prev, player.id]);
-      Alert.alert('✅ Davet Gönderildi', `${player.name || 'Oyuncu'} kullanıcısına kulüp daveti iletildi.`);
+      setInvitedIds(prev => (prev.includes(player.id) ? prev : [...prev, player.id]));
+      appAlert.alert('Davet Gönderildi', `${player.name || 'Oyuncu'} kullanıcısına kulüp daveti iletildi.`);
     } catch (e) {
       console.error(e);
-      Alert.alert('Hata', 'Davet gönderilemedi.');
+      appAlert.alert('Hata', 'Davet gönderilemedi.');
     } finally {
-      setLoading(false);
+      setInvitingId(null);
     }
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onClose={onClose} onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.modalContent}>
           {/* Header */}
@@ -124,12 +135,12 @@ export const InvitePlayerModal: React.FC<InvitePlayerModalProps> = ({ visible, o
                         </View>
                       </View>
                       <TouchableOpacity
-                        style={[styles.inviteBtn, isInvited && styles.inviteBtnSent]}
-                        disabled={isInvited}
+                        style={[styles.inviteBtn, (isInvited || invitingId === player.id) && styles.inviteBtnSent]}
+                        disabled={isInvited || invitingId === player.id}
                         onPress={() => handleInvite(player)}
                       >
                         <Text style={[styles.inviteBtnText, isInvited && styles.inviteBtnTextSent]}>
-                          {isInvited ? 'GÖNDERİLDİ' : 'DAVET ET'}
+                          {invitingId === player.id ? 'GÖNDERİLİYOR...' : isInvited ? 'GÖNDERİLDİ' : 'DAVET ET'}
                         </Text>
                       </TouchableOpacity>
                     </View>

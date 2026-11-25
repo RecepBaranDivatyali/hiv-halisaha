@@ -4,6 +4,7 @@ import { Modal as RNModal, ModalProps } from 'react-native';
 export interface AppModalProps extends ModalProps {
   visible: boolean;
   onClose?: () => void;
+  zIndex?: number;
   children: React.ReactNode;
 }
 
@@ -11,6 +12,7 @@ export const AppModal: React.FC<AppModalProps> = ({
   visible,
   onClose,
   onRequestClose,
+  zIndex: _zIndex,
   transparent = true,
   animationType = 'fade',
   children,

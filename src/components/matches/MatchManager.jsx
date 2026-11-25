@@ -1,26 +1,47 @@
 import React, { useState } from 'react';
-import { Trophy, Plus, MapPin, Clock, Users, ArrowUpRight, Search, Filter } from 'lucide-react';
+import { Trophy, Plus, MapPin, Clock, ArrowUpRight, Search, X } from 'lucide-react';
 import { CreateMatchModal } from './CreateMatchModal';
 import { MatchDetailModal } from './MatchDetailModal';
 
-export function MatchManager({ matches = [], onRefresh, pitches = [] }) {
+export function MatchManager({
+  matches = [],
+  onRefresh,
+  pitches = [],
+  searchQuery = '',
+  onSearchChange,
+  onClearSearch,
+}) {
   const [filterStatus, setFilterStatus] = useState('all');
   const [search, setSearch] = useState('');
-  const [selectedMatch, setSelectedMatch] = useState(null);
+  const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+
+  const effectiveSearch = (search || searchQuery || '').toLowerCase().trim();
+
+  const handleClearSearch = () => {
+    setSearch('');
+    if (onSearchChange) onSearchChange('');
+    if (onClearSearch) onClearSearch();
+  };
+
+  const selectedMatch = selectedMatchId
+    ? matches.find((m) => m.id === selectedMatchId) || null
+    : null;
 
   const filteredMatches = matches.filter((m) => {
     const matchesStatus =
       filterStatus === 'all' ||
-      (filterStatus === 'open' && (m.status === 'open' || !m.status)) ||
+      (filterStatus === 'open' && (m.status === 'open' || m.status === 'active' || !m.status)) ||
       (filterStatus === 'completed' && m.status === 'completed') ||
       (filterStatus === 'cancelled' && m.status === 'cancelled');
 
     const matchesSearch =
-      !search ||
-      m.arena?.toLowerCase().includes(search.toLowerCase()) ||
-      m.city?.toLowerCase().includes(search.toLowerCase()) ||
-      m.organizer?.toLowerCase().includes(search.toLowerCase());
+      !effectiveSearch ||
+      m.arena?.toLowerCase().includes(effectiveSearch) ||
+      m.city?.toLowerCase().includes(effectiveSearch) ||
+      m.district?.toLowerCase().includes(effectiveSearch) ||
+      m.organizer?.toLowerCase().includes(effectiveSearch) ||
+      (m.id && m.id.toLowerCase().includes(effectiveSearch));
 
     return matchesStatus && matchesSearch;
   });
@@ -30,8 +51,12 @@ export function MatchManager({ matches = [], onRefresh, pitches = [] }) {
       {/* Top Header Controls */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="font-montserrat text-2xl font-black tracking-tight text-white">MAÇ YÖNETİMİ</h2>
-          <p className="text-xs text-white/50">Halısaha maç ilanlarını inceleyin, oluşturun veya düzenleyin</p>
+          <h2 className="font-montserrat text-2xl font-black tracking-tight text-white">
+            MAÇ YÖNETİMİ
+          </h2>
+          <p className="text-xs text-white/50">
+            Halısaha maç ilanlarını inceleyin, oluşturun veya düzenleyin
+          </p>
         </div>
 
         <button
@@ -73,10 +98,23 @@ export function MatchManager({ matches = [], onRefresh, pitches = [] }) {
           <input
             type="text"
             placeholder="Saha veya şehir ara..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-10 w-full sm:w-64 rounded-xl border border-white/5 bg-[#171A24] pl-10 pr-4 text-xs font-medium text-white placeholder:text-white/40 focus:border-[#8eff71]/40 focus:outline-none"
+            value={search || searchQuery}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              if (searchQuery && onSearchChange) onSearchChange(e.target.value);
+            }}
+            className="h-10 w-full sm:w-64 rounded-xl border border-white/5 bg-[#171A24] pl-10 pr-9 text-xs font-medium text-white placeholder:text-white/40 focus:border-[#8eff71]/40 focus:outline-none"
           />
+          {(search || searchQuery) && (
+            <button
+              type="button"
+              onClick={handleClearSearch}
+              title="Aramayı Temizle"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-md bg-white/10 text-white/60 hover:text-white transition"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -86,7 +124,9 @@ export function MatchManager({ matches = [], onRefresh, pitches = [] }) {
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <Trophy className="h-12 w-12 text-white/20" />
             <p className="mt-3 text-sm font-bold text-white/60">Kriterlere uygun maç bulunamadı</p>
-            <p className="text-xs text-white/40">Filtreleri değiştirebilir veya yeni bir maç oluşturabilirsiniz.</p>
+            <p className="text-xs text-white/40">
+              Filtreleri değiştirebilir veya yeni bir maç oluşturabilirsiniz.
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -103,74 +143,83 @@ export function MatchManager({ matches = [], onRefresh, pitches = [] }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {filteredMatches.map((m) => (
-                  <tr
-                    key={m.id}
-                    onClick={() => setSelectedMatch(m)}
-                    className="cursor-pointer transition hover:bg-white/5"
-                  >
-                    <td className="px-6 py-4">
-                      <div className="font-bold text-white">{m.arena || 'Beşiktaş Arena'}</div>
-                      <div className="text-[10px] text-[#8eff71] font-semibold">{m.mode || '7v7'}</div>
-                    </td>
-                    <td className="px-6 py-4 text-white/70">
-                      <div className="flex items-center gap-1.5 font-medium">
-                        <Clock className="h-3.5 w-3.5 text-white/40" />
-                        {m.dateTime || 'Bugün 21:00'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-white/70">
-                      <div className="flex items-center gap-1.5 font-medium">
-                        <MapPin className="h-3.5 w-3.5 text-white/40" />
-                        {m.city || 'İstanbul'} / {m.district || 'Beşiktaş'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-white">
-                          {m.joinedPlayersCount || 1}/{m.totalRequiredPlayers || 14}
-                        </span>
-                        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-white/10">
-                          <div
-                            className="h-full bg-[#8eff71]"
-                            style={{
-                              width: `${Math.min(
-                                100,
-                                ((m.joinedPlayersCount || 1) / (m.totalRequiredPlayers || 14)) * 100
-                              )}%`,
-                            }}
-                          />
+                {filteredMatches.map((m) => {
+                  const validSlotCount = m.slots
+                    ? Object.keys(m.slots).filter(
+                        (k) => m.slots[k] && typeof m.slots[k] === 'object'
+                      ).length
+                    : 0;
+                  const joinedCount = validSlotCount > 0 ? validSlotCount : m.joinedPlayersCount ?? 0;
+                  const requiredCount = m.totalRequiredPlayers || 14;
+
+                  return (
+                    <tr
+                      key={m.id}
+                      onClick={() => setSelectedMatchId(m.id)}
+                      className="cursor-pointer transition hover:bg-white/5"
+                    >
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-white">{m.arena || 'Beşiktaş Arena'}</div>
+                        <div className="text-[10px] text-[#8eff71] font-semibold">
+                          {m.mode || '7v7'}
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="font-bold text-[#8eff71]">₺{m.fee || 150}</div>
-                      <div className="text-[10px] text-white/40">Kişi başı</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-extrabold uppercase ${
-                          m.status === 'completed'
-                            ? 'bg-[#6e9bff]/20 text-[#6e9bff]'
+                      </td>
+                      <td className="px-6 py-4 text-white/70">
+                        <div className="flex items-center gap-1.5 font-medium">
+                          <Clock className="h-3.5 w-3.5 text-white/40" />
+                          {m.dateTime || 'Belirtilmedi'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-white/70">
+                        <div className="flex items-center gap-1.5 font-medium">
+                          <MapPin className="h-3.5 w-3.5 text-white/40" />
+                          {m.city || 'İstanbul'} / {m.district || 'Beşiktaş'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-white">
+                            {joinedCount}/{requiredCount}
+                          </span>
+                          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-white/10">
+                            <div
+                              className="h-full bg-[#8eff71]"
+                              style={{
+                                width: `${Math.min(100, (joinedCount / requiredCount) * 100)}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-[#8eff71]">₺{m.fee ?? 150}</div>
+                        <div className="text-[10px] text-white/40">Kişi başı</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-extrabold uppercase ${
+                            m.status === 'completed'
+                              ? 'bg-[#6e9bff]/20 text-[#6e9bff]'
+                              : m.status === 'cancelled'
+                              ? 'bg-[#ff7351]/20 text-[#ff7351]'
+                              : 'bg-[#8eff71]/20 text-[#8eff71]'
+                          }`}
+                        >
+                          {m.status === 'completed'
+                            ? 'Tamamlandı'
                             : m.status === 'cancelled'
-                            ? 'bg-[#ff7351]/20 text-[#ff7351]'
-                            : 'bg-[#8eff71]/20 text-[#8eff71]'
-                        }`}
-                      >
-                        {m.status === 'completed'
-                          ? 'Tamamlandı'
-                          : m.status === 'cancelled'
-                          ? 'İptal'
-                          : 'Kayıt Açık'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/5 text-white/60 hover:bg-white/10 hover:text-white transition">
-                        <ArrowUpRight className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                            ? 'İptal'
+                            : 'Kayıt Açık'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/5 text-white/60 hover:bg-white/10 hover:text-white transition">
+                          <ArrowUpRight className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -187,8 +236,8 @@ export function MatchManager({ matches = [], onRefresh, pitches = [] }) {
 
       <MatchDetailModal
         match={selectedMatch}
-        isOpen={!!selectedMatch}
-        onClose={() => setSelectedMatch(null)}
+        isOpen={Boolean(selectedMatch)}
+        onClose={() => setSelectedMatchId(null)}
         onUpdate={onRefresh}
       />
     </div>

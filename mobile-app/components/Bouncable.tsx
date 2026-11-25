@@ -33,8 +33,8 @@ export const Bouncable: React.FC<BouncableProps> = ({
   }, [scale, scaleTo, onPressIn, props.disabled]);
 
   const handlePressOut = useCallback((e: GestureResponderEvent) => {
-    if (props.disabled) return;
     scale.value = withSpring(1, { damping: 15, stiffness: 200, mass: 0.5 });
+    if (props.disabled) return;
     if (onPressOut) onPressOut(e);
   }, [scale, onPressOut, props.disabled]);
 

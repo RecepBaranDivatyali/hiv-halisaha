@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Switch, Alert } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -8,20 +8,22 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { PitchReviewModal } from '@/components/PitchReviewModal';
 import { useTheme } from '@/context/ThemeContext';
 import { Skeleton } from '@/components/Skeleton';
-import { PITCH_DATABASE } from '@/config/pitches';
+import { PITCH_DATABASE, PitchDatabaseItem } from '@/config/pitches';
 import { DualThumbRangeSlider } from '@/components/DualThumbRangeSlider';
+import { dbService } from '@/services/dbService';
+import { appAlert } from '@/services/appAlert';
 
 type Tab = 'Maç' | 'Oyuncu' | 'Rakip';
 
 const CITIES_LIST = ['İstanbul', 'Ankara', 'İzmir', 'Bursa', 'Antalya', 'Adana', 'Kocaeli', 'Gaziantep', 'Konya', 'Eskişehir', 'Trabzon', 'Samsun'];
 const DISTRICTS_MAP: Record<string, string[]> = {
-  'İstanbul': ['Kadıköy', 'Beşiktaş', 'Şişli', 'Üsküdar', 'Bakırköy', 'Maltepe', 'Ataşehir'],
-  'Ankara': ['Çankaya', 'Yenimahalle', 'Batıkent', 'Etimesgut', 'Eryaman', 'Keçiören', 'Gölbaşı', 'Mamak', 'Altındağ', 'Sincan', 'Pursaklar'],
-  'İzmir': ['Karşıyaka', 'Bornova', 'Konak', 'Alsancak', 'Buca'],
-  'Bursa': ['Nilüfer', 'Osmangazi', 'Yıldırım'],
-  'Antalya': ['Muratpaşa', 'Konyaaltı', 'Kepez'],
-  'Trabzon': ['Ortahisar', 'Akçaabat', 'Yomra'],
-  'Samsun': ['Atakum', 'İlkadım', 'Canik'],
+  'İstanbul': ['Tüm İlçeler', 'Kadıköy', 'Beşiktaş', 'Şişli', 'Üsküdar', 'Bakırköy', 'Maltepe', 'Ataşehir'],
+  'Ankara': ['Tüm İlçeler', 'Çankaya', 'Yenimahalle', 'Batıkent', 'Etimesgut', 'Eryaman', 'Keçiören', 'Gölbaşı', 'Mamak', 'Altındağ', 'Sincan', 'Pursaklar'],
+  'İzmir': ['Tüm İlçeler', 'Karşıyaka', 'Bornova', 'Konak', 'Alsancak', 'Buca'],
+  'Bursa': ['Tüm İlçeler', 'Nilüfer', 'Osmangazi', 'Yıldırım'],
+  'Antalya': ['Tüm İlçeler', 'Muratpaşa', 'Konyaaltı', 'Kepez'],
+  'Trabzon': ['Tüm İlçeler', 'Ortahisar', 'Akçaabat', 'Yomra'],
+  'Samsun': ['Tüm İlçeler', 'Atakum', 'İlkadım', 'Canik'],
 };
 
 const TURKISH_MONTHS_NAMES = [
@@ -49,7 +51,8 @@ export default function SearchScreen() {
   const [pitchReviewVisible, setPitchReviewVisible] = useState(false);
   const [selectedPitch, setSelectedPitch] = useState('Tüm Sahalar');
   const [selectedCity, setSelectedCity] = useState('İstanbul');
-  const [selectedDistrict, setSelectedDistrict] = useState('Kadıköy');
+  const [selectedDistrict, setSelectedDistrict] = useState('Tüm İlçeler');
+  const [pitchList, setPitchList] = useState<PitchDatabaseItem[]>(PITCH_DATABASE);
 
   const [cityModalVisible, setCityModalVisible] = useState(false);
   const [districtModalVisible, setDistrictModalVisible] = useState(false);
@@ -59,14 +62,63 @@ export default function SearchScreen() {
   const [selectedPositions, setSelectedPositions] = useState<string[]>(['KL']);
   const [minRating, setMinRating] = useState<number>(0);
   const [maxRating, setMaxRating] = useState<number>(10);
-  const [activeRatingPreset, setActiveRatingPreset] = useState<string>('all');
-  const [selectedDifficulties, setSelectedDifficulties] = useState<string[]>(['Eğlence']);
+  const [selectedDifficulties, setSelectedDifficulties] = useState<string[]>([]);
   const [selectedTimeFrames, setSelectedTimeFrames] = useState<string[]>([]);
   const [reservationStatus, setReservationStatus] = useState<'all' | 'reserved' | 'no_reservation'>('all');
   const [playerStatus, setPlayerStatus] = useState<'all' | 'looking'>('looking');
   const [selectedMode, setSelectedMode] = useState<string>('Tümü');
   const [remember, setRemember] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
+
+  const activeRatingPreset = useMemo(() => {
+    if (minRating === 0 && maxRating === 10) return 'all';
+    if (minRating === 4.0 && maxRating === 6.0) return '4-6';
+    if (minRating === 5.0 && maxRating === 9.0) return '5-9';
+    if (minRating === 7.0 && maxRating === 10.0) return '7-10';
+    return 'custom';
+  }, [minRating, maxRating]);
+
+  useEffect(() => {
+    let isMounted = true;
+    dbService.getCustomPitches().then((customPitches) => {
+      if (!isMounted || !Array.isArray(customPitches)) return;
+      const map = new Map<string, PitchDatabaseItem>();
+      PITCH_DATABASE.forEach(p => map.set(p.id, p));
+      customPitches.forEach((p: any) => {
+        if (p.status === 'deleted') {
+          map.delete(p.id);
+          return;
+        }
+        const subFields = Array.isArray(p.subFields) && p.subFields.length > 0
+          ? p.subFields
+          : [{ id: `${p.id}-1`, name: p.name ? `${p.name} Sahası` : 'Tek Saha', surface: 'Suni Çim' }];
+        const existing = map.get(p.id);
+        map.set(p.id, {
+          ...(existing || {}),
+          id: p.id,
+          city: p.city || existing?.city || 'İstanbul',
+          district: p.district || existing?.district || 'Merkez',
+          name: p.name || existing?.name || 'Halısaha',
+          rating: typeof p.rating === 'number' ? p.rating : (existing?.rating ?? 5.0),
+          isPopular: p.isPopular !== undefined ? Boolean(p.isPopular) : Boolean(existing?.isPopular),
+          hourlyFee: p.hourlyFee || p.fee || existing?.hourlyFee || 2000,
+          subscriberFee: p.subscriberFee ?? existing?.subscriberFee,
+          openingTime: p.openingTime || existing?.openingTime || '09:00',
+          closingTime: p.closingTime || existing?.closingTime || '00:00',
+          optimalModes: p.optimalModes || existing?.optimalModes || ['7v7', '8v8'],
+          tightModes: p.tightModes || existing?.tightModes || ['6v6', '9v9'],
+          phone: p.phone ?? existing?.phone,
+          address: p.address ?? existing?.address,
+          equipmentRental: p.equipmentRental ?? existing?.equipmentRental,
+          subFields: existing?.subFields?.length ? existing.subFields : subFields,
+        } as PitchDatabaseItem);
+      });
+      setPitchList(Array.from(map.values()).filter((p: any) => p.status !== 'deleted'));
+    }).catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const togglePosition = (p: string) => {
     setSelectedPositions(prev => {
@@ -80,9 +132,12 @@ export default function SearchScreen() {
   };
 
   const toggleDifficulty = (d: string) => {
+    if (d === 'Tümü') {
+      setSelectedDifficulties([]);
+      return;
+    }
     setSelectedDifficulties(prev => {
       if (prev.includes(d)) {
-        if (prev.length <= 1) return prev;
         return prev.filter(x => x !== d);
       } else {
         return [...prev, d];
@@ -128,11 +183,15 @@ export default function SearchScreen() {
     return list;
   }, []);
 
-  const availableDistricts = DISTRICTS_MAP[selectedCity] || ['Merkez', '1. Bölge', '2. Bölge'];
-  const cityPitches = PITCH_DATABASE.filter(p => p.city === selectedCity);
+  const availableDistricts = DISTRICTS_MAP[selectedCity] || ['Tüm İlçeler', 'Merkez', '1. Bölge', '2. Bölge'];
+  const cityPitches = useMemo(
+    () => pitchList.filter(p => p.city === selectedCity && (p as any).status !== 'deleted'),
+    [pitchList, selectedCity]
+  );
 
   // Load remembered preferences
   useEffect(() => {
+    const validTimeLabels = new Set(['Bugün', 'Yarın', 'Bu Hafta Sonu', ...upcomingDateOptions.map(o => o.label)]);
     AsyncStorage.getItem(SEARCH_PREFS_KEY).then((data) => {
       if (data) {
         try {
@@ -154,14 +213,19 @@ export default function SearchScreen() {
             setMaxRating(Number(parsed.maxRating));
           }
           if (parsed.selectedDifficulties && Array.isArray(parsed.selectedDifficulties)) {
-            setSelectedDifficulties(parsed.selectedDifficulties);
+            setSelectedDifficulties(parsed.selectedDifficulties.filter((d: string) => d && d !== 'Tümü'));
           } else if (parsed.difficulty) {
-            setSelectedDifficulties(parsed.difficulty.split(',').map((s: string) => s.trim()).filter(Boolean));
+            setSelectedDifficulties(parsed.difficulty.split(',').map((s: string) => s.trim()).filter((d: string) => Boolean(d) && d !== 'Tümü'));
           }
           if (parsed.timeFrames && Array.isArray(parsed.timeFrames)) {
-            setSelectedTimeFrames(parsed.timeFrames);
+            setSelectedTimeFrames(parsed.timeFrames.filter((tf: string) => validTimeLabels.has(tf)));
           } else if (parsed.timeFrame && parsed.timeFrame !== 'Tümü') {
-            setSelectedTimeFrames(parsed.timeFrame.split(',').map((s: string) => s.trim()).filter(Boolean));
+            setSelectedTimeFrames(
+              parsed.timeFrame
+                .split(',')
+                .map((s: string) => s.trim())
+                .filter((tf: string) => Boolean(tf) && validTimeLabels.has(tf))
+            );
           }
         } catch (e) {
           console.error('AsyncStorage error:', e);
@@ -170,7 +234,7 @@ export default function SearchScreen() {
     }).finally(() => {
       setIsLoading(false);
     });
-  }, []);
+  }, [upcomingDateOptions]);
 
   // Update tab if param changes
   useEffect(() => {
@@ -230,7 +294,7 @@ export default function SearchScreen() {
   ]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <PitchReviewModal 
         pitchName={selectedPitch === 'Tüm Sahalar' ? (cityPitches[0]?.name || 'Beşiktaş Arena') : selectedPitch} 
         visible={pitchReviewVisible} 
@@ -243,18 +307,17 @@ export default function SearchScreen() {
         <TouchableOpacity 
           onPress={() => {
             setSelectedCity('İstanbul');
-            setSelectedDistrict('Kadıköy');
+            setSelectedDistrict('Tüm İlçeler');
             setSelectedPitch('Tüm Sahalar');
             setSelectedPositions(['KL']);
             setMinRating(0);
             setMaxRating(10);
-            setActiveRatingPreset('all');
-            setSelectedDifficulties(['Eğlence']);
+            setSelectedDifficulties([]);
             setSelectedTimeFrames([]);
             setSelectedMode('Tümü');
             setReservationStatus('all');
             setPlayerStatus('looking');
-            Alert.alert('Filtreler Sıfırlandı', 'Arama kriterleri varsayılan değerlere döndürüldü.');
+            appAlert.alert('Filtreler Sıfırlandı', 'Arama kriterleri varsayılan değerlere döndürüldü.');
           }} 
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           accessibilityLabel="Filtreleri Sıfırla" 
@@ -496,7 +559,7 @@ export default function SearchScreen() {
                         key={item.key}
                         style={[
                           styles.levelBtn,
-                          { flex: item.key === 'all' ? 0.9 : 1.3 },
+                          { width: undefined, flex: item.key === 'all' ? 0.85 : 1.25, paddingHorizontal: 4 },
                           {
                             borderColor: active
                               ? (item.key === 'reserved' ? '#22c55e' : item.key === 'no_reservation' ? '#f59e0b' : theme.primary)
@@ -509,13 +572,17 @@ export default function SearchScreen() {
                         onPress={() => setReservationStatus(item.key as any)}
                         activeOpacity={0.8}
                       >
-                        <Text style={[
-                          styles.levelText, 
-                          active && {
-                            color: item.key === 'reserved' ? '#22c55e' : item.key === 'no_reservation' ? '#f59e0b' : theme.primary,
-                            fontFamily: Fonts.headlineBold
-                          }
-                        ]}>
+                        <Text
+                          style={[
+                            styles.levelText,
+                            { fontSize: 11 },
+                            active && {
+                              color: item.key === 'reserved' ? '#22c55e' : item.key === 'no_reservation' ? '#f59e0b' : theme.primary,
+                              fontFamily: Fonts.headlineBold
+                            }
+                          ]}
+                          numberOfLines={1}
+                        >
                           {item.label}
                         </Text>
                       </TouchableOpacity>
@@ -545,7 +612,6 @@ export default function SearchScreen() {
                         key={item.key}
                         style={[
                           styles.levelBtn,
-                          { flex: 1 },
                           {
                             borderColor: active ? (item.key === 'looking' ? '#22c55e' : theme.primary) : theme.borderSubtle,
                             backgroundColor: active ? (item.key === 'looking' ? 'rgba(34,197,94,0.15)' : `${theme.primary}15`) : theme.surfaceContainerHighest
@@ -589,17 +655,15 @@ export default function SearchScreen() {
                     { key: '5-9', label: '5.0 - 9.0', min: 5.0, max: 9.0 },
                     { key: '7-10', label: '7.0 - 10.0', min: 7.0, max: 10.0 },
                   ].map((preset) => {
-                    const isActive = activeRatingPreset === preset.key || (minRating === preset.min && maxRating === preset.max);
+                    const isActive = activeRatingPreset === preset.key;
                     return (
                       <TouchableOpacity
                         key={preset.key}
                         style={[
                           styles.levelBtn,
-                          { flex: preset.key === 'all' ? 1.1 : 1 },
                           isActive && { borderColor: theme.primary, backgroundColor: `${theme.primary}20` }
                         ]}
                         onPress={() => {
-                          setActiveRatingPreset(preset.key);
                           setMinRating(preset.min);
                           setMaxRating(preset.max);
                         }}
@@ -624,28 +688,32 @@ export default function SearchScreen() {
                   onChange={(newMin, newMax) => {
                     setMinRating(newMin);
                     setMaxRating(newMax);
-                    setActiveRatingPreset('custom');
                   }}
                 />
               </View>
             )}
 
-            {/* Difficulty filter for Rakip tab (Çoklu Seçim) */}
+            {/* Difficulty filter for Rakip tab (Çoklu Seçim - Opsiyonel / Tümü Destekli) */}
             {activeTab === 'Rakip' && (
               <View style={styles.sectionBox}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-                  <Text style={styles.sectionTitle}>ZORLUK SEVİYESİ</Text>
-                  <Text style={{ fontFamily: Fonts.body, fontSize: 11, color: theme.primary }}>
-                    Birden fazla seçilebilir
-                  </Text>
+                  <Text style={styles.sectionTitle}>ZORLUK SEVİYESİ (OPSİYONEL)</Text>
+                  <TouchableOpacity onPress={() => setSelectedDifficulties([])}>
+                    <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 11, color: theme.primary }}>
+                      {selectedDifficulties.length === 0 ? 'Tümü Seçili' : 'Tümü (Temizle)'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
                 <View style={styles.levelGrid}>
-                  {['Eğlence', 'Düşük', 'Orta', 'Yüksek'].map((d) => {
-                    const active = selectedDifficulties.includes(d);
+                  {['Tümü', 'Eğlence', 'Düşük', 'Orta', 'Yüksek'].map((d) => {
+                    const active = d === 'Tümü' ? selectedDifficulties.length === 0 : selectedDifficulties.includes(d);
                     return (
                       <TouchableOpacity
                         key={d}
-                        style={levelBtnStyle(active)}
+                        style={[
+                          levelBtnStyle(active),
+                          d === 'Tümü' && { width: '100%' }
+                        ]}
                         onPress={() => toggleDifficulty(d)}
                         activeOpacity={0.8}
                         accessibilityRole="button"
@@ -694,7 +762,7 @@ export default function SearchScreen() {
                   style={styles.modalItem}
                   onPress={() => {
                     setSelectedCity(city);
-                    const defaultDist = (DISTRICTS_MAP[city] && DISTRICTS_MAP[city][0]) || 'Merkez';
+                    const defaultDist = (DISTRICTS_MAP[city] && DISTRICTS_MAP[city][0]) || 'Tüm İlçeler';
                     setSelectedDistrict(defaultDist);
                     setSelectedPitch('Tüm Sahalar');
                     setCityModalVisible(false);
@@ -948,7 +1016,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   scrollContent: {
     paddingTop: 16,
     paddingHorizontal: 16,
-    paddingBottom: 85
+    paddingBottom: 120
   },
   segmentContainer: {
     flexDirection: 'row',

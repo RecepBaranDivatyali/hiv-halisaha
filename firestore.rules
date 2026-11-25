@@ -14,13 +14,12 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && (
         request.auth.token.admin == true ||
-        request.auth.token.email in [
+        (request.auth.token.email_verified == true && request.auth.token.email in [
           'baranimoley@gmail.com',
-          'barandivatyali@gmail.com',
-          'admin@hivhalisaha.com',
-          'yonetim@hivhalisaha.com'
-        ] ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+          'barandivatyali@gmail.com'
+        ]) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       );
     }
 
@@ -28,12 +27,26 @@ service cloud.firestore {
     match /users/{userId} {
       // Tüm oturum açmış kullanıcılar profil bilgilerini görebilir
       allow read: if isAuthenticated();
-      // Kullanıcı yalnızca kendi profilini silebilir
-      allow create, delete: if isOwner(userId) || isAdmin();
-      // Profil güncelleme: Profil sahibi, Admin veya maç sonucu/oylama istatistik artırımı (stats, rating)
-      allow update: if isOwner(userId) || isAdmin() || (
-        isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stats', 'rating', 'updatedAt'])
-      );
+      // Hesap oluşturma: Kullanıcı kendi profilini oluşturabilir ancak yetki yükseltemez (role == 'user' ve isBanned == false olmalı)
+      allow create: if (
+        isOwner(userId) &&
+        (!('role' in request.resource.data) || request.resource.data.role == 'user') &&
+        (!('isBanned' in request.resource.data) || request.resource.data.isBanned == false)
+      ) || isAdmin();
+      // Kullanıcı yalnızca kendi profilini silebilir veya Admin silebilir (GDPR / Store uyumluluğu)
+      allow delete: if isOwner(userId) || isAdmin();
+      // Profil güncelleme:
+      // 1. Profil sahibi 'role' ve 'isBanned' alanlarını DEĞİŞTİREMEZ (Zero-Trust yetki yükseltme engeli)
+      // 2. Diğer kullanıcılar yalnızca maç sonucu / istatistik / kulüp katılım alanlarını güncelleyebilir
+      // 3. Admin her alanı güncelleyebilir
+      allow update: if (
+        isOwner(userId) && 
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isBanned'])
+      ) || (
+        isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'stats', 'rating', 'clubId', 'clubName', 'clubLogo', 'updatedAt'
+        ])
+      ) || isAdmin();
 
       // Alt koleksiyon: Kullanıcı Bildirimleri
       match /notifications/{notificationId} {
@@ -51,35 +64,52 @@ service cloud.firestore {
     // ─── MAÇLAR (MATCHES) ───
     match /matches/{matchId} {
       allow read: if isAuthenticated();
-      // Oturum açmış kullanıcılar maç ilanı oluşturabilir
-      allow create: if isAuthenticated();
-      // Maç güncelleme: Organizatör, B Kaptanı, Admin veya slot/katılımcı/yedek/şart değişiklikleri
+      // Oturum açmış kullanıcılar yalnızca kendi adına (veya meydan okuma kabulünde B kaptanı olarak) maç ilanı oluşturabilir
+      allow create: if isAuthenticated() && (
+        request.resource.data.organizerId == request.auth.uid ||
+        request.resource.data.captainBId == request.auth.uid ||
+        isAdmin()
+      );
+      // Maç güncelleme: Organizatör ve A Kaptanı tam yetkili; B Kaptanı kendi takım/skor alanlarını; sıradan oyuncu slot/yedek/ödeme alanlarını güncelleyebilir
       allow update: if isAuthenticated() && (
-        isAdmin() || 
         resource.data.organizerId == request.auth.uid ||
-        resource.data.captainBId == request.auth.uid ||
+        resource.data.captainAId == request.auth.uid ||
+        (
+          resource.data.captainBId == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'slots',
+            'joinedPlayersCount',
+            'reserves',
+            'benchB',
+            'teamBFormation',
+            'teamBHidden',
+            'teamBJoinTerms',
+            'score',
+            'scoreTeamA',
+            'scoreTeamB',
+            'status',
+            'formaGoluTeam',
+            'updatedAt',
+            'payments',
+            'paymentStatus'
+          ])
+        ) ||
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'slots', 
           'joinedPlayersCount', 
           'reserves', 
           'benchA', 
           'benchB', 
-          'captainAId', 
-          'captainBId', 
-          'captainBName', 
-          'score', 
-          'formaGoluTeam', 
-          'status', 
-          'joinTerms',
-          'teamAJoinTerms',
-          'teamBJoinTerms',
-          'cancelledAt',
-          'updatedAt'
-        ])
+          'updatedAt',
+          'payments',
+          'paymentStatus'
+        ]) ||
+        isAdmin()
       );
       // Maç silme: Yalnızca organizatör veya Admin
-      allow delete: if isAdmin() || (
-        isAuthenticated() && resource.data.organizerId == request.auth.uid
+      allow delete: if isAuthenticated() && (
+        resource.data.organizerId == request.auth.uid ||
+        isAdmin()
       );
     }
 
@@ -87,44 +117,45 @@ service cloud.firestore {
     match /clubs/{clubId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() || isAdmin();
-      // Kulüp güncelleme: Admin, kulüp lideri/kaptanı veya üye katılım/ayrılma/devretme/istek güncellemesi
+      // Kulüp güncelleme: Kulüp lideri/kaptanı, üye katılım/ayrılma/istek güncellemesi veya Admin
       allow update: if isAuthenticated() && (
-        isAdmin() || 
         resource.data.leaderId == request.auth.uid ||
         resource.data.captainId == request.auth.uid ||
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'membersCount', 'members', 'updatedAt', 'captainId', 'captainName', 'joinPolicy', 'joinRequests', 'inviteCode'
-        ])
+          'membersCount', 'members', 'updatedAt', 'joinRequests'
+        ]) ||
+        isAdmin()
       );
-      // Kulüp silme: Admin, kulüp lideri / kaptanı veya kulüpte tek kalan üye (sıradan üyeler silemez!)
+      // Kulüp silme: Yalnızca kulüp lideri, kaptanı veya Admin
       allow delete: if isAuthenticated() && (
-        isAdmin() || 
         resource.data.leaderId == request.auth.uid ||
         resource.data.captainId == request.auth.uid ||
-        (resource.data.members != null && request.auth.uid in resource.data.members && (resource.data.membersCount == 1 || resource.data.members.size() == 1))
+        isAdmin()
       );
     }
 
     // ─── HALISAHA / TESİSLER (PITCHES) ───
     match /pitches/{pitchId} {
-      allow read: if isAuthenticated();
+      // Halısaha tesis kataloğunu tüm kullanıcılar (misafirler dahil) görüntüleyebilir
+      allow read: if true;
       allow create, update, delete: if isAdmin();
     }
 
     // ─── TESİS ÖNERİLERİ (PITCH PROPOSALS) ───
     match /pitch_proposals/{proposalId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid && request.resource.data.status == 'pending';
       allow update, delete: if isAdmin();
     }
 
     // ─── TESİS YORUM & PUANLARI (PITCH REVIEWS) ───
     match /pitch_reviews/{reviewId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       // Kullanıcı yalnızca kendi tesis yorumunu güncelleyebilir veya silebilir
-      allow update, delete: if isAdmin() || (
-        isAuthenticated() && resource.data.userId == request.auth.uid
+      allow update, delete: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
       );
     }
 
@@ -132,7 +163,11 @@ service cloud.firestore {
     match /ratings/{ratingId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAdmin();
+      allow update: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
     }
 
     // ─── KULÜP MEYDAN OKUMALARI (CLUB CHALLENGES) ───
@@ -140,43 +175,81 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && request.resource.data.senderId == request.auth.uid;
       allow update: if isAuthenticated() && (
-        isAdmin() ||
         resource.data.senderId == request.auth.uid ||
         resource.data.toCaptainId == request.auth.uid ||
         resource.data.targetCaptainId == request.auth.uid ||
-        resource.data.status == 'pending'
+        (
+          resource.data.toClubId != null &&
+          exists(/databases/$(database)/documents/clubs/$(resource.data.toClubId)) &&
+          get(/databases/$(database)/documents/clubs/$(resource.data.toClubId)).data.captainId == request.auth.uid
+        ) ||
+        isAdmin()
       );
-      allow delete: if isAdmin() || (isAuthenticated() && resource.data.senderId == request.auth.uid);
+      allow delete: if isAuthenticated() && (
+        resource.data.senderId == request.auth.uid ||
+        isAdmin()
+      );
     }
 
     // ─── SOHBETLER & MESAJLAŞMA (CONVERSATIONS) ───
     match /conversations/{conversationId} {
-      // Katılımcılar, maç odası üyeleri veya adminler
       allow read: if isAuthenticated() && (
-        isAdmin() || 
-        conversationId.matches('^match_.*') ||
-        (resource.data.participants != null && request.auth.uid in resource.data.participants)
+        conversationId == 'general_chat' ||
+        conversationId.matches('^(match_|club_).*') ||
+        conversationId.matches('.*' + request.auth.uid + '.*') ||
+        (resource != null && resource.data.participants != null && request.auth.uid in resource.data.participants) ||
+        isAdmin()
       );
-      allow create, update: if isAuthenticated() && (
-        isAdmin() || 
-        conversationId.matches('^match_.*') ||
+      allow create: if isAuthenticated() && (
+        conversationId == 'general_chat' ||
+        conversationId.matches('^(match_|club_).*') ||
+        conversationId.matches('.*' + request.auth.uid + '.*') ||
         (request.resource.data.participants != null && request.auth.uid in request.resource.data.participants) ||
-        (resource.data.participants != null && request.auth.uid in resource.data.participants)
+        isAdmin()
+      );
+      allow update: if isAuthenticated() && (
+        conversationId == 'general_chat' ||
+        conversationId.matches('^(match_|club_).*') ||
+        (
+          resource != null &&
+          resource.data.participants != null &&
+          request.auth.uid in resource.data.participants &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['participants']) || request.resource.data.participants == resource.data.participants)
+        ) ||
+        isAdmin()
       );
       
       // Alt koleksiyon: Mesajlar
       match /messages/{messageId} {
         allow read: if isAuthenticated() && (
-          isAdmin() || 
-          conversationId.matches('^match_.*') ||
-          (resource.data.senderId != null)
+          conversationId == 'general_chat' ||
+          conversationId.matches('^(match_|club_).*') ||
+          conversationId.matches('.*' + request.auth.uid + '.*') ||
+          resource.data.senderId == request.auth.uid ||
+          (exists(/databases/$(database)/documents/conversations/$(conversationId)) && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants) ||
+          isAdmin()
         );
         allow create: if isAuthenticated() && (
-          conversationId.matches('^match_.*') ||
-          request.resource.data.senderId == request.auth.uid
+          (
+            conversationId == 'general_chat' &&
+            request.resource.data.senderId == request.auth.uid
+          ) ||
+          (
+            conversationId.matches('^(match_|club_).*') &&
+            (request.resource.data.senderId == request.auth.uid || request.resource.data.senderId == 'system')
+          ) ||
+          (
+            request.resource.data.senderId == request.auth.uid &&
+            (
+              (exists(/databases/$(database)/documents/conversations/$(conversationId)) && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants) ||
+              (existsAfter(/databases/$(database)/documents/conversations/$(conversationId)) && request.auth.uid in getAfter(/databases/$(database)/documents/conversations/$(conversationId)).data.participants)
+            )
+          ) ||
+          isAdmin()
         );
-        allow update, delete: if isAdmin() || (
-          isAuthenticated() && resource.data.senderId == request.auth.uid
+        allow update, delete: if isAuthenticated() && (
+          resource.data.senderId == request.auth.uid ||
+          isAdmin()
         );
       }
     }
@@ -187,6 +260,16 @@ service cloud.firestore {
       allow read: if true;
       // Ayarları yalnızca Admin değiştirebilir
       allow write: if isAdmin();
+    }
+
+    // ─── HESAP SİLME TALEPLERİ (DELETION REQUESTS) ───
+    match /deletion_requests/{reqId} {
+      allow create: if request.resource.data.keys().hasOnly(['email', 'reason', 'details', 'refCode', 'status', 'createdAt']) &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.email is string &&
+        request.resource.data.email.size() > 3 &&
+        request.resource.data.email.size() <= 200;
+      allow read, update, delete: if isAdmin();
     }
 
     // ─── ADMİNLER LİSTESİ (ADMINS) ───

@@ -3,26 +3,36 @@
     "name": "HIV Halisaha",
     "slug": "hiv-halisaha",
     "owner": "baranimoley",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "description": "Halısahaya İhtiyacım Var — Maç bul, oyuncu bul, kulüp kur.",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "hivapp",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.hiv.halisaha",
-      "buildNumber": "1"
+      "buildNumber": "3",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Profil fotoğrafı ve kulüp amblemi çekebilmeniz için kamera erişimi gereklidir.",
+        "NSPhotoLibraryUsageDescription": "Profil fotoğrafı ve kulüp amblemi seçebilmeniz için fotoğraf galerisi erişimi gereklidir."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundColor": "#0e0e0e"
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png",
+        "backgroundColor": "#0A0D10"
       },
       "package": "com.hiv.halisaha",
-      "versionCode": 1,
-      "navigationBarColor": "#0e0e0e",
-      "backgroundColor": "#0e0e0e"
+      "versionCode": 3,
+      "backgroundColor": "#0A0D10",
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "output": "static",
@@ -34,15 +44,22 @@
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
+          "imageWidth": 220,
           "resizeMode": "contain",
-          "backgroundColor": "#0e0e0e",
+          "backgroundColor": "#0A0D10",
           "dark": {
-            "backgroundColor": "#0e0e0e"
+            "backgroundColor": "#0A0D10"
           }
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Profil fotoğrafı ve kulüp amblemi seçebilmeniz için fotoğraf galerisi erişimi gereklidir.",
+          "cameraPermission": "Profil fotoğrafı ve kulüp amblemi çekebilmeniz için kamera erişimi gereklidir."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

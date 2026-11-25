@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 import { parseTargetTimestamp } from '@/services/dateUtils';
+import { appAlert } from '@/services/appAlert';
 
 interface WeatherAlertCardProps {
   city?: string;
@@ -124,10 +125,12 @@ const SPECIFIC_VENUE_COORDS: Record<string, { lat: number; lon: number }> = {
   'anadoluhisari': { lat: 41.0833, lon: 29.0667 },
 };
 
+const normalizeTR = (s: string) => s.toLocaleLowerCase('tr-TR').replace(/\u0307/g, '').trim();
+
 function resolveCoordinates(arenaStr?: string, distStr?: string, cityStr?: string): { lat: number; lon: number; locationName: string } {
   // 1. Belirli bilinen tesis eşleşmesi (Örn: ODTÜ, Çilekli vb.)
   if (arenaStr) {
-    const aLower = arenaStr.toLowerCase();
+    const aLower = normalizeTR(arenaStr);
     for (const [key, coords] of Object.entries(SPECIFIC_VENUE_COORDS)) {
       if (aLower.includes(key)) {
         return { ...coords, locationName: arenaStr.split('—')[0].trim() };
@@ -137,7 +140,7 @@ function resolveCoordinates(arenaStr?: string, distStr?: string, cityStr?: strin
 
   // 2. İlçe koordinatı eşleşmesi (Örn: Çankaya, Beşiktaş, Bornova, Nilüfer)
   if (distStr) {
-    const dLower = distStr.toLowerCase().trim();
+    const dLower = normalizeTR(distStr);
     if (DISTRICT_COORDS[dLower]) {
       return { ...DISTRICT_COORDS[dLower], locationName: `${distStr}, ${cityStr || ''}`.trim() };
     }
@@ -145,7 +148,7 @@ function resolveCoordinates(arenaStr?: string, distStr?: string, cityStr?: strin
 
   // 3. Şehir merkez koordinatı eşleşmesi
   if (cityStr) {
-    const cLower = cityStr.toLowerCase().trim();
+    const cLower = normalizeTR(cityStr);
     if (CITY_COORDS[cLower]) {
       return { ...CITY_COORDS[cLower], locationName: cityStr };
     }
@@ -183,9 +186,10 @@ export const WeatherAlertCard: React.FC<WeatherAlertCardProps> = ({
 
   const [currentTemp, setCurrentTemp] = useState(temp || '18°C');
   const [currentRainRisk, setCurrentRainRisk] = useState(rainRisk ?? 25);
-  const [currentCondition, setCurrentCondition] = useState(condition || 'Parçalı Bulutlu');
+  const [currentCondition, setCurrentCondition] = useState(condition || 'Yükleniyor');
   const [currentIcon, setCurrentIcon] = useState('cloud');
   const [loading, setLoading] = useState(false);
+  const [hasError, setHasError] = useState(false);
   const [isHourlyForecast, setIsHourlyForecast] = useState(false);
   const [matchTimeLabel, setMatchTimeLabel] = useState<string>('');
   const [resolvedLocationName, setResolvedLocationName] = useState<string>(city);
@@ -196,13 +200,18 @@ export const WeatherAlertCard: React.FC<WeatherAlertCardProps> = ({
       setCurrentTemp(temp);
       setCurrentRainRisk(rainRisk);
       setCurrentCondition(condition);
+      setHasError(false);
       return;
     }
 
     let isMounted = true;
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = controller ? setTimeout(() => controller.abort(), 8000) : null;
+
     const fetchForecast = async () => {
       try {
         setLoading(true);
+        setHasError(false);
         // 1. Tesis / İlçe / Şehir seviyesinde hassas GPS koordinatı çözümleme
         const coords = resolveCoordinates(arena, district, city);
         if (isMounted) {
@@ -213,7 +222,7 @@ export const WeatherAlertCard: React.FC<WeatherAlertCardProps> = ({
         // 2. Open-Meteo Saatlik ve Anlık Tahmin Sorgusu (16 günlük saatlik veri)
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=temperature_2m,weather_code&hourly=temperature_2m,precipitation_probability,weather_code&forecast_days=16&timezone=auto`;
 
-        const res = await fetch(url);
+        const res = await fetch(url, controller ? { signal: controller.signal } : undefined);
         if (!res.ok) throw new Error('Weather fetch failed');
         const data = await res.json();
 
@@ -234,7 +243,7 @@ export const WeatherAlertCard: React.FC<WeatherAlertCardProps> = ({
         if (data?.hourly?.time && Array.isArray(data.hourly.time)) {
           bestIndex = data.hourly.time.indexOf(targetHourStr);
 
-          // Tam saat bulunamadıysa zaman damgasına en yakın saati seç
+          // Tam saat bulunamadıysa 6 saat içindeki en yakın saati seç (16 günden uzak maçlarda yanlış saati seçme)
           if (bestIndex === -1) {
             let minDiff = Infinity;
             for (let i = 0; i < data.hourly.time.length; i++) {
@@ -244,6 +253,9 @@ export const WeatherAlertCard: React.FC<WeatherAlertCardProps> = ({
                 minDiff = diff;
                 bestIndex = i;
               }
+            }
+            if (minDiff > 6 * 3600 * 1000) {
+              bestIndex = -1;
             }
           }
         }
@@ -279,25 +291,38 @@ export const WeatherAlertCard: React.FC<WeatherAlertCardProps> = ({
       } catch (err) {
         console.log('Hava durumu çekme hatası:', err);
         if (isMounted) {
-          setCurrentTemp('19°C');
-          setCurrentRainRisk(15);
-          setCurrentCondition('Parçalı Bulutlu');
-          setCurrentIcon('cloud');
+          setHasError(true);
+          setCurrentTemp('--°C');
+          setCurrentRainRisk(0);
+          setCurrentCondition('Hava durumu şu an alınamıyor');
+          setCurrentIcon('cloud-off');
           setIsHourlyForecast(false);
-          setMatchTimeLabel(dateTime || 'Bugün');
+          setMatchTimeLabel(dateTime || 'Güncel değil');
         }
       } finally {
+        if (timeoutId) clearTimeout(timeoutId);
         if (isMounted) setLoading(false);
       }
     };
 
     fetchForecast();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
+      controller?.abort();
+    };
   }, [city, district, arena, dateTime, temp, rainRisk, condition]);
 
   const handleWeatherAdvice = () => {
     const locTitle = resolvedLocationName || (district ? `${district}, ${city}` : city);
-    Alert.alert(
+    if (hasError) {
+      appAlert.alert(
+        `☁️ ${locTitle} Hava Durumu`,
+        'Hava durumu servisine şu an ulaşılamıyor. İnternet bağlantınızı kontrol edip daha sonra tekrar deneyin.'
+      );
+      return;
+    }
+    appAlert.alert(
       `🌤️ ${locTitle} Maç Saati Hava Durumu`,
       `🏟️ Tesis / Saha: ${arena || locTitle}\n📍 Konum: ${resolvedLocationName} (${usedCoords.lat.toFixed(4)}, ${usedCoords.lon.toFixed(4)})\n⏰ Maç Saati: ${matchTimeLabel || dateTime || 'Canlı'}\n\n🌡️ Beklenen Sıcaklık: ${currentTemp}\n🌧️ Yağış İhtimali: %${currentRainRisk}\n☁️ Durum: ${currentCondition}\n\n• Saha Tipi: ${isOpenField ? 'Açık Saha' : 'Kapalı Saha'}\n• Tavsiye: ${
         isOpenField 
@@ -305,14 +330,13 @@ export const WeatherAlertCard: React.FC<WeatherAlertCardProps> = ({
               ? 'Maç saatinde yağış bekleniyor! Islak zemin için çim kramponu ve yağmurluk almanızı öneririz.' 
               : 'Maç saatinde hava futbol oynamak için gayet elverişli. Keyifli maçlar!') 
           : 'Tesis kapalı olduğu için maç hava şartlarından etkilenmeyecektir.'
-      }`,
-      [{ text: 'Tamam', style: 'default' }]
+      }`
     );
   };
 
   const displayLocation = district 
-    ? `${district.toUpperCase()}, ${city.toUpperCase()}` 
-    : city.toUpperCase();
+    ? `${district.toLocaleUpperCase('tr-TR')}, ${city.toLocaleUpperCase('tr-TR')}` 
+    : city.toLocaleUpperCase('tr-TR');
 
   return (
     <TouchableOpacity style={styles.container} activeOpacity={0.85} onPress={handleWeatherAdvice}>
@@ -330,7 +354,9 @@ export const WeatherAlertCard: React.FC<WeatherAlertCardProps> = ({
             <Text style={styles.dot}>•</Text>
             <Text style={styles.tempText}>{currentTemp}</Text>
             <Text style={styles.dot}>•</Text>
-            <Text style={styles.conditionText}>{currentCondition} (%{currentRainRisk})</Text>
+            <Text style={styles.conditionText}>
+              {hasError ? currentCondition : `${currentCondition} (%${currentRainRisk})`}
+            </Text>
           </View>
           <View style={styles.subRow}>
             {isHourlyForecast && (
@@ -340,11 +366,13 @@ export const WeatherAlertCard: React.FC<WeatherAlertCardProps> = ({
               </View>
             )}
             <Text style={styles.subText} numberOfLines={1}>
-              {isOpenField 
-                ? (currentRainRisk > 50 
-                    ? '⚠️ Yağış Riski Var — Krampon & Yağmurluk Alın!' 
-                    : '☀️ Futbol İçin İdeal Hava Şartları') 
-                : '✅ Kapalı Saha — Hava Şartlarından Etkilenmez'}
+              {hasError
+                ? '⚠️ Hava tahmini alınamadı — dokunup detayları görün'
+                : isOpenField 
+                  ? (currentRainRisk > 50 
+                      ? '⚠️ Yağış Riski Var — Krampon & Yağmurluk Alın!' 
+                      : '☀️ Futbol İçin İdeal Hava Şartları') 
+                  : '✅ Kapalı Saha — Hava Şartlarından Etkilenmez'}
             </Text>
           </View>
         </View>

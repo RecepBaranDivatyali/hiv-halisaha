@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, TextInput, Alert, Linking, Switch, KeyboardAvoidingView, Platform, Share } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, TextInput, Linking, Switch, KeyboardAvoidingView, Platform, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
@@ -18,6 +18,10 @@ import { dbService, MatchModel, BenchPlayer } from '@/services/dbService';
 import { auth } from '@/services/firebaseConfig';
 import { PITCH_DATABASE } from '@/config/pitches';
 import { parseTargetTimestamp, getMatchEndTimestamp, isMatchEnded } from '@/services/dateUtils';
+import { appAlert } from '@/services/appAlert';
+import { pickParam, safeBack } from '@/utils/navigation';
+
+const normalizeTr = (s: string) => s.toLocaleLowerCase('tr-TR').replace(/\u0307/g, '');
 
 interface PlayerPayment {
   slotKey: string;
@@ -44,16 +48,18 @@ export default function MatchRoomScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const styles = useStyles(theme);
-  const params = useLocalSearchParams<{ matchId?: string }>();
+  const params = useLocalSearchParams<{ matchId?: string | string[] }>();
+  const matchIdParam = pickParam(params.matchId);
   const { matches, deleteMatch, reloadMatches } = useMatches();
   
   // Realtime match state
   const [remoteMatch, setRemoteMatch] = useState<MatchModel | null>(null);
+  const slotActionInFlightRef = useRef(false);
   
   // Find the active match — prefer the one passed by param, else use the first one
-  const fallbackMatch = matches.find(m => m.id === params.matchId) ?? matches[0];
+  const fallbackMatch = matches.find(m => m.id === matchIdParam) ?? null;
   const activeMatch = remoteMatch ?? fallbackMatch;
-  const activeMatchId = params.matchId || fallbackMatch?.id || 'demo-match';
+  const activeMatchId = matchIdParam || fallbackMatch?.id || 'demo-match';
 
   const matchArena = activeMatch?.arena ?? 'Beşiktaş Arena';
 
@@ -74,13 +80,6 @@ export default function MatchRoomScreen() {
   const matchCity = dbPitch?.city || activeMatch?.city || 'İstanbul';
   const matchDistrict = dbPitch?.district || activeMatch?.district || '';
 
-  // Eğer Firestore'daki eski kayıtta şehir yanlış kalmışsa (Örn: ODTÜ için İstanbul girilmişse) arka planda düzelt
-  React.useEffect(() => {
-    if (activeMatchId && dbPitch?.city && activeMatch?.city && activeMatch.city !== dbPitch.city) {
-      dbService.updateMatch(activeMatchId, { city: dbPitch.city, district: dbPitch.district }).catch(() => {});
-    }
-  }, [activeMatchId, dbPitch?.city, dbPitch?.district, activeMatch?.city]);
-
   const openVenueLocation = () => {
     const query = encodeURIComponent(`${matchArena} ${matchCity}`);
     Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`);
@@ -89,13 +88,19 @@ export default function MatchRoomScreen() {
   const currentUid = user?.uid || auth.currentUser?.uid;
   const isOrganizer = Boolean(
     (currentUid && activeMatch?.organizerId === currentUid) ||
-    (currentUid && activeMatch?.captainAId === currentUid) ||
-    (user?.name && user.name.trim().length >= 2 && activeMatch?.organizer?.toLowerCase() === user.name.trim().toLowerCase())
+    (currentUid && activeMatch?.captainAId === currentUid)
   );
   const isCaptainA = isOrganizer || Boolean(currentUid && activeMatch?.captainAId === currentUid);
   const isCaptainB = Boolean(currentUid && activeMatch?.captainBId === currentUid);
   const hasCaptainB = Boolean(activeMatch?.captainBId);
   const isTwoCaptainsMode = activeMatch?.matchFormatType === 'two_captains' || hasCaptainB;
+
+  // Eğer Firestore'daki eski kayıtta şehir yanlış kalmışsa (Örn: ODTÜ için İstanbul girilmişse) organizatör girdiğinde arka planda düzelt
+  React.useEffect(() => {
+    if (isOrganizer && activeMatchId && dbPitch?.city && activeMatch?.city && activeMatch.city !== dbPitch.city) {
+      dbService.updateMatch(activeMatchId, { city: dbPitch.city, district: dbPitch.district }).catch(() => {});
+    }
+  }, [isOrganizer, activeMatchId, dbPitch?.city, dbPitch?.district, activeMatch?.city]);
 
   // Maçın bitiş zamanının gelip gelmediği kontrolü
   const isCompleted = activeMatch?.status === 'completed';
@@ -109,6 +114,8 @@ export default function MatchRoomScreen() {
       return;
     }
 
+    setHasMatchEnded(false);
+
     if (matchDateTime) {
       const endTs = getMatchEndTimestamp(matchDateTime);
       const remainingMs = endTs - Date.now();
@@ -120,23 +127,6 @@ export default function MatchRoomScreen() {
       }
     }
   }, [matchDateTime, isCompleted]);
-
-  // Zaman gelince (maçın bitme dakikası gelince) maç odası değil de maçı değerlendirme kısmı açılsın
-  React.useEffect(() => {
-    if (activeMatch && hasMatchEnded && activeMatchId && !isCompleted) {
-      const alreadyReviewed = user?.dismissedReviews?.includes(activeMatchId);
-      if (!alreadyReviewed) {
-        router.replace({
-          pathname: '/rate-match',
-          params: {
-            matchId: activeMatchId,
-            matchScore: activeMatch.score || '',
-            isOrganizer: isOrganizer ? 'true' : 'false'
-          }
-        });
-      }
-    }
-  }, [hasMatchEnded, activeMatchId, isOrganizer, user?.dismissedReviews, isCompleted, activeMatch]);
 
   // Zaman gelmeden "Maçı Bitir ve Skor Gir" butonu gelmesin
   const canFinishMatch = Boolean(isOrganizer && hasMatchEnded && !isCompleted);
@@ -150,6 +140,9 @@ export default function MatchRoomScreen() {
   const [pitchReviewVisible, setPitchReviewVisible] = useState(false);
   const [storyModalVisible, setStoryModalVisible] = useState(false);
   const [formationModalVisible, setFormationModalVisible] = useState(false);
+  const [subTimeModalVisible, setSubTimeModalVisible] = useState(false);
+  const [subTimeInput, setSubTimeInput] = useState('');
+  const [savingSubTime, setSavingSubTime] = useState(false);
   const [slotActionModalVisible, setSlotActionModalVisible] = useState(false);
   const [cancelMatchModalVisible, setCancelMatchModalVisible] = useState(false);
   const [slotActionData, setSlotActionData] = useState<{
@@ -176,17 +169,17 @@ export default function MatchRoomScreen() {
   const filteredPitchesList = React.useMemo(() => {
     let list = PITCH_DATABASE;
     if (activeMatch?.city) {
-      const matchCityLower = activeMatch.city.toLocaleLowerCase('tr');
-      const inCity = list.filter(p => p.city.toLocaleLowerCase('tr') === matchCityLower);
+      const matchCityLower = normalizeTr(activeMatch.city);
+      const inCity = list.filter(p => normalizeTr(p.city) === matchCityLower);
       if (inCity.length > 0) {
         list = inCity;
       }
     }
     if (pitchPickerSearch.trim()) {
-      const q = pitchPickerSearch.toLocaleLowerCase('tr');
+      const q = normalizeTr(pitchPickerSearch.trim());
       list = list.filter(p => 
-        p.name.toLocaleLowerCase('tr').includes(q) || 
-        (p.district && p.district.toLocaleLowerCase('tr').includes(q))
+        normalizeTr(p.name).includes(q) || 
+        (p.district && normalizeTr(p.district).includes(q))
       );
     }
     return list.slice(0, 30);
@@ -209,9 +202,9 @@ export default function MatchRoomScreen() {
         text: `🏟️ Maç sahası belirlendi: ${pitchName} (${pitchDistrict ? pitchDistrict + ', ' : ''}${pitchCity})`,
         type: 'system',
       });
-      Alert.alert('✓ Saha Belirlendi', `Maç sahası "${pitchName}" olarak belirlendi ve kadroya bildirildi.`);
+      appAlert.alert('Saha Belirlendi', `Maç sahası "${pitchName}" olarak belirlendi ve kadroya bildirildi.`);
     } catch {
-      Alert.alert('Hata', 'Saha belirlenirken bir sorun oluştu.');
+      appAlert.alert('Hata', 'Saha belirlenirken bir sorun oluştu.');
     }
   };
 
@@ -254,9 +247,9 @@ export default function MatchRoomScreen() {
         senderName: activeTeam === 'A' ? (activeMatch?.captainAName || 'A Kaptanı') : (activeMatch?.captainBName || 'B Kaptanı'),
         text: `📋 [Diziliş]: ${activeTeam} Takımı formasyonunu ${newFormation} olarak güncelledi.`
       });
-      Alert.alert('✓ Diziliş Güncellendi', `${activeTeam} Takımı formasyonu ${newFormation} olarak ayarlandı.`);
+      appAlert.alert('Diziliş Güncellendi', `${activeTeam} Takımı formasyonu ${newFormation} olarak ayarlandı.`);
     } catch {
-      Alert.alert('Hata', 'Diziliş formasyonu güncellenemedi.');
+      appAlert.alert('Hata', 'Diziliş formasyonu güncellenemedi.');
     }
   };
 
@@ -279,8 +272,8 @@ export default function MatchRoomScreen() {
 
   // Firestore live match subscription
   React.useEffect(() => {
-    if (params.matchId) {
-      const unsub = dbService.subscribeMatch(params.matchId, (doc) => {
+    if (matchIdParam) {
+      const unsub = dbService.subscribeMatch(matchIdParam, (doc) => {
         if (doc) {
           setRemoteMatch(doc);
           if (doc.totalFee) setTotalMatchFee(doc.totalFee);
@@ -294,7 +287,7 @@ export default function MatchRoomScreen() {
         if (unsub) unsub();
       };
     }
-  }, [params.matchId]);
+  }, [matchIdParam]);
 
   // Dynamic Pitch Rating
   const [pitchRating, setPitchRating] = useState<number>(4.8);
@@ -325,16 +318,9 @@ export default function MatchRoomScreen() {
   React.useEffect(() => {
     const effUid = user?.uid || auth.currentUser?.uid;
     if (activeMatch?.slots) {
-      let foundSlot = effUid 
+      const foundSlot = effUid 
         ? Object.keys(activeMatch.slots).find((key) => activeMatch.slots?.[key]?.uid === effUid)
         : null;
-
-      // If user is organizer and no slot matched by UID yet, check organizer's slot
-      if (!foundSlot && isOrganizer) {
-        if (activeMatch.slots['A_OS_ORTA']) foundSlot = 'A_OS_ORTA';
-        else if (activeMatch.slots['OS_ORTA']) foundSlot = 'A_OS_ORTA';
-        else if (activeMatch.slots['A_FORVET']) foundSlot = 'A_FORVET';
-      }
 
       if (foundSlot) {
         setUserSlot(foundSlot);
@@ -354,8 +340,6 @@ export default function MatchRoomScreen() {
           }
         }
       }
-    } else if (isOrganizer && !userSlot) {
-      setUserSlot('A_OS_ORTA');
     } else {
       setUserSlot(null);
       if (!hasInitialTeamSet.current && effUid) {
@@ -368,8 +352,7 @@ export default function MatchRoomScreen() {
         }
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMatch?.slots, benchA, benchB, user?.uid, isOrganizer]);
+  }, [activeMatch?.slots, benchA, benchB, user?.uid]);
 
   const [isGkFree, setIsGkFree] = useState(activeMatch?.isGkFree ?? false);
   const [isRotatingGk, setIsRotatingGk] = useState(activeMatch?.isRotatingGk ?? false);
@@ -535,11 +518,18 @@ export default function MatchRoomScreen() {
     .reduce((sum, p) => sum + p.amount, 0);
 
 
-  const unpaidAmount = Math.max(0, totalMatchFee - collectedPaidAmount - collectedCashAmount);
+  const unpaidAmount = Math.max(0, totalMatchFee - collectedPaidAmount - collectedCashAmount - pendingApprovalAmount);
 
   // Team A & Team B Subtotals for 2-Captain Mode
-  const rosterPaymentsA = rosterPayments.filter(p => p.slotKey.startsWith('A_'));
-  const rosterPaymentsB = rosterPayments.filter(p => p.slotKey.startsWith('B_'));
+  const rosterPaymentsA = rosterPayments.filter(p => p.slotKey.startsWith('A_') || p.slotKey.startsWith('BENCH_A_'));
+  const rosterPaymentsB = rosterPayments.filter(p => p.slotKey.startsWith('B_') || p.slotKey.startsWith('BENCH_B_'));
+
+  const effectiveUserSlotKey = React.useMemo(() => {
+    if (userSlot) return userSlot;
+    if (!currentUid) return null;
+    const myBenchPayment = rosterPayments.find(p => p.uid === currentUid && p.slotKey.startsWith('BENCH_'));
+    return myBenchPayment ? myBenchPayment.slotKey : null;
+  }, [userSlot, currentUid, rosterPayments]);
 
   const teamAPaid = rosterPaymentsA
     .filter(p => p.paymentStatus === 'paid' || p.paymentStatus === 'cash_on_pitch')
@@ -557,54 +547,52 @@ export default function MatchRoomScreen() {
     if (!isOrganizer) return;
     const isCurrentlyCaptainB = Boolean(activeMatch?.captainBId && activeMatch.captainBId === playerUid);
 
-    Alert.alert(
+    appAlert.confirm(
       isCurrentlyCaptainB ? 'B Kaptanlığını Kaldır' : 'B Takımı Kaptanı Ata',
-      isCurrentlyCaptainB 
+      isCurrentlyCaptainB
         ? `${playerName} oyuncusunun B Takımı Kaptanlığı yetkisini kaldırmak istiyor musunuz?`
         : `${playerName} oyuncusunu B Takımı Kaptanı (Rakip Kaptan) olarak yetkilendirmek istiyor musunuz?`,
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: isCurrentlyCaptainB ? 'Kaptanlığı Kaldır' : 'Kaptan Olarak Ata',
-          style: isCurrentlyCaptainB ? 'destructive' : 'default',
-          onPress: async () => {
-            if (!activeMatchId) return;
-            try {
-              if (isCurrentlyCaptainB) {
-                await dbService.updateMatchCaptainB(activeMatchId, null, null);
-                await dbService.sendMessage(`match_${activeMatchId}`, {
-                  senderId: user?.uid || 'anon',
-                  senderName: 'Organizatör',
-                  text: `ℹ️ [Kaptan Güncellemesi]: ${playerName} oyuncusunun B Takımı Kaptanlığı kaldırıldı.`
-                });
-                Alert.alert('Güncellendi', `${playerName} artık B Takımı Kaptanı değil.`);
-              } else {
-                await dbService.updateMatchCaptainB(activeMatchId, playerUid, playerName);
-                await dbService.sendMessage(`match_${activeMatchId}`, {
-                  senderId: user?.uid || 'anon',
-                  senderName: 'Organizatör',
-                  text: `⭐ [Kaptan Ataması]: ${playerName} B Takımı Kaptanı (Rakip Kaptan) olarak belirlendi!`
-                });
-                Alert.alert('✓ Kaptan Atandı', `${playerName} B Takımı Kaptanı olarak belirlendi.`);
-              }
-            } catch {
-              Alert.alert('Hata', 'Kaptan yetkisi güncellenirken bir sorun oluştu.');
-            }
+      async () => {
+        if (!activeMatchId) return;
+        try {
+          if (isCurrentlyCaptainB) {
+            await dbService.updateMatchCaptainB(activeMatchId, null, null);
+            await dbService.sendMessage(`match_${activeMatchId}`, {
+              senderId: user?.uid || 'anon',
+              senderName: 'Organizatör',
+              text: `ℹ️ [Kaptan Güncellemesi]: ${playerName} oyuncusunun B Takımı Kaptanlığı kaldırıldı.`
+            });
+            appAlert.alert('Güncellendi', `${playerName} artık B Takımı Kaptanı değil.`);
+          } else {
+            await dbService.updateMatchCaptainB(activeMatchId, playerUid, playerName);
+            await dbService.sendMessage(`match_${activeMatchId}`, {
+              senderId: user?.uid || 'anon',
+              senderName: 'Organizatör',
+              text: `⭐ [Kaptan Ataması]: ${playerName} B Takımı Kaptanı (Rakip Kaptan) olarak belirlendi!`
+            });
+            appAlert.alert('Kaptan Atandı', `${playerName} B Takımı Kaptanı olarak belirlendi.`);
           }
+        } catch {
+          appAlert.alert('Hata', 'Kaptan yetkisi güncellenirken bir sorun oluştu.');
         }
-      ]
+      },
+      {
+        confirmText: isCurrentlyCaptainB ? 'Kaptanlığı Kaldır' : 'Kaptan Olarak Ata',
+        cancelText: 'Vazgeç',
+        destructive: isCurrentlyCaptainB,
+      }
     );
   };
 
   // Captain Quick Payment Toggle
   const handleCaptainTogglePayment = (slotKey: string, playerName: string, currentStatus: string, playerUid?: string) => {
-    const isTargetInTeamB = slotKey.startsWith('B_');
+    const isTargetInTeamB = slotKey.startsWith('B_') || slotKey.startsWith('BENCH_B_');
     const canManageThisPlayer = isOrganizer || (isCaptainB && isTargetInTeamB);
 
     if (!canManageThisPlayer) return;
 
     if (currentStatus === 'exempt') {
-      Alert.alert('Muaf Oyuncu', 'Bu oyuncu kaleci olduğu için maç kuralları gereği ücret muafiyetine sahiptir.');
+      appAlert.alert('Muaf Oyuncu', 'Bu oyuncu kaleci olduğu için maç kuralları gereği ücret muafiyetine sahiptir.');
       return;
     }
 
@@ -622,7 +610,7 @@ export default function MatchRoomScreen() {
               text: `✅ [Ödeme Onayı]: ${playerName} oyuncusunun maç ücreti alındı ve "ÖDENDİ" olarak işaretlendi.`
             });
           } catch {
-            Alert.alert('Hata', 'Ödeme durumu güncellenemedi.');
+            appAlert.alert('Hata', 'Ödeme durumu güncellenemedi.');
           }
         }
       },
@@ -632,7 +620,7 @@ export default function MatchRoomScreen() {
           try {
             await dbService.updateSlotPayment(activeMatchId, slotKey, false, 'cash_on_pitch', 'cash');
           } catch {
-            Alert.alert('Hata', 'Ödeme durumu güncellenemedi.');
+            appAlert.alert('Hata', 'Ödeme durumu güncellenemedi.');
           }
         }
       },
@@ -643,7 +631,7 @@ export default function MatchRoomScreen() {
           try {
             await dbService.updateSlotPayment(activeMatchId, slotKey, false, 'unpaid');
           } catch {
-            Alert.alert('Hata', 'Ödeme durumu güncellenemedi.');
+            appAlert.alert('Hata', 'Ödeme durumu güncellenemedi.');
           }
         }
       }
@@ -658,7 +646,7 @@ export default function MatchRoomScreen() {
 
     buttons.push({ text: 'Vazgeç', style: 'cancel' });
 
-    Alert.alert(
+    appAlert.choose(
       `Oyuncu Yönetimi: ${playerName}`,
       `${isOrganizer ? 'Organizatör' : 'B Kaptanı'} olarak işlem seçin:`,
       buttons
@@ -672,9 +660,17 @@ export default function MatchRoomScreen() {
   const [captainBankNameInput, setCaptainBankNameInput] = useState(activeMatch?.organizerBankName || user?.bankName || '');
   const [savingCaptainIban, setSavingCaptainIban] = useState(false);
 
+  React.useEffect(() => {
+    if (captainIbanModalVisible) {
+      setCaptainIbanInput(activeMatch?.organizerIban || user?.iban || '');
+      setCaptainIbanNameInput(activeMatch?.organizerIbanName || user?.ibanName || user?.name || '');
+      setCaptainBankNameInput(activeMatch?.organizerBankName || user?.bankName || '');
+    }
+  }, [captainIbanModalVisible, activeMatch?.organizerIban, activeMatch?.organizerIbanName, activeMatch?.organizerBankName, user?.iban, user?.ibanName, user?.bankName, user?.name]);
+
   const handleSaveCaptainIban = async () => {
     if (!captainIbanInput.trim()) {
-      Alert.alert('Eksik Bilgi', 'Lütfen geçerli bir IBAN girin.');
+      appAlert.alert('Eksik Bilgi', 'Lütfen geçerli bir IBAN girin.');
       return;
     }
     setSavingCaptainIban(true);
@@ -685,9 +681,9 @@ export default function MatchRoomScreen() {
         organizerBankName: captainBankNameInput.trim() || 'Banka Hesabı'
       });
       setCaptainIbanModalVisible(false);
-      Alert.alert('✓ IBAN Kaydedildi', 'Kaptan IBAN bilgileriniz güncellendi. Oyuncular artık bu IBAN\'ı görerek FAST ile maç ücretini gönderebilir.');
+      appAlert.alert('IBAN Kaydedildi', 'Kaptan IBAN bilgileriniz güncellendi. Oyuncular artık bu IBAN\'ı görerek FAST ile maç ücretini gönderebilir.');
     } catch {
-      Alert.alert('Hata', 'IBAN bilgileri güncellenirken bir sorun oluştu.');
+      appAlert.alert('Hata', 'IBAN bilgileri güncellenirken bir sorun oluştu.');
     } finally {
       setSavingCaptainIban(false);
     }
@@ -774,6 +770,13 @@ export default function MatchRoomScreen() {
       });
     } catch (e) {
       console.log('Mesaj gönderme hatası:', e);
+      if (isTeam) {
+        setTeamChatMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
+      } else {
+        setChatMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
+      }
+      setChatInput(text);
+      appAlert.alert('Hata', 'Mesaj gönderilemedi. Lütfen bağlantınızı kontrol edin.');
     }
   };
 
@@ -789,206 +792,270 @@ export default function MatchRoomScreen() {
 
   const executeLeaveSlot = async (slotKey: string, slotLabel: string, penaltyPercent: number) => {
     const effUid = user?.uid || auth.currentUser?.uid;
-    const targetMatchId = params.matchId || fallbackMatch?.id;
-    setUserSlot(null);
+    const targetMatchId = matchIdParam || fallbackMatch?.id;
     if (targetMatchId && targetMatchId !== 'demo-match') {
       try {
         const leaveResult = await dbService.leaveMatchSlot(targetMatchId, slotKey, effUid);
+        setUserSlot(null);
         if (leaveResult?.wasPaid) {
-          Alert.alert(
+          appAlert.alert(
             'Mevkiden Ayrıldınız (İade Bilgisi)',
             `${slotLabel} mevkisinden ayrıldınız.\n\n⚠️ Bu maç için daha önce ödeme yapmıştınız. Lütfen maç organizatörü ile iletişime geçerek ücret iadenizi talep ediniz. İade gerekliliği maç içi sohbete de bildirilmiştir.`
           );
         } else if (penaltyPercent > 0 && effUid) {
-          const newScore = await dbService.updateUserReliability(effUid, penaltyPercent);
-          Alert.alert(
+          const newScore = await dbService.updateUserReliability(effUid, penaltyPercent).catch(() => null);
+          appAlert.alert(
             'Mevkiden Ayrıldınız',
-            `${slotLabel} mevkisinden ayrıldınız.\n\n⚠️ Geç iptal nedeniyle Güvenilirlik Puanınız %${penaltyPercent} düşürüldü. (Yeni Puanınız: %${newScore})`
+            newScore !== null
+              ? `${slotLabel} mevkisinden ayrıldınız.\n\n⚠️ Geç iptal nedeniyle Güvenilirlik Puanınız %${penaltyPercent} düşürüldü. (Yeni Puanınız: %${newScore})`
+              : `${slotLabel} mevkisinden ayrıldınız.`
           );
         } else {
-          Alert.alert('Ayrıldınız', `${slotLabel} mevkisinden ayrıldınız.`);
+          appAlert.alert('Ayrıldınız', `${slotLabel} mevkisinden ayrıldınız.`);
         }
       } catch {
         console.error('Slot ayrılma hatası');
-        setUserSlot(slotKey); // Rollback
-        Alert.alert('Hata', 'Mevkiden ayrılırken bir sorun oluştu.');
+        appAlert.alert('Hata', 'Mevkiden ayrılırken bir sorun oluştu.');
       }
     } else {
-      Alert.alert('Ayrıldınız', `${slotLabel} mevkisinden ayrıldınız.`);
+      setUserSlot(null);
+      appAlert.alert('Ayrıldınız', `${slotLabel} mevkisinden ayrıldınız.`);
     }
   };
 
   const handleSelectSlot = async (slotKey: string, slotLabel: string) => {
-    const effUid = user?.uid || auth.currentUser?.uid;
-    if (!effUid) {
-      Alert.alert('Giriş Yapın', 'Kadroya katılmak veya işlem yapmak için lütfen önce giriş yapın.');
-      return;
-    }
-
-    const targetMatchId = params.matchId || fallbackMatch?.id;
-    if (!targetMatchId || targetMatchId === 'demo-match') {
-      Alert.alert('Demo Maç', 'Demo maçta kadro değişiklikleri sunucuya kaydedilmez.');
-      return;
-    }
-
-    // 1. If a bench player is currently selected for placement
-    if (selectedBenchPlayer) {
-      if (selectedBenchPlayer.team !== activeTeam) {
-        Alert.alert('Hata', 'Seçilen yedek oyuncu farklı bir takıma ait.');
-        setSelectedBenchPlayer(null);
+    if (slotActionInFlightRef.current) return;
+    slotActionInFlightRef.current = true;
+    try {
+      const effUid = user?.uid || auth.currentUser?.uid;
+      if (!effUid) {
+        appAlert.alert('Giriş Yapın', 'Kadroya katılmak veya işlem yapmak için lütfen önce giriş yapın.');
         return;
       }
 
-      // Check permission: can user place this bench player?
-      const isMyOwnBenchPlayer = selectedBenchPlayer.player.uid === effUid;
-      if (!canManageActiveTeam && !isMyOwnBenchPlayer) {
-        Alert.alert('Yetki Yok', 'Bu yedek oyuncuyu sadece takım kaptanı veya organizatör sahaya yerleştirebilir.');
+      const targetMatchId = matchIdParam || fallbackMatch?.id;
+      if (!targetMatchId || targetMatchId === 'demo-match') {
+        appAlert.alert('Demo Maç', 'Demo maçta kadro değişiklikleri sunucuya kaydedilmez.');
         return;
       }
 
+      // 1. If a bench player is currently selected for placement
+      if (selectedBenchPlayer) {
+        if (selectedBenchPlayer.team !== activeTeam) {
+          appAlert.alert('Hata', 'Seçilen yedek oyuncu farklı bir takıma ait.');
+          setSelectedBenchPlayer(null);
+          return;
+        }
+
+        // Check permission: can user place this bench player?
+        const isMyOwnBenchPlayer = selectedBenchPlayer.player.uid === effUid;
+        if (!canManageActiveTeam && !isMyOwnBenchPlayer) {
+          appAlert.alert('Yetki Yok', 'Bu yedek oyuncuyu sadece takım kaptanı veya organizatör sahaya yerleştirebilir.');
+          return;
+        }
+
+        const existingOccupant = activeMatch?.slots?.[slotKey];
+        if (existingOccupant && existingOccupant.uid) {
+          // Swap occupant to bench, and put selected bench player here
+          appAlert.confirm(
+            'Oyuncu Değişikliği',
+            `Sahadaki ${existingOccupant.name} yedek kulübesine alınacak ve yerine ${selectedBenchPlayer.player.name} sahaya geçecek. Onaylıyor musunuz?`,
+            async () => {
+              try {
+                await dbService.assignBenchPlayerToSlot(targetMatchId, activeTeam, selectedBenchPlayer.player.uid, slotKey);
+                appAlert.alert('Değişiklik Yapıldı', `${selectedBenchPlayer.player.name} sahaya alındı, ${existingOccupant.name} yedek kulübesine çekildi.`);
+                setSelectedBenchPlayer(null);
+              } catch {
+                appAlert.alert('Hata', 'Oyuncu değişikliği yapılırken bir sorun oluştu.');
+              }
+            },
+            { confirmText: 'Değişikliği Yap', cancelText: 'Vazgeç' }
+          );
+          return;
+        }
+
+        // Slot is empty -> Assign bench player directly
+        try {
+          await dbService.assignBenchPlayerToSlot(targetMatchId, activeTeam, selectedBenchPlayer.player.uid, slotKey);
+          appAlert.alert('Sahaya Yerleştirildi', `${selectedBenchPlayer.player.name} ${slotLabel} mevkisine yerleştirildi.`);
+          setSelectedBenchPlayer(null);
+        } catch {
+          appAlert.alert('Hata', 'Yedek oyuncu sahaya yerleştirilirken bir sorun oluştu.');
+        }
+        return;
+      }
+
+      // 2. Normal Slot Interaction (No bench player selected)
       const existingOccupant = activeMatch?.slots?.[slotKey];
+
       if (existingOccupant && existingOccupant.uid) {
-        // Swap occupant to bench, and put selected bench player here
-        Alert.alert(
-          'Oyuncu Değişikliği',
-          `Sahadaki ${existingOccupant.name} yedek kulübesine alınacak ve yerine ${selectedBenchPlayer.player.name} sahaya geçecek. Onaylıyor musunuz?`,
-          [
+        const isMySlot = existingOccupant.uid === effUid || userSlot === slotKey;
+
+        if (isMySlot) {
+          const hoursLeft = calculateHoursUntilMatch(matchDateTime);
+          let penalty = 0;
+          if (hoursLeft <= 2) penalty = 15;
+          else if (hoursLeft <= 6) penalty = 8;
+          else if (hoursLeft <= 24) penalty = 3;
+
+          setSlotActionData({
+            slotKey,
+            slotLabel,
+            penalty
+          });
+          setSlotActionModalVisible(true);
+          return;
+        }
+
+        // Slot is occupied by someone else
+        if (canManageActiveTeam) {
+          const options: any[] = [
             { text: 'Vazgeç', style: 'cancel' },
             {
-              text: 'Değişikliği Yap',
+              text: '👤 Profili Görüntüle',
+              onPress: () => {
+                setSelectedPlayerForProfile({
+                  uid: existingOccupant.uid,
+                  name: existingOccupant.name,
+                  avatar: existingOccupant.avatar,
+                  position: slotLabel,
+                });
+                setPlayerProfileModalVisible(true);
+              }
+            },
+            {
+              text: '🔄 Yedek Kulübesine Çek',
               onPress: async () => {
                 try {
-                  await dbService.assignBenchPlayerToSlot(targetMatchId, activeTeam, selectedBenchPlayer.player.uid, slotKey);
-                  Alert.alert('✓ Değişiklik Yapıldı', `${selectedBenchPlayer.player.name} sahaya alındı, ${existingOccupant.name} yedek kulübesine çekildi.`);
-                  setSelectedBenchPlayer(null);
+                  await dbService.moveSlotToBench(targetMatchId, activeTeam, slotKey);
+                  appAlert.alert('Yedek Kulübesine Alındı', `${existingOccupant.name} yedek kulübesine çekildi.`);
                 } catch {
-                  Alert.alert('Hata', 'Oyuncu değişikliği yapılırken bir sorun oluştu.');
+                  appAlert.alert('Hata', 'Oyuncu kulübeye çekilirken bir sorun oluştu.');
                 }
               }
+            },
+            {
+              text: '💵 Ödeme Durumunu Değiştir',
+              onPress: () => {
+                handleCaptainTogglePayment(slotKey, existingOccupant.name, existingOccupant.paymentStatus || 'unpaid', existingOccupant.uid);
+              }
             }
-          ]
+          ];
+
+          if (isOrganizer && activeTeam === 'B' && existingOccupant.uid !== effUid) {
+            const isSlotCapB = Boolean(activeMatch?.captainBId && activeMatch.captainBId === existingOccupant.uid);
+            options.splice(2, 0, {
+              text: isSlotCapB ? '⭐ B Kaptanlığını Kaldır' : '⭐ B Takımı Kaptanı Yap',
+              onPress: () => handleAssignCaptainB(existingOccupant.uid, existingOccupant.name)
+            });
+          }
+
+          appAlert.choose(`Oyuncu Yönetimi: ${existingOccupant.name}`, `${activeTeam} Takımı yöneticisi olarak işlem seçin:`, options);
+          return;
+        }
+
+        // Regular user clicking someone else's slot -> Open their profile modal
+        setSelectedPlayerForProfile({
+          uid: existingOccupant.uid,
+          name: existingOccupant.name,
+          avatar: existingOccupant.avatar,
+          position: slotLabel,
+        });
+        setPlayerProfileModalVisible(true);
+        return;
+      }
+
+      // 3. Slot is EMPTY:
+      // Check if user is in another team -> Offer team switch
+      if (myTeam && myTeam !== activeTeam) {
+        setTeamSwitchData({
+          targetSlotKey: slotKey,
+          targetSlotLabel: slotLabel,
+          targetTeam: activeTeam
+        });
+        setTeamSwitchModalVisible(true);
+        return;
+      }
+
+      // If user is already in this team's bench:
+      const isInThisTeamBench = (activeTeam === 'A' ? benchA : benchB).some(p => p.uid === effUid);
+      if (isInThisTeamBench) {
+        try {
+          await dbService.assignBenchPlayerToSlot(targetMatchId, activeTeam, effUid, slotKey);
+          setUserSlot(slotKey);
+          appAlert.alert('Kadroya Girildi', `${slotLabel} mevkisine yerleştiniz.`);
+        } catch {
+          appAlert.alert('Hata', 'Mevkiye yerleşirken bir sorun oluştu.');
+        }
+        return;
+      }
+
+      // If user is already on another pitch slot in this team:
+      if (userSlot && userSlot !== slotKey) {
+        try {
+          await dbService.joinMatchSlot(targetMatchId, slotKey, {
+            uid: effUid,
+            name: user?.name || auth.currentUser?.displayName || 'Oyuncu',
+            avatar: user?.avatar || auth.currentUser?.photoURL || '',
+            position: slotLabel,
+            joinedAt: Date.now()
+          });
+          setUserSlot(slotKey);
+          appAlert.alert('Mevki Değiştirildi', `${slotLabel} mevkiine geçtiniz.`);
+        } catch {
+          appAlert.alert('Hata', 'Mevki değiştirilirken bir sorun oluştu.');
+        }
+        return;
+      }
+
+      // Check target team's join terms before joining
+      const targetTeamTerms = isTwoCaptainsMode
+        ? (activeTeam === 'A' ? teamAJoinTerms : teamBJoinTerms)
+        : joinTerms;
+
+      const canManageTargetTeam = activeTeam === 'A' ? canManageTeamA : canManageTeamB;
+
+      // 3: Katılma Kapalı
+      if (targetTeamTerms === 3 && !canManageTargetTeam) {
+        appAlert.alert(
+          'Katılma Kapalı',
+          `${activeTeam} Takımı için yeni oyuncu katılımı takım kaptanı tarafından kapatılmıştır.`
         );
         return;
       }
 
-      // Slot is empty -> Assign bench player directly
-      try {
-        await dbService.assignBenchPlayerToSlot(targetMatchId, activeTeam, selectedBenchPlayer.player.uid, slotKey);
-        Alert.alert('✓ Sahaya Yerleştirildi', `${selectedBenchPlayer.player.name} ${slotLabel} mevkisine yerleştirildi.`);
-        setSelectedBenchPlayer(null);
-      } catch {
-        Alert.alert('Hata', 'Yedek oyuncu sahaya yerleştirilirken bir sorun oluştu.');
+      // 1: İstekle Katılma
+      if (targetTeamTerms === 1 && !canManageTargetTeam) {
+        const requesterName = user?.name || auth.currentUser?.displayName || 'Oyuncu';
+        appAlert.alert(
+          'İstek Gönderildi',
+          `${activeTeam} Takımı "İstekle Katılma" modundadır. Katılım talebiniz takım kaptanına iletildi. Kaptan sizi kadroya yerleştirebilir.`
+        );
+        dbService.sendMessage(`match_${targetMatchId}`, {
+          senderId: effUid,
+          senderName: requesterName,
+          text: `🙋‍♂️ [Katılım İsteği]: ${requesterName}, ${activeTeam} Takımı ${slotLabel} mevkisine katılmak için istek gönderdi.`
+        }).catch(console.error);
+        return;
       }
-      return;
-    }
 
-    // 2. Normal Slot Interaction (No bench player selected)
-    const existingOccupant = activeMatch?.slots?.[slotKey];
-
-    if (existingOccupant && existingOccupant.uid) {
-      const isMySlot = existingOccupant.uid === effUid || userSlot === slotKey;
-
-      if (isMySlot) {
-        const hoursLeft = calculateHoursUntilMatch(matchDateTime);
-        let penalty = 0;
-        if (hoursLeft <= 2) penalty = 15;
-        else if (hoursLeft <= 6) penalty = 8;
-        else if (hoursLeft <= 24) penalty = 3;
-
-        setSlotActionData({
-          slotKey,
-          slotLabel,
-          penalty
+      // 2: Davetle Katılma
+      if (targetTeamTerms === 2 && !canManageTargetTeam) {
+        const inviteMsg = `${activeTeam} Takımına sadece kaptan tarafından davet edilen oyuncular katılabilir. Kaptan tarafından davet edildiniz mi?`;
+        const proceed = await new Promise<boolean>((resolve) => {
+          appAlert.alert(
+            'Davetle Katılma',
+            inviteMsg,
+            [
+              { text: 'Hayır, Vazgeç', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Evet, Davetliyim (Katıl)', onPress: () => resolve(true) }
+            ]
+          );
         });
-        setSlotActionModalVisible(true);
-        return;
+        if (!proceed) return;
       }
 
-      // Slot is occupied by someone else
-      if (canManageActiveTeam) {
-        const options: any[] = [
-          { text: 'Vazgeç', style: 'cancel' },
-          {
-            text: '👤 Profili Görüntüle',
-            onPress: () => {
-              setSelectedPlayerForProfile({
-                uid: existingOccupant.uid,
-                name: existingOccupant.name,
-                avatar: existingOccupant.avatar,
-                position: slotLabel,
-              });
-              setPlayerProfileModalVisible(true);
-            }
-          },
-          {
-            text: '🔄 Yedek Kulübesine Çek',
-            onPress: async () => {
-              try {
-                await dbService.moveSlotToBench(targetMatchId, activeTeam, slotKey);
-                Alert.alert('Yedek Kulübesine Alındı', `${existingOccupant.name} yedek kulübesine çekildi.`);
-              } catch {
-                Alert.alert('Hata', 'Oyuncu kulübeye çekilirken bir sorun oluştu.');
-              }
-            }
-          },
-          {
-            text: '💵 Ödeme Durumunu Değiştir',
-            onPress: () => {
-              handleCaptainTogglePayment(slotKey, existingOccupant.name, existingOccupant.paymentStatus || 'unpaid', existingOccupant.uid);
-            }
-          }
-        ];
-
-        if (isOrganizer && activeTeam === 'B' && existingOccupant.uid !== effUid) {
-          const isSlotCapB = Boolean(activeMatch?.captainBId && activeMatch.captainBId === existingOccupant.uid);
-          options.splice(2, 0, {
-            text: isSlotCapB ? '⭐ B Kaptanlığını Kaldır' : '⭐ B Takımı Kaptanı Yap',
-            onPress: () => handleAssignCaptainB(existingOccupant.uid, existingOccupant.name)
-          });
-        }
-
-        Alert.alert(`Oyuncu Yönetimi: ${existingOccupant.name}`, `${activeTeam} Takımı yöneticisi olarak işlem seçin:`, options);
-        return;
-      }
-
-      // Regular user clicking someone else's slot -> Open their profile modal
-      setSelectedPlayerForProfile({
-        uid: existingOccupant.uid,
-        name: existingOccupant.name,
-        avatar: existingOccupant.avatar,
-        position: slotLabel,
-      });
-      setPlayerProfileModalVisible(true);
-      return;
-    }
-
-    // 3. Slot is EMPTY:
-    // Check if user is in another team -> Offer team switch
-    if (myTeam && myTeam !== activeTeam) {
-      setTeamSwitchData({
-        targetSlotKey: slotKey,
-        targetSlotLabel: slotLabel,
-        targetTeam: activeTeam
-      });
-      setTeamSwitchModalVisible(true);
-      return;
-    }
-
-    // If user is already in this team's bench:
-    const isInThisTeamBench = (activeTeam === 'A' ? benchA : benchB).some(p => p.uid === effUid);
-    if (isInThisTeamBench) {
-      try {
-        await dbService.assignBenchPlayerToSlot(targetMatchId, activeTeam, effUid, slotKey);
-        setUserSlot(slotKey);
-        Alert.alert('✓ Kadroya Girildi', `${slotLabel} mevkisine yerleştiniz.`);
-      } catch {
-        Alert.alert('Hata', 'Mevkiye yerleşirken bir sorun oluştu.');
-      }
-      return;
-    }
-
-    // If user is already on another pitch slot in this team:
-    if (userSlot && userSlot !== slotKey) {
+      // If user is not yet in the team at all:
       try {
         await dbService.joinMatchSlot(targetMatchId, slotKey, {
           uid: effUid,
@@ -998,200 +1065,163 @@ export default function MatchRoomScreen() {
           joinedAt: Date.now()
         });
         setUserSlot(slotKey);
-        Alert.alert('✓ Mevki Değiştirildi', `${slotLabel} mevkiine geçtiniz.`);
+
+        const isGkSlot = slotKey.includes('KALECI');
+        const isExemptGk = Boolean(isGkFree && isGkSlot && !isRotatingGk);
+
+        // After successful join, prompt for payment (unless exempt GK)
+        if (isExemptGk) {
+          appAlert.alert('Kaleci Olarak Katıldınız', `${activeTeam} Takımı Kalecisi olarak kadroya girdiniz. Bu maçta kaleciler ücretten muaftır!`);
+        } else if (perPlayerFee > 0) {
+          setTimeout(() => {
+            appAlert.alert(
+              'Kadroya Katıldın',
+              `Maç ücretin: ₺${perPlayerFee}. Şimdi ödeme yapmak ister misin?`,
+              [
+                { text: 'Sonra', style: 'cancel' },
+                { text: 'Ödeme Yap', onPress: () => setDirectPayVisible(true) },
+              ]
+            );
+          }, 500);
+        } else {
+          appAlert.alert('Takıma Katıldınız', `${activeTeam} Takımı ${slotLabel} mevkisine yerleştiniz.`);
+        }
       } catch {
-        Alert.alert('Hata', 'Mevki değiştirilirken bir sorun oluştu.');
+        appAlert.alert('Hata', 'Takıma katılırken bir sorun oluştu.');
       }
-      return;
-    }
-
-    // Check target team's join terms before joining
-    const targetTeamTerms = isTwoCaptainsMode 
-      ? (activeTeam === 'A' ? teamAJoinTerms : teamBJoinTerms)
-      : joinTerms;
-
-    const canManageTargetTeam = activeTeam === 'A' ? canManageTeamA : canManageTeamB;
-
-    // 3: Katılma Kapalı
-    if (targetTeamTerms === 3 && !canManageTargetTeam) {
-      Alert.alert(
-        '🔒 Katılma Kapalı',
-        `${activeTeam} Takımı için yeni oyuncu katılımı takım kaptanı tarafından kapatılmıştır.`
-      );
-      return;
-    }
-
-    // 1: İstekle Katılma
-    if (targetTeamTerms === 1 && !canManageTargetTeam) {
-      const requesterName = user?.name || auth.currentUser?.displayName || 'Oyuncu';
-      Alert.alert(
-        '📩 İstek Gönderildi',
-        `${activeTeam} Takımı "İstekle Katılma" modundadır. Katılım talebiniz takım kaptanına iletildi. Kaptan sizi kadroya yerleştirebilir.`,
-        [{ text: 'Tamam' }]
-      );
-      dbService.sendMessage(`match_${targetMatchId}`, {
-        senderId: effUid,
-        senderName: requesterName,
-        text: `🙋‍♂️ [Katılım İsteği]: ${requesterName}, ${activeTeam} Takımı ${slotLabel} mevkisine katılmak için istek gönderdi.`
-      }).catch(console.error);
-      return;
-    }
-
-    // 2: Davetle Katılma
-    if (targetTeamTerms === 2 && !canManageTargetTeam) {
-      const proceed = await new Promise<boolean>((resolve) => {
-        Alert.alert(
-          '✉️ Davetle Katılma',
-          `${activeTeam} Takımına sadece kaptan tarafından davet edilen oyuncular katılabilir. Kaptan tarafından davet edildiniz mi?`,
-          [
-            { text: 'Hayır, Vazgeç', style: 'cancel', onPress: () => resolve(false) },
-            { text: 'Evet, Davetliyim (Katıl)', onPress: () => resolve(true) }
-          ]
-        );
-      });
-      if (!proceed) return;
-    }
-
-    // If user is not yet in the team at all:
-    try {
-      await dbService.joinMatchSlot(targetMatchId, slotKey, {
-        uid: effUid,
-        name: user?.name || auth.currentUser?.displayName || 'Oyuncu',
-        avatar: user?.avatar || auth.currentUser?.photoURL || '',
-        position: slotLabel,
-        joinedAt: Date.now()
-      });
-      setUserSlot(slotKey);
-      
-      const isGkSlot = slotKey.includes('KALECI');
-      const isExemptGk = Boolean(isGkFree && isGkSlot && !isRotatingGk);
-
-      // After successful join, prompt for payment (unless exempt GK)
-      if (isExemptGk) {
-        Alert.alert('🧤 Kaleci Olarak Katıldınız!', `${activeTeam} Takımı Kalecisi olarak kadroya girdiniz. Bu maçta kaleciler ücretten muaftır!`);
-      } else if (perPlayerFee > 0) {
-        setTimeout(() => {
-          Alert.alert(
-            '✅ Kadroya Katıldın!',
-            `Maç ücretin: ₺${perPlayerFee}. Şimdi ödeme yapmak ister misin?`,
-            [
-              { text: 'Sonra', style: 'cancel' },
-              { text: 'Ödeme Yap', onPress: () => setDirectPayVisible(true) },
-            ]
-          );
-        }, 500);
-      } else {
-        Alert.alert('✓ Takıma Katıldınız', `${activeTeam} Takımı ${slotLabel} mevkisine yerleştiniz.`);
-      }
-    } catch {
-      Alert.alert('Hata', 'Takıma katılırken bir sorun oluştu.');
+    } finally {
+      slotActionInFlightRef.current = false;
     }
   };
 
   const handleConfirmTeamSwitch = async () => {
-    if (!teamSwitchData) return;
-    const { targetSlotKey, targetSlotLabel, targetTeam } = teamSwitchData;
-    const effUid = user?.uid || auth.currentUser?.uid;
-    const targetMatchId = params.matchId || fallbackMatch?.id;
-    if (!effUid || !targetMatchId) return;
-
-    setTeamSwitchModalVisible(false);
+    if (slotActionInFlightRef.current) return;
+    slotActionInFlightRef.current = true;
     try {
-      if (userSlot) {
-        await dbService.leaveMatchSlot(targetMatchId, userSlot, effUid);
+      if (!teamSwitchData) return;
+      const { targetSlotKey, targetSlotLabel, targetTeam } = teamSwitchData;
+      const effUid = user?.uid || auth.currentUser?.uid;
+      const targetMatchId = matchIdParam || fallbackMatch?.id;
+      if (!effUid || !targetMatchId) return;
+
+      setTeamSwitchModalVisible(false);
+
+      const canManageTargetTeam = isOrganizer || (targetTeam === 'A' && isCaptainA) || (targetTeam === 'B' && isCaptainB);
+      const targetTeamTerms = isTwoCaptainsMode
+        ? (targetTeam === 'A' ? teamAJoinTerms : teamBJoinTerms)
+        : joinTerms;
+
+      if (targetTeamTerms === 3 && !canManageTargetTeam) {
+        appAlert.alert('Katılma Kapalı', `${targetTeam} Takımı için katılım kaptan tarafından kapatılmıştır.`);
+        setTeamSwitchData(null);
+        return;
       }
-      if (myTeam) {
-        const oldBenchKey = myTeam === 'A' ? 'benchA' : 'benchB';
-        const currentOldBench = myTeam === 'A' ? benchA : benchB;
-        if (currentOldBench.some(p => p.uid === effUid)) {
-          await dbService.updateMatch(targetMatchId, {
-            [oldBenchKey]: currentOldBench.filter(p => p.uid !== effUid)
-          });
-        }
+
+      if (targetTeamTerms === 1 && !canManageTargetTeam) {
+        const requesterName = user?.name || auth.currentUser?.displayName || 'Oyuncu';
+        appAlert.alert('İstek Gönderildi', `${targetTeam} Takımı (${targetSlotLabel}) mevkisine geçiş isteğiniz kaptana iletildi.`);
+        dbService.sendMessage(`match_${targetMatchId}`, {
+          senderId: effUid,
+          senderName: requesterName,
+          text: `🙋‍♂️ [Takım Değişikliği İsteği]: ${requesterName}, ${targetTeam} Takımı ${targetSlotLabel} mevkisine geçmek istiyor.`
+        }).catch(console.error);
+        setTeamSwitchData(null);
+        return;
       }
-      await dbService.joinMatchSlot(targetMatchId, targetSlotKey, {
-        uid: effUid,
-        name: user?.name || auth.currentUser?.displayName || 'Oyuncu',
-        avatar: user?.avatar || auth.currentUser?.photoURL || '',
-        position: targetSlotLabel,
-        joinedAt: Date.now()
-      });
-      setUserSlot(targetSlotKey);
-      setActiveTeam(targetTeam);
-      Alert.alert('✓ Takım Değiştirildi', `${targetTeam} Takımı ${targetSlotLabel} mevkisine geçtiniz.`);
-    } catch (err) {
-      console.error('Takım değiştirme hatası:', err);
-      Alert.alert('Hata', 'Takım değiştirilirken bir sorun oluştu.');
+
+      try {
+        await dbService.joinMatchSlot(targetMatchId, targetSlotKey, {
+          uid: effUid,
+          name: user?.name || auth.currentUser?.displayName || 'Oyuncu',
+          avatar: user?.avatar || auth.currentUser?.photoURL || '',
+          position: targetSlotLabel,
+          joinedAt: Date.now()
+        });
+        setUserSlot(targetSlotKey);
+        setActiveTeam(targetTeam);
+        appAlert.alert('Takım Değiştirildi', `${targetTeam} Takımı ${targetSlotLabel} mevkisine geçtiniz.`);
+      } catch (err) {
+        console.error('Takım değiştirme hatası:', err);
+        appAlert.alert('Hata', 'Takım değiştirilirken bir sorun oluştu.');
+      } finally {
+        setTeamSwitchData(null);
+      }
     } finally {
-      setTeamSwitchData(null);
+      slotActionInFlightRef.current = false;
     }
   };
 
   // Join active team's bench
   const handleJoinActiveTeamBench = async () => {
-    const effUid = user?.uid || auth.currentUser?.uid;
-    if (!effUid) {
-      Alert.alert('Giriş Yapın', 'Yedek kulübesine katılmak için lütfen önce giriş yapın.');
-      return;
-    }
-    if (myTeam && myTeam !== activeTeam) {
-      Alert.alert('Farklı Takımdasınız', `Siz ${myTeam} Takımındasınız. ${activeTeam} Takımına geçemezsiniz.`);
-      return;
-    }
-    const targetMatchId = params.matchId || fallbackMatch?.id;
-    if (!targetMatchId || targetMatchId === 'demo-match') return;
-
-    const targetTeamTerms = isTwoCaptainsMode 
-      ? (activeTeam === 'A' ? teamAJoinTerms : teamBJoinTerms)
-      : joinTerms;
-
-    if (targetTeamTerms === 3 && !canManageActiveTeam) {
-      Alert.alert(
-        '🔒 Katılma Kapalı',
-        `${activeTeam} Takımı için yedek kulübesine katılım kapatılmıştır.`
-      );
-      return;
-    }
-
-    if (targetTeamTerms === 1 && !canManageActiveTeam) {
-      const requesterName = user?.name || auth.currentUser?.displayName || 'Oyuncu';
-      Alert.alert(
-        '📩 İstek Gönderildi',
-        `${activeTeam} Takımı kulübesine katılım isteğiniz kaptana iletildi.`,
-        [{ text: 'Tamam' }]
-      );
-      dbService.sendMessage(`match_${targetMatchId}`, {
-        senderId: effUid,
-        senderName: requesterName,
-        text: `🙋‍♂️ [Yedek İsteği]: ${requesterName}, ${activeTeam} Takımı kulübesine katılmak istiyor.`
-      }).catch(console.error);
-      return;
-    }
-
-    if (targetTeamTerms === 2 && !canManageActiveTeam) {
-      const proceed = await new Promise<boolean>((resolve) => {
-        Alert.alert(
-          '✉️ Davetle Katılma',
-          `${activeTeam} Takımı kulübesine sadece davet edilen oyuncular katılabilir. Kaptan tarafından davet edildiniz mi?`,
-          [
-            { text: 'Hayır, Vazgeç', style: 'cancel', onPress: () => resolve(false) },
-            { text: 'Evet, Davetliyim', onPress: () => resolve(true) }
-          ]
-        );
-      });
-      if (!proceed) return;
-    }
-
+    if (slotActionInFlightRef.current) return;
+    slotActionInFlightRef.current = true;
     try {
-      await dbService.joinTeamBench(targetMatchId, activeTeam, {
-        uid: effUid,
-        name: user?.name || auth.currentUser?.displayName || 'Oyuncu',
-        avatar: user?.avatar || auth.currentUser?.photoURL || '',
-        joinedAt: Date.now()
-      });
-      Alert.alert('✓ Yedek Kulübesindesiniz', `${activeTeam} Takımı yedek kulübesine katıldınız. Kaptan veya siz sahadaki boş bir mevkiye geçebilirsiniz.`);
-    } catch {
-      Alert.alert('Hata', 'Yedek kulübesine katılırken bir sorun oluştu.');
+      const effUid = user?.uid || auth.currentUser?.uid;
+      if (!effUid) {
+        appAlert.alert('Giriş Yapın', 'Yedek kulübesine katılmak için lütfen önce giriş yapın.');
+        return;
+      }
+      if (myTeam && myTeam !== activeTeam) {
+        appAlert.alert('Farklı Takımdasınız', `Siz ${myTeam} Takımındasınız. ${activeTeam} Takımına geçemezsiniz.`);
+        return;
+      }
+      const targetMatchId = matchIdParam || fallbackMatch?.id;
+      if (!targetMatchId || targetMatchId === 'demo-match') return;
+
+      const targetTeamTerms = isTwoCaptainsMode
+        ? (activeTeam === 'A' ? teamAJoinTerms : teamBJoinTerms)
+        : joinTerms;
+
+      if (targetTeamTerms === 3 && !canManageActiveTeam) {
+        appAlert.alert(
+          'Katılma Kapalı',
+          `${activeTeam} Takımı için yedek kulübesine katılım kapatılmıştır.`
+        );
+        return;
+      }
+
+      if (targetTeamTerms === 1 && !canManageActiveTeam) {
+        const requesterName = user?.name || auth.currentUser?.displayName || 'Oyuncu';
+        appAlert.alert(
+          'İstek Gönderildi',
+          `${activeTeam} Takımı kulübesine katılım isteğiniz kaptana iletildi.`
+        );
+        dbService.sendMessage(`match_${targetMatchId}`, {
+          senderId: effUid,
+          senderName: requesterName,
+          text: `🙋‍♂️ [Yedek İsteği]: ${requesterName}, ${activeTeam} Takımı kulübesine katılmak istiyor.`
+        }).catch(console.error);
+        return;
+      }
+
+      if (targetTeamTerms === 2 && !canManageActiveTeam) {
+        const benchInviteMsg = `${activeTeam} Takımı kulübesine sadece davet edilen oyuncular katılabilir. Kaptan tarafından davet edildiniz mi?`;
+        const proceed = await new Promise<boolean>((resolve) => {
+          appAlert.alert(
+            'Davetle Katılma',
+            benchInviteMsg,
+            [
+              { text: 'Hayır, Vazgeç', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Evet, Davetliyim', onPress: () => resolve(true) }
+            ]
+          );
+        });
+        if (!proceed) return;
+      }
+
+      try {
+        await dbService.joinTeamBench(targetMatchId, activeTeam, {
+          uid: effUid,
+          name: user?.name || auth.currentUser?.displayName || 'Oyuncu',
+          avatar: user?.avatar || auth.currentUser?.photoURL || '',
+          joinedAt: Date.now()
+        });
+        appAlert.alert('Yedek Kulübesindesiniz', `${activeTeam} Takımı yedek kulübesine katıldınız. Kaptan veya siz sahadaki boş bir mevkiye geçebilirsiniz.`);
+      } catch {
+        appAlert.alert('Hata', 'Yedek kulübesine katılırken bir sorun oluştu.');
+      }
+    } finally {
+      slotActionInFlightRef.current = false;
     }
   };
 
@@ -1201,37 +1231,31 @@ export default function MatchRoomScreen() {
     const canRemove = canManageActiveTeam || playerUid === effUid;
     if (!canRemove) return;
 
-    const targetMatchId = params.matchId || fallbackMatch?.id;
+    const targetMatchId = matchIdParam || fallbackMatch?.id;
     if (!targetMatchId || targetMatchId === 'demo-match') return;
 
-    Alert.alert(
+    appAlert.confirm(
       playerUid === effUid ? 'Yedek Kulübesinden Ayrıl' : 'Oyuncuyu Çıkar',
-      playerUid === effUid 
+      playerUid === effUid
         ? `${activeTeam} Takımı yedek kulübesinden ayrılmak istiyor musunuz?`
         : `${playerName} oyuncusunu ${activeTeam} Takımı yedek kulübesinden çıkarmak istiyor musunuz?`,
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: 'Ayrıl / Çıkar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await dbService.leaveMatchSquad(targetMatchId, playerUid);
-              if (selectedBenchPlayer?.player.uid === playerUid) {
-                setSelectedBenchPlayer(null);
-              }
-              Alert.alert('Ayrıldı', `${playerName} yedek kulübesinden ayrıldı.`);
-            } catch {
-              Alert.alert('Hata', 'İşlem yapılırken bir sorun oluştu.');
-            }
+      async () => {
+        try {
+          await dbService.leaveMatchSquad(targetMatchId, playerUid);
+          if (selectedBenchPlayer?.player.uid === playerUid) {
+            setSelectedBenchPlayer(null);
           }
+          appAlert.alert('Ayrıldı', `${playerName} yedek kulübesinden ayrıldı.`);
+        } catch {
+          appAlert.alert('Hata', 'İşlem yapılırken bir sorun oluştu.');
         }
-      ]
+      },
+      { confirmText: 'Ayrıl / Çıkar', cancelText: 'Vazgeç', destructive: true }
     );
   };
 
   const handleConfirmTeamTerms = async (team: 'A' | 'B') => {
-    const targetMatchId = params.matchId || fallbackMatch?.id;
+    const targetMatchId = matchIdParam || fallbackMatch?.id;
     const termsValue = team === 'A' ? teamAJoinTerms : teamBJoinTerms;
     const termsName = JOIN_TERMS_LABELS[termsValue] || 'Herkese Açık';
 
@@ -1243,17 +1267,17 @@ export default function MatchRoomScreen() {
           senderName: team === 'A' ? (activeMatch?.captainAName || activeMatch?.organizer || 'A Kaptanı') : (activeMatch?.captainBName || 'B Kaptanı'),
           text: `🔒 [Katılım Şartı]: ${team} Takımı katılım şartı "${termsName}" olarak güncellendi.`
         });
-        Alert.alert('✓ Şartlar Kaydedildi', `${team} Takımı katılım şartı "${termsName}" olarak güncellendi.`, [{ text: 'Tamam' }]);
+        appAlert.alert('Şartlar Kaydedildi', `${team} Takımı katılım şartı "${termsName}" olarak güncellendi.`);
       } catch {
-        Alert.alert('Hata', 'Katılım şartları güncellenirken bir sorun oluştu.');
+        appAlert.alert('Hata', 'Katılım şartları güncellenirken bir sorun oluştu.');
       }
     } else {
-      Alert.alert('✓ Şartlar Onaylandı', `${team} Takımı katılım şartı kaydedildi.`, [{ text: 'Tamam' }]);
+      appAlert.alert('Şartlar Onaylandı', `${team} Takımı katılım şartı kaydedildi.`);
     }
   };
 
   const handleConfirmTerms = async () => {
-    const targetMatchId = params.matchId || fallbackMatch?.id;
+    const targetMatchId = matchIdParam || fallbackMatch?.id;
     const termsName = JOIN_TERMS_LABELS[joinTerms] || 'Herkese Açık';
     if (targetMatchId && targetMatchId !== 'demo-match') {
       try {
@@ -1263,45 +1287,51 @@ export default function MatchRoomScreen() {
           senderName: activeMatch?.organizer || 'Organizatör',
           text: `🔒 [Katılım Şartı]: Maç katılım şartı "${termsName}" olarak güncellendi.`
         });
-        Alert.alert('✓ Şartlar Kaydedildi', `Maç katılım kuralları "${termsName}" olarak güncellendi.`, [{ text: 'Tamam' }]);
+        appAlert.alert('Şartlar Kaydedildi', `Maç katılım kuralları "${termsName}" olarak güncellendi.`);
       } catch {
-        Alert.alert('Hata', 'Katılım şartları güncellenirken bir sorun oluştu.');
+        appAlert.alert('Hata', 'Katılım şartları güncellenirken bir sorun oluştu.');
       }
     } else {
-      Alert.alert('✓ Şartlar Onaylandı', 'Maç katılım şartları kaydedildi.', [{ text: 'Tamam' }]);
+      appAlert.alert('Şartlar Onaylandı', 'Maç katılım şartları kaydedildi.');
     }
   };
 
   const handleFinishMatch = async () => {
     if (submittingScore) return;
+    const parsedA = parseInt(scoreTeamA.trim(), 10);
+    const parsedB = parseInt(scoreTeamB.trim(), 10);
+    if (isNaN(parsedA) || isNaN(parsedB) || parsedA < 0 || parsedB < 0) {
+      appAlert.alert('Geçersiz Skor', 'Lütfen her iki takım için 0 veya daha büyük tam sayı skor girin.');
+      return;
+    }
     setSubmittingScore(true);
     try {
-      const finalScore = `${scoreTeamA.trim()} - ${scoreTeamB.trim()}`;
-      if (params.matchId) {
-        await dbService.updateMatchScore(params.matchId, finalScore);
+      const finalScore = `${parsedA} - ${parsedB}`;
+      if (matchIdParam) {
+        await dbService.updateMatchScore(matchIdParam, finalScore);
       }
       setScoreModalVisible(false);
-      Alert.alert(
-        '🏆 Maç Tamamlandı!',
+      appAlert.alert(
+        'Maç Tamamlandı',
         `Maç skoru ${finalScore} olarak sisteme işlendi. Şimdi maçtaki oyuncuları puanlayabilirsiniz.`,
         [
-          { 
-            text: 'Oyuncuları Puanla', 
-            onPress: () => router.push({ 
-              pathname: '/rate-match', 
-              params: { 
-                matchId: activeMatchId, 
+          {
+            text: 'Oyuncuları Puanla',
+            onPress: () => router.push({
+              pathname: '/rate-match',
+              params: {
+                matchId: activeMatchId,
                 matchScore: finalScore,
                 isOrganizer: isOrganizer ? 'true' : 'false'
-              } 
-            }) 
+              }
+            })
           },
-          { text: 'Tamam', onPress: () => router.back() }
+          { text: 'Tamam', onPress: () => safeBack(router, '/(tabs)/matches') }
         ]
       );
     } catch {
       console.error('Maç tamamlama hatası');
-      Alert.alert('Hata', 'Skor kaydedilirken bir sorun oluştu.');
+      appAlert.alert('Hata', 'Skor kaydedilirken bir sorun oluştu.');
     } finally {
       setSubmittingScore(false);
     }
@@ -1313,15 +1343,15 @@ export default function MatchRoomScreen() {
       let teamText = '';
       if (isTwoCaptainsMode) {
         if (activeTeam === 'A') {
-          teamText = teamAMissing > 0 
-            ? `🛡️ A Takımı için ${teamAMissing} oyuncu aranıyor!` 
+          teamText = teamAMissing > 0
+            ? `🛡️ A Takımı için ${teamAMissing} oyuncu aranıyor!`
             : '🛡️ A Takımı kadrosu dolmak üzere!';
         } else {
           if (!hasCaptainB) {
             teamText = `⚔️ B Takımı için Rakip Kaptan ve ${teamBMissing} oyuncu aranıyor!`;
           } else {
-            teamText = teamBMissing > 0 
-              ? `⚔️ B Takımı (${activeMatch?.captainBName || 'Rakip'}) için ${teamBMissing} oyuncu aranıyor!` 
+            teamText = teamBMissing > 0
+              ? `⚔️ B Takımı (${activeMatch?.captainBName || 'Rakip'}) için ${teamBMissing} oyuncu aranıyor!`
               : '⚔️ B Takımı kadrosu dolmak üzere!';
           }
         }
@@ -1331,6 +1361,21 @@ export default function MatchRoomScreen() {
       }
 
       const shareMessage = `⚽ H.İ.V. Halısaha Maç Daveti!\n\n🏟️ Saha: ${matchArena} (${matchCity})\n📅 Tarih: ${matchDateTime}\n👥 Format: ${matchMode} (${teamText})\n💰 Ücret: ₺${perPlayerFee} / Kişi\n\nKadroya katılıp mevkini seçmek için hemen maça katıl!`;
+
+      if (Platform.OS === 'web') {
+        if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+          try {
+            await navigator.share({ title: `${matchArena} Halısaha Maçı`, text: shareMessage });
+            return;
+          } catch (err: any) {
+            if (err?.name === 'AbortError') return;
+          }
+        }
+        await Clipboard.setStringAsync(shareMessage);
+        appAlert.alert('Kopyalandı', 'Maç davet metni panoya kopyalandı.');
+        return;
+      }
+
       await Share.share({
         message: shareMessage,
         title: `${matchArena} Halısaha Maçı`,
@@ -1343,11 +1388,7 @@ export default function MatchRoomScreen() {
   // Organizer: Cancel / Delete Match
   const handleCancelMatch = () => {
     if (!isOrganizer) {
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.alert('Yalnızca maç organizatörü maçı iptal edebilir.');
-      } else {
-        Alert.alert('Yetki Yok', 'Yalnızca maç organizatörü maçı iptal edebilir.');
-      }
+      appAlert.alert('Yetki Yok', 'Yalnızca maç organizatörü maçı iptal edebilir.');
       return;
     }
     setCancelMatchModalVisible(true);
@@ -1363,34 +1404,46 @@ export default function MatchRoomScreen() {
         senderName: 'Sistem'
       }).catch(() => {});
       await reloadMatches();
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.alert('Maçınız başarıyla iptal edildi.');
-      } else {
-        Alert.alert('İptal Edildi', 'Maçınız başarıyla iptal edildi.');
-      }
+      appAlert.alert('İptal Edildi', 'Maçınız başarıyla iptal edildi.');
       router.replace('/(tabs)/matches');
     } catch (err) {
       console.error('Maç iptal edilirken hata:', err);
-      Alert.alert('Hata', 'Maç iptal edilirken bir sorun oluştu.');
+      appAlert.alert('Hata', 'Maç iptal edilirken bir sorun oluştu.');
     }
   };
 
   const renderSlotItem = (keySuffix: string, roleName: string, numberStr: string) => {
     const slotKey = `${activeTeam}_${keySuffix}`;
-    const isSelectedByMe = userSlot === slotKey;
+    let resolvedSlotKey = slotKey;
     const legacyKey = keySuffix;
-    let occupant = activeMatch?.slots?.[slotKey] || (activeTeam === 'A' ? activeMatch?.slots?.[legacyKey] : null);
+    let occupant = activeMatch?.slots?.[slotKey];
+    if (!occupant && activeTeam === 'A' && activeMatch?.slots?.[legacyKey]) {
+      occupant = activeMatch.slots[legacyKey];
+      resolvedSlotKey = legacyKey;
+    }
 
     // Fallbacks for key aliases & backwards compatibility:
     if (!occupant) {
       if (activeTeam === 'A' && keySuffix === 'OS_ORTA') {
-        occupant = activeMatch?.slots?.['A_OS_ORTA'] || activeMatch?.slots?.['KAPTAN'] || activeMatch?.slots?.['OS_ORTA'];
+        if (activeMatch?.slots?.['A_OS_ORTA']) {
+          occupant = activeMatch.slots['A_OS_ORTA'];
+          resolvedSlotKey = 'A_OS_ORTA';
+        } else if (activeMatch?.slots?.['KAPTAN']) {
+          occupant = activeMatch.slots['KAPTAN'];
+          resolvedSlotKey = 'KAPTAN';
+        } else if (activeMatch?.slots?.['OS_ORTA']) {
+          occupant = activeMatch.slots['OS_ORTA'];
+          resolvedSlotKey = 'OS_ORTA';
+        }
       } else if (keySuffix === 'FORVET_SOL' && activeMatch?.slots?.[`${activeTeam}_FORVET`]) {
         occupant = activeMatch.slots[`${activeTeam}_FORVET`];
+        resolvedSlotKey = `${activeTeam}_FORVET`;
       } else if (keySuffix === 'FORVET' && activeMatch?.slots?.[`${activeTeam}_FORVET_SOL`]) {
         occupant = activeMatch.slots[`${activeTeam}_FORVET_SOL`];
+        resolvedSlotKey = `${activeTeam}_FORVET_SOL`;
       }
     }
+    const isSelectedByMe = userSlot === slotKey || userSlot === resolvedSlotKey;
     const isOccupied = !!occupant;
     const isMySlot = isSelectedByMe || Boolean(occupant && occupant.uid === currentUid);
     const teamColor = activeTeam === 'A' ? theme.primary : theme.secondary;
@@ -1440,11 +1493,11 @@ export default function MatchRoomScreen() {
               { borderColor: isSurplus ? '#f59e0b' : (isMySlot ? teamColor : `${teamColor}99`), borderWidth: isSurplus ? 2.5 : (isMySlot ? 2 : 1.5) },
               isSurplus && { backgroundColor: 'rgba(245, 158, 11, 0.18)' }
             ]} 
-            onPress={() => handleSelectSlot(slotKey, roleName)}
+            onPress={() => handleSelectSlot(resolvedSlotKey, roleName)}
           >
             <Image source={{ uri: avatarUrl }} style={styles.slotAvatar} />
             <View style={[styles.slotBadge, { backgroundColor: isSurplus ? '#f59e0b' : teamColor }]}>
-              <Text style={[styles.slotBadgeText, { color: isSurplus ? '#000000' : theme.background }]}>
+              <Text style={[styles.slotBadgeText, { color: isSurplus ? '#000000' : (activeTeam === 'A' ? theme.onPrimary : theme.onSecondary) }]}>
                 {isSurplus ? `⚡${orderNumber}` : numberStr}
               </Text>
             </View>
@@ -1518,8 +1571,8 @@ export default function MatchRoomScreen() {
             style={[styles.slotPaymentPill, { backgroundColor: `${badgeColor}22`, borderColor: badgeColor }]}
             onPress={() => {
               const occName = isMySlot ? user?.name : occupant?.name;
-              if (isOrganizer || (isCaptainB && slotKey.startsWith('B_'))) {
-                handleCaptainTogglePayment(slotKey, occName || 'Oyuncu', occupant?.paymentStatus || (isPaid ? 'paid' : 'unpaid'), occUid);
+              if (isOrganizer || (isCaptainB && resolvedSlotKey.startsWith('B_'))) {
+                handleCaptainTogglePayment(resolvedSlotKey, occName || 'Oyuncu', occupant?.paymentStatus || (isPaid ? 'paid' : 'unpaid'), occUid);
               } else if (isMySlot && !isPaid && !isSlotExempt) {
                 setDirectPayVisible(true);
               }
@@ -1536,7 +1589,7 @@ export default function MatchRoomScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined} style={{ flex: 1 }}>
         <MatchPaymentModal
           amount={perPlayerFee}
           matchTitle={matchArena + ' • ' + matchMode}
@@ -1549,15 +1602,19 @@ export default function MatchRoomScreen() {
           organizerIban={activeMatch?.organizerIban}
           organizerIbanName={activeMatch?.organizerIbanName}
           organizerBankName={activeMatch?.organizerBankName}
-          userSlotKey={userSlot}
-          currentStatus={userSlot ? (activeMatch?.slots?.[userSlot]?.paymentStatus || (activeMatch?.slots?.[userSlot]?.paid ? 'paid' : 'unpaid')) : 'unpaid'}
+          userSlotKey={effectiveUserSlotKey}
+          currentStatus={(() => {
+            if (!effectiveUserSlotKey) return 'unpaid';
+            const myEntry = rosterPayments.find(p => p.slotKey === effectiveUserSlotKey);
+            return myEntry?.paymentStatus || 'unpaid';
+          })()}
           onSuccess={() => {
             setDirectPayVisible(false);
           }}
         />
 
         {/* Captain IBAN Edit Modal */}
-        <Modal visible={captainIbanModalVisible} transparent animationType="slide" onRequestClose={() => setCaptainIbanModalVisible(false)}>
+        <Modal visible={captainIbanModalVisible} transparent animationType="slide" onClose={() => setCaptainIbanModalVisible(false)} onRequestClose={() => setCaptainIbanModalVisible(false)}>
           <View style={styles.captainIbanOverlay}>
             <View style={styles.captainIbanSheet}>
               <View style={styles.captainIbanHeader}>
@@ -1633,6 +1690,12 @@ export default function MatchRoomScreen() {
         />
         <MatchStoryModal
           visible={storyModalVisible}
+          matchTitle={`${matchArena} (${matchMode})`}
+          score={activeMatch?.score || `${scoreTeamA} - ${scoreTeamB}`}
+          mvpName={rosterPayments[0]?.name || activeMatch?.organizer || 'MAÇIN ADAMI'}
+          mvpAvatar={rosterPayments[0]?.avatar}
+          venue={matchArena}
+          date={matchDateTime}
           onClose={() => setStoryModalVisible(false)}
         />
 
@@ -1641,6 +1704,7 @@ export default function MatchRoomScreen() {
           visible={formationModalVisible} 
           transparent 
           animationType="fade" 
+          onClose={() => setFormationModalVisible(false)}
           onRequestClose={() => setFormationModalVisible(false)}
         >
           <View style={styles.formationModalOverlay}>
@@ -1692,7 +1756,12 @@ export default function MatchRoomScreen() {
         {/* TopAppBar */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <TouchableOpacity style={styles.iconBtnHover} onPress={() => router.back()} accessibilityLabel="Geri" accessibilityRole="button">
+            <TouchableOpacity 
+              style={styles.iconBtnHover} 
+              onPress={() => safeBack(router, '/(tabs)/matches')} 
+              accessibilityLabel="Geri" 
+              accessibilityRole="button"
+            >
               <MaterialIcons name="arrow-back" size={24} color={theme.primary} />
             </TouchableOpacity>
             <View style={{ flex: 1 }}>
@@ -1730,6 +1799,39 @@ export default function MatchRoomScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          {hasMatchEnded && (
+            <TouchableOpacity
+              style={{
+                backgroundColor: `${theme.secondary}18`,
+                borderWidth: 1.5,
+                borderColor: theme.secondary,
+                borderRadius: 14,
+                paddingVertical: 14,
+                paddingHorizontal: 16,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                marginBottom: 10,
+              }}
+              onPress={() =>
+                router.push({
+                  pathname: '/rate-match',
+                  params: {
+                    matchId: activeMatchId,
+                    matchScore: activeMatch?.score || '',
+                    isOrganizer: isOrganizer ? 'true' : 'false',
+                  },
+                })
+              }
+              activeOpacity={0.85}
+            >
+              <MaterialIcons name="grade" size={20} color={theme.secondary} />
+              <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.secondary, letterSpacing: 0.5 }}>
+                ⭐ MAÇ SONA ERDİ — OYUNCULARI DEĞERLENDİR
+              </Text>
+            </TouchableOpacity>
+          )}
           {canFinishMatch && (
             <TouchableOpacity 
               style={{ 
@@ -1795,7 +1897,7 @@ export default function MatchRoomScreen() {
                           onPress={() => setPitchPickerVisible(true)}
                           activeOpacity={0.85}
                         >
-                          <MaterialIcons name="edit-location-alt" size={12} color="#ffffff" />
+                          <MaterialIcons name="edit-location-alt" size={12} color="#000000" />
                           <Text style={styles.setPitchActionBtnText}>Sahayı Belirle</Text>
                         </TouchableOpacity>
                       )}
@@ -1860,10 +1962,10 @@ export default function MatchRoomScreen() {
                 <View style={styles.subActionsRow}>
                   <TouchableOpacity 
                     style={styles.subActionBtn} 
-                    onPress={() => Alert.alert('Saat Güncelleme', 'Abonelik saatini 22:00 olarak güncellemek istiyor musunuz?', [
-                      { text: 'Vazgeç', style: 'cancel' },
-                      { text: 'Güncelle', onPress: () => Alert.alert('✓ Başarılı', 'Abonelik saati güncellendi.') }
-                    ])}
+                    onPress={() => {
+                      setSubTimeInput(matchDateTime);
+                      setSubTimeModalVisible(true);
+                    }}
                   >
                     <MaterialIcons name="access-time" size={14} color={theme.primary} />
                     <Text style={styles.subActionText}>Saati Güncelle</Text>
@@ -1871,10 +1973,21 @@ export default function MatchRoomScreen() {
 
                   <TouchableOpacity 
                     style={[styles.subActionBtn, { borderColor: `${theme.error}66` }]} 
-                    onPress={() => Alert.alert('Abonelik İptali', 'Haftalık aboneliğinizi iptal etmek istediğinize emin misiniz?', [
-                      { text: 'Vazgeç', style: 'cancel' },
-                      { text: 'Aboneliği Durdur', style: 'destructive', onPress: () => Alert.alert('İptal Edildi', 'Aboneliğiniz durduruldu.') }
-                    ])}
+                    onPress={() => appAlert.confirm(
+                      'Abonelik İptali',
+                      'Haftalık aboneliğinizi iptal etmek istediğinize emin misiniz?',
+                      async () => {
+                        try {
+                          if (activeMatchId) {
+                            await dbService.updateMatch(activeMatchId, { isSubscription: false });
+                          }
+                          appAlert.alert('İptal Edildi', 'Haftalık aboneliğiniz durduruldu.');
+                        } catch {
+                          appAlert.alert('Hata', 'Abonelik iptal edilirken bir sorun oluştu.');
+                        }
+                      },
+                      { confirmText: 'Aboneliği Durdur', cancelText: 'Vazgeç', destructive: true }
+                    )}
                   >
                     <MaterialIcons name="cancel" size={14} color={theme.error} />
                     <Text style={[styles.subActionText, { color: theme.error }]}>Aboneliği Durdur</Text>
@@ -2359,7 +2472,7 @@ export default function MatchRoomScreen() {
                             </View>
                           ) : (
                             <View style={[styles.benchOrderBadge, { backgroundColor: teamColor }]}>
-                              <Text style={[styles.benchOrderBadgeText, { color: theme.background }]}>#{orderNumber}</Text>
+                              <Text style={[styles.benchOrderBadgeText, { color: activeTeam === 'A' ? theme.onPrimary : theme.onSecondary }]}>#{orderNumber}</Text>
                             </View>
                           )}
 
@@ -2408,7 +2521,7 @@ export default function MatchRoomScreen() {
                               }}
                               activeOpacity={0.8}
                             >
-                              <Text style={[styles.benchCardBtnText, isSelected ? { color: theme.background } : { color: teamColor }]}>
+                              <Text style={[styles.benchCardBtnText, isSelected ? { color: activeTeam === 'A' ? theme.onPrimary : theme.onSecondary } : { color: teamColor }]}>
                                 {isSelected ? '✓ SEÇİLDİ' : 'SAHAYA AL'}
                               </Text>
                             </TouchableOpacity>
@@ -2464,8 +2577,8 @@ export default function MatchRoomScreen() {
                         style={[styles.joinBenchBtn, { backgroundColor: teamColor }]}
                         onPress={handleJoinActiveTeamBench}
                       >
-                        <MaterialIcons name="group-add" size={16} color={theme.background} />
-                        <Text style={[styles.joinBenchBtnText, { color: theme.background }]}>
+                        <MaterialIcons name="group-add" size={16} color={activeTeam === 'A' ? theme.onPrimary : theme.onSecondary} />
+                        <Text style={[styles.joinBenchBtnText, { color: activeTeam === 'A' ? theme.onPrimary : theme.onSecondary }]}>
                           + {activeTeam} TAKIMI YEDEK KULÜBESİNE KATIL
                         </Text>
                       </TouchableOpacity>
@@ -2629,32 +2742,27 @@ export default function MatchRoomScreen() {
                     value={isRotatingGk}
                     onValueChange={async (val) => {
                       if (val) {
-                        Alert.alert(
-                          '🔄 Kale Dönmeli',
+                        appAlert.confirm(
+                          'Kale Dönmeli',
                           'Kale dönmeli açılırsa kaleci slotundaki kişi de dahil herkes ücret öder. Onaylıyor musun?',
-                          [
-                            { text: 'İptal', style: 'cancel' },
-                            {
-                              text: 'Evet, Aç',
-                              onPress: async () => {
-                                setIsRotatingGk(true);
-                                if (activeMatchId) {
-                                  try {
-                                    await dbService.updateMatchRotatingGk(activeMatchId, true);
-                                    await dbService.sendMessage(`match_${activeMatchId}`, {
-                                      senderId: user?.uid || 'anon',
-                                      senderName: 'Organizatör',
-                                      text: `🔄 [Kale Dönmeli]: Kaleci sabit değil, herkes dönüşümlü kaleye giriyor. Kaleci slotundaki oyuncu da dahil herkes ₺${Math.round(totalMatchFee / totalPlayersCount)} ücret öder.`,
-                                      type: 'system',
-                                    });
-                                  } catch {
-                                    setIsRotatingGk(false);
-                                    console.error('Kale dönmeli açma hatası');
-                                  }
-                                }
+                          async () => {
+                            setIsRotatingGk(true);
+                            if (activeMatchId) {
+                              try {
+                                await dbService.updateMatchRotatingGk(activeMatchId, true);
+                                await dbService.sendMessage(`match_${activeMatchId}`, {
+                                  senderId: user?.uid || 'anon',
+                                  senderName: 'Organizatör',
+                                  text: `🔄 [Kale Dönmeli]: Kaleci sabit değil, herkes dönüşümlü kaleye giriyor. Kaleci slotundaki oyuncu da dahil herkes ₺${Math.round(totalMatchFee / totalPlayersCount)} ücret öder.`,
+                                  type: 'system',
+                                });
+                              } catch {
+                                setIsRotatingGk(false);
+                                console.error('Kale dönmeli açma hatası');
                               }
                             }
-                          ]
+                          },
+                          { confirmText: 'Evet, Aç', cancelText: 'İptal' }
                         );
                       } else {
                         setIsRotatingGk(false);
@@ -2720,7 +2828,7 @@ export default function MatchRoomScreen() {
                         style={styles.copyIbanBtn} 
                         onPress={async () => {
                           await Clipboard.setStringAsync(activeMatch.organizerIban!);
-                          Alert.alert('✓ Kopyalandı', 'Kaptan IBAN panoya kopyalandı. Banka uygulamanızdan FAST ile gönderebilirsiniz.');
+                          appAlert.alert('Kopyalandı', 'Kaptan IBAN panoya kopyalandı. Banka uygulamanızdan FAST ile gönderebilirsiniz.');
                         }}
                       >
                         <MaterialIcons name="content-copy" size={14} color={theme.onPrimary} />
@@ -2840,10 +2948,10 @@ export default function MatchRoomScreen() {
                 </>
               )}
 
-              {/* OYUNCU KENDİ ÖDEME AKSİYONU (Eğer mevkisi varsa ve henüz ödememişse) */}
+              {/* OYUNCU KENDİ ÖDEME AKSİYONU (Eğer mevkisi veya yedek kaydı varsa ve henüz ödememişse) */}
               {(() => {
-                if (!userSlot) return null;
-                const myP = rosterPayments.find(p => p.slotKey === userSlot);
+                if (!effectiveUserSlotKey) return null;
+                const myP = rosterPayments.find(p => p.slotKey === effectiveUserSlotKey);
                 if (!myP) return null;
                 if (myP.isGk && isGkFree && !isRotatingGk) {
                   return (
@@ -2902,9 +3010,11 @@ export default function MatchRoomScreen() {
                       <Text style={[styles.myPayNoticeTitle, { color: theme.error }]}>MAÇ PAYINIZ: ₺{perPlayerFee}</Text>
                       <Text style={styles.myPayNoticeSub}>IBAN (FAST) ile gönderin ya da sahada nakit seçeneğini bildirin.</Text>
                     </View>
-                    <TouchableOpacity style={styles.payNowBtn} onPress={() => setDirectPayVisible(true)}>
-                      <Text style={styles.payNowBtnText}>ÖDEME SEÇENEKLERİ</Text>
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      <TouchableOpacity style={styles.payNowBtn} onPress={() => setDirectPayVisible(true)}>
+                        <Text style={styles.payNowBtnText}>IBAN / NAKİT</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 );
               })()}
@@ -3063,7 +3173,13 @@ export default function MatchRoomScreen() {
                     </View>
                     {isCurrent ? (
                       <TouchableOpacity 
-                        onPress={() => userSlot && handleSelectSlot(userSlot, player.role)}
+                        onPress={() => {
+                          if (player.slotKey.startsWith('BENCH_') && player.uid) {
+                            handleLeaveBench(player.uid, player.name);
+                          } else if (userSlot) {
+                            handleSelectSlot(userSlot, player.role);
+                          }
+                        }}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
                         <MaterialIcons name="logout" size={20} color={theme.error} />
@@ -3170,7 +3286,7 @@ export default function MatchRoomScreen() {
                     style={[styles.chatSendBtn, chatChannel === 'team' && { backgroundColor: theme.secondary }]} 
                     onPress={handleSendChat}
                   >
-                    <MaterialIcons name="send" size={16} color={theme.background} />
+                    <MaterialIcons name="send" size={16} color={chatChannel === 'team' ? theme.onSecondary : theme.onPrimary} />
                   </TouchableOpacity>
                 </View>
               </>
@@ -3185,72 +3301,79 @@ export default function MatchRoomScreen() {
           visible={scoreModalVisible}
           transparent={true}
           animationType="fade"
+          onClose={() => setScoreModalVisible(false)}
           onRequestClose={() => setScoreModalVisible(false)}
         >
-          <View style={styles.scoreModalOverlay}>
-            <View style={styles.scoreModalContent}>
-              <View style={styles.scoreModalHeader}>
-                <MaterialIcons name="sports-score" size={28} color={theme.primary} />
-                <Text style={styles.scoreModalTitle}>MAÇ SKORUNU BİLDİR</Text>
-                <Text style={styles.scoreModalSub}>
-                  Maç bittiğinde resmi sonucu girerek maçı tamamlayın.
-                </Text>
-              </View>
-
-              <View style={styles.scoreInputsRow}>
-                <View style={styles.scoreTeamCol}>
-                  <Text style={[styles.scoreTeamName, { color: theme.primary }]}>A TAKIMI</Text>
-                  <TextInput
-                    style={styles.scoreInput}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                    value={scoreTeamA}
-                    onChangeText={setScoreTeamA}
-                    selectTextOnFocus
-                  />
-                </View>
-
-                <Text style={styles.scoreColon}>-</Text>
-
-                <View style={styles.scoreTeamCol}>
-                  <Text style={[styles.scoreTeamName, { color: theme.secondary }]}>B TAKIMI</Text>
-                  <TextInput
-                    style={styles.scoreInput}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                    value={scoreTeamB}
-                    onChangeText={setScoreTeamB}
-                    selectTextOnFocus
-                  />
-                </View>
-              </View>
-
-              <View style={styles.scoreModalActions}>
-                <TouchableOpacity
-                  style={styles.scoreCancelBtn}
-                  onPress={() => setScoreModalVisible(false)}
-                  disabled={submittingScore}
-                >
-                  <Text style={styles.scoreCancelText}>Vazgeç</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.scoreSubmitBtn, submittingScore && { opacity: 0.6 }]}
-                  onPress={handleFinishMatch}
-                  disabled={submittingScore}
-                >
-                  <Text style={styles.scoreSubmitText}>
-                    {submittingScore ? 'Kaydediliyor...' : 'Maçı Bitir ve Kaydet'}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+            style={{ flex: 1 }}
+          >
+            <View style={styles.scoreModalOverlay}>
+              <View style={styles.scoreModalContent}>
+                <View style={styles.scoreModalHeader}>
+                  <MaterialIcons name="sports-score" size={28} color={theme.primary} />
+                  <Text style={styles.scoreModalTitle}>MAÇ SKORUNU BİLDİR</Text>
+                  <Text style={styles.scoreModalSub}>
+                    Maç bittiğinde resmi sonucu girerek maçı tamamlayın.
                   </Text>
-                </TouchableOpacity>
+                </View>
+
+                <View style={styles.scoreInputsRow}>
+                  <View style={styles.scoreTeamCol}>
+                    <Text style={[styles.scoreTeamName, { color: theme.primary }]}>A TAKIMI</Text>
+                    <TextInput
+                      style={styles.scoreInput}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      value={scoreTeamA}
+                      onChangeText={setScoreTeamA}
+                      selectTextOnFocus
+                    />
+                  </View>
+
+                  <Text style={styles.scoreColon}>-</Text>
+
+                  <View style={styles.scoreTeamCol}>
+                    <Text style={[styles.scoreTeamName, { color: theme.secondary }]}>B TAKIMI</Text>
+                    <TextInput
+                      style={styles.scoreInput}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      value={scoreTeamB}
+                      onChangeText={setScoreTeamB}
+                      selectTextOnFocus
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.scoreModalActions}>
+                  <TouchableOpacity
+                    style={styles.scoreCancelBtn}
+                    onPress={() => setScoreModalVisible(false)}
+                    disabled={submittingScore}
+                  >
+                    <Text style={styles.scoreCancelText}>Vazgeç</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.scoreSubmitBtn, submittingScore && { opacity: 0.6 }]}
+                    onPress={handleFinishMatch}
+                    disabled={submittingScore}
+                  >
+                    <Text style={styles.scoreSubmitText}>
+                      {submittingScore ? 'Kaydediliyor...' : 'Maçı Bitir ve Kaydet'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         {/* Mevki İşlemleri Modalı */}
         <Modal
           visible={slotActionModalVisible}
+          onClose={() => setSlotActionModalVisible(false)}
           onRequestClose={() => setSlotActionModalVisible(false)}
           animationType="slide"
           transparent
@@ -3278,15 +3401,15 @@ export default function MatchRoomScreen() {
                   style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 48, borderRadius: 12, backgroundColor: `${theme.secondary}20`, borderWidth: 1, borderColor: `${theme.secondary}40` }}
                   onPress={async () => {
                     if (!slotActionData) return;
-                    const targetMatchId = params.matchId || fallbackMatch?.id;
+                    const targetMatchId = matchIdParam || fallbackMatch?.id;
                     setSlotActionModalVisible(false);
                     if (targetMatchId && targetMatchId !== 'demo-match') {
                       try {
                         await dbService.moveSlotToBench(targetMatchId, activeTeam, slotActionData.slotKey);
                         setUserSlot(null);
-                        Alert.alert('✓ Yedek Kulübesine Geçtiniz', 'Sahadan çıkıp yedek kulübesine geçtiniz.');
+                        appAlert.alert('Yedek Kulübesine Geçtiniz', 'Sahadan çıkıp yedek kulübesine geçtiniz.');
                       } catch {
-                        Alert.alert('Hata', 'Yedek kulübesine geçilirken bir sorun oluştu.');
+                        appAlert.alert('Hata', 'Yedek kulübesine geçilirken bir sorun oluştu.');
                       }
                     }
                   }}
@@ -3327,6 +3450,7 @@ export default function MatchRoomScreen() {
         {/* Maç İptal Onay Modalı */}
         <Modal
           visible={cancelMatchModalVisible}
+          onClose={() => setCancelMatchModalVisible(false)}
           onRequestClose={() => setCancelMatchModalVisible(false)}
           animationType="fade"
           transparent
@@ -3371,6 +3495,7 @@ export default function MatchRoomScreen() {
         {/* Takım Değiştirme Onay Modalı */}
         <Modal
           visible={teamSwitchModalVisible}
+          onClose={() => setTeamSwitchModalVisible(false)}
           onRequestClose={() => setTeamSwitchModalVisible(false)}
           animationType="slide"
           transparent
@@ -3394,7 +3519,7 @@ export default function MatchRoomScreen() {
                   style={{ height: 48, borderRadius: 12, backgroundColor: theme.primary, justifyContent: 'center', alignItems: 'center' }}
                   onPress={handleConfirmTeamSwitch}
                 >
-                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 14, color: theme.background }}>
+                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 14, color: theme.onPrimary }}>
                     Evet, Takım Değiştir ve Geç
                   </Text>
                 </TouchableOpacity>
@@ -3425,99 +3550,177 @@ export default function MatchRoomScreen() {
         {/* Saha Belirleme Modalı */}
         <Modal
           visible={pitchPickerVisible}
+          onClose={() => setPitchPickerVisible(false)}
           onRequestClose={() => setPitchPickerVisible(false)}
           animationType="slide"
           transparent
         >
-          <View style={styles.scoreModalOverlay}>
-            <View style={[styles.scoreModalContent, { maxHeight: '85%', padding: 20 }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <MaterialIcons name="stadium" size={24} color={theme.primary} />
-                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 16, color: theme.text }}>
-                    SAHAYI BELİRLE
-                  </Text>
-                </View>
-                <TouchableOpacity onPress={() => setPitchPickerVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <MaterialIcons name="close" size={20} color={theme.textMuted} />
-                </TouchableOpacity>
-              </View>
-
-              <Text style={{ fontFamily: Fonts.body, fontSize: 12, color: theme.textMuted, marginBottom: 14 }}>
-                Maçın oynanacağı tesisi seçin veya aşağıya özel saha adı yazın.
-              </Text>
-
-              {/* Tesis Arama */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.surfaceContainerHighest, borderRadius: 12, paddingHorizontal: 12, height: 42, marginBottom: 12 }}>
-                <MaterialIcons name="search" size={18} color={theme.textMuted} style={{ marginRight: 8 }} />
-                <TextInput
-                  placeholder="Tesis veya ilçe ara..."
-                  placeholderTextColor={theme.textMuted}
-                  value={pitchPickerSearch}
-                  onChangeText={setPitchPickerSearch}
-                  style={{ flex: 1, color: theme.text, fontFamily: Fonts.body, fontSize: 13 }}
-                />
-                {Boolean(pitchPickerSearch) && (
-                  <TouchableOpacity onPress={() => setPitchPickerSearch('')}>
-                    <MaterialIcons name="clear" size={16} color={theme.textMuted} />
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              {/* Tesis Listesi */}
-              <ScrollView style={{ maxHeight: 220, width: '100%', marginBottom: 14 }} showsVerticalScrollIndicator={false}>
-                {filteredPitchesList.map(pitch => (
-                  <TouchableOpacity
-                    key={pitch.id}
-                    style={{ padding: 12, borderRadius: 10, backgroundColor: theme.surfaceContainerHighest, marginBottom: 8, borderWidth: 1, borderColor: theme.borderSubtle }}
-                    onPress={() => handleConfirmPitchSelection(pitch.name, pitch.city, pitch.district)}
-                    activeOpacity={0.8}
-                  >
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.text, flex: 1 }} numberOfLines={1}>
-                        {pitch.name}
-                      </Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                        <MaterialIcons name="star" size={12} color="#f59e0b" />
-                        <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 11, color: '#f59e0b' }}>{pitch.rating}</Text>
-                      </View>
-                    </View>
-                    <Text style={{ fontFamily: Fonts.body, fontSize: 11, color: theme.textMuted, marginTop: 2 }}>
-                      {pitch.district ? `${pitch.district}, ` : ''}{pitch.city}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+            style={{ flex: 1 }}
+          >
+            <View style={styles.scoreModalOverlay}>
+              <View style={[styles.scoreModalContent, { maxHeight: '85%', padding: 20 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <MaterialIcons name="stadium" size={24} color={theme.primary} />
+                    <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 16, color: theme.text }}>
+                      SAHAYI BELİRLE
                     </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setPitchPickerVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <MaterialIcons name="close" size={20} color={theme.textMuted} />
                   </TouchableOpacity>
-                ))}
-              </ScrollView>
+                </View>
 
-              {/* Özel Saha Adı Girişi */}
-              <View style={{ width: '100%', borderTopWidth: 1, borderTopColor: theme.borderSubtle, paddingTop: 12 }}>
-                <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 11, color: theme.textMuted, marginBottom: 6, letterSpacing: 0.5 }}>
-                  VEYA ÖZEL SAHA ADI GİRİN:
+                <Text style={{ fontFamily: Fonts.body, fontSize: 12, color: theme.textMuted, marginBottom: 14 }}>
+                  Maçın oynanacağı tesisi seçin veya aşağıya özel saha adı yazın.
                 </Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
+
+                {/* Tesis Arama */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.surfaceContainerHighest, borderRadius: 12, paddingHorizontal: 12, height: 42, marginBottom: 12 }}>
+                  <MaterialIcons name="search" size={18} color={theme.textMuted} style={{ marginRight: 8 }} />
                   <TextInput
-                    placeholder="Örn: Yıldız Halısaha..."
+                    placeholder="Tesis veya ilçe ara..."
                     placeholderTextColor={theme.textMuted}
-                    value={customPitchText}
-                    onChangeText={setCustomPitchText}
-                    style={{ flex: 1, height: 42, backgroundColor: theme.surfaceContainerHighest, borderRadius: 10, paddingHorizontal: 12, color: theme.text, fontFamily: Fonts.body, fontSize: 13, borderWidth: 1, borderColor: theme.borderSubtle }}
+                    value={pitchPickerSearch}
+                    onChangeText={setPitchPickerSearch}
+                    style={{ flex: 1, color: theme.text, fontFamily: Fonts.body, fontSize: 13 }}
                   />
+                  {Boolean(pitchPickerSearch) && (
+                    <TouchableOpacity onPress={() => setPitchPickerSearch('')}>
+                      <MaterialIcons name="clear" size={16} color={theme.textMuted} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Tesis Listesi */}
+                <ScrollView style={{ maxHeight: 220, width: '100%', marginBottom: 14 }} showsVerticalScrollIndicator={false}>
+                  {filteredPitchesList.map(pitch => (
+                    <TouchableOpacity
+                      key={pitch.id}
+                      style={{ padding: 12, borderRadius: 10, backgroundColor: theme.surfaceContainerHighest, marginBottom: 8, borderWidth: 1, borderColor: theme.borderSubtle }}
+                      onPress={() => handleConfirmPitchSelection(pitch.name, pitch.city, pitch.district)}
+                      activeOpacity={0.8}
+                    >
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.text, flex: 1 }} numberOfLines={1}>
+                          {pitch.name}
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                          <MaterialIcons name="star" size={12} color="#f59e0b" />
+                          <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 11, color: '#f59e0b' }}>{pitch.rating}</Text>
+                        </View>
+                      </View>
+                      <Text style={{ fontFamily: Fonts.body, fontSize: 11, color: theme.textMuted, marginTop: 2 }}>
+                        {pitch.district ? `${pitch.district}, ` : ''}{pitch.city}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                {/* Özel Saha Adı Girişi */}
+                <View style={{ width: '100%', borderTopWidth: 1, borderTopColor: theme.borderSubtle, paddingTop: 12 }}>
+                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 11, color: theme.textMuted, marginBottom: 6, letterSpacing: 0.5 }}>
+                    VEYA ÖZEL SAHA ADI GİRİN:
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TextInput
+                      placeholder="Örn: Yıldız Halısaha..."
+                      placeholderTextColor={theme.textMuted}
+                      value={customPitchText}
+                      onChangeText={setCustomPitchText}
+                      style={{ flex: 1, height: 42, backgroundColor: theme.surfaceContainerHighest, borderRadius: 10, paddingHorizontal: 12, color: theme.text, fontFamily: Fonts.body, fontSize: 13, borderWidth: 1, borderColor: theme.borderSubtle }}
+                    />
+                    <TouchableOpacity
+                      style={{ backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center' }}
+                      onPress={() => {
+                        if (!customPitchText.trim()) {
+                          appAlert.alert('Uyarı', 'Lütfen geçerli bir saha adı giriniz.');
+                          return;
+                        }
+                        handleConfirmPitchSelection(customPitchText.trim(), activeMatch?.city || 'İstanbul', activeMatch?.district || '');
+                      }}
+                    >
+                      <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.onPrimary }}>KAYDET</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        {/* Abonelik Saati Güncelleme Modalı */}
+        <Modal
+          visible={subTimeModalVisible}
+          onClose={() => { if (!savingSubTime) setSubTimeModalVisible(false); }}
+          onRequestClose={() => { if (!savingSubTime) setSubTimeModalVisible(false); }}
+          animationType="fade"
+          transparent
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+            style={{ flex: 1 }}
+          >
+            <View style={styles.scoreModalOverlay}>
+              <View style={styles.scoreModalContent}>
+                <Text style={[styles.scoreModalTitle, { marginBottom: 8 }]}>ABONELİK SAATİNİ GÜNCELLE</Text>
+                <Text style={[styles.scoreModalSub, { marginBottom: 14 }]}>
+                  Yeni maç gün ve saatini yazın (örn. Her Çarşamba, 22:00):
+                </Text>
+                <TextInput
+                  style={[styles.captainIbanInput, { width: '100%', marginBottom: 16 }]}
+                  value={subTimeInput}
+                  onChangeText={setSubTimeInput}
+                  placeholder="Örn: Cumartesi, 21:00"
+                  placeholderTextColor={theme.textMuted}
+                  maxLength={60}
+                />
+                <View style={styles.scoreModalActions}>
                   <TouchableOpacity
-                    style={{ backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center' }}
-                    onPress={() => {
-                      if (!customPitchText.trim()) {
-                        Alert.alert('Uyarı', 'Lütfen geçerli bir saha adı giriniz.');
+                    style={styles.scoreCancelBtn}
+                    onPress={() => setSubTimeModalVisible(false)}
+                    disabled={savingSubTime}
+                  >
+                    <Text style={styles.scoreCancelText}>Vazgeç</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.scoreSubmitBtn, savingSubTime && { opacity: 0.6 }]}
+                    disabled={savingSubTime}
+                    onPress={async () => {
+                      const trimmed = subTimeInput.trim();
+                      if (!trimmed) {
+                        appAlert.alert('Eksik Bilgi', 'Lütfen geçerli bir gün/saat bilgisi girin.');
                         return;
                       }
-                      handleConfirmPitchSelection(customPitchText.trim(), activeMatch?.city || 'İstanbul', activeMatch?.district || '');
+                      if (!activeMatchId || activeMatchId === 'demo-match') {
+                        setSubTimeModalVisible(false);
+                        return;
+                      }
+                      setSavingSubTime(true);
+                      try {
+                        await dbService.updateMatch(activeMatchId, { dateTime: trimmed });
+                        await dbService.sendMessage(`match_${activeMatchId}`, {
+                          senderId: currentUid || 'anon',
+                          senderName: 'Organizatör',
+                          text: `⏰ [Abonelik Güncellemesi]: Maç günü/saati "${trimmed}" olarak güncellendi.`
+                        }).catch(() => {});
+                        setSubTimeModalVisible(false);
+                        appAlert.alert('Başarılı', `Abonelik saati "${trimmed}" olarak güncellendi.`);
+                      } catch {
+                        appAlert.alert('Hata', 'Abonelik saati güncellenemedi.');
+                      } finally {
+                        setSavingSubTime(false);
+                      }
                     }}
                   >
-                    <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.background }}>KAYDET</Text>
+                    <Text style={styles.scoreSubmitText}>{savingSubTime ? 'Kaydediliyor...' : 'Kaydet'}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -5309,7 +5512,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   captainBNotifyBtnText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 10,
-    color: theme.background,
+    color: theme.onSecondary,
   },
 
   // Share Roster Card
@@ -5354,7 +5557,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   shareRosterBtnBadgeText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 10,
-    color: theme.background,
+    color: theme.onPrimary,
   },
 
   // Reserve Join Card
@@ -5391,7 +5594,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   reserveJoinBtnText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 10,
-    color: theme.background,
+    color: theme.onSecondary,
   },
 
   // Tactical Roster Privacy

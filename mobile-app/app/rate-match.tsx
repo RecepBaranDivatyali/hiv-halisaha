@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
@@ -11,8 +11,12 @@ import { AppModal } from '@/components/AppModal';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/use-auth';
 import { dbService } from '@/services/dbService';
+import { appAlert } from '@/services/appAlert';
+import { pickParam, safeBack } from '@/utils/navigation';
 import Slider from '@react-native-community/slider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const normalizeTr = (s: string) => s.toLocaleLowerCase('tr-TR').replace(/\u0307/g, '');
 
 interface RosterPlayer {
   id: string;
@@ -30,12 +34,18 @@ export default function RateMatchScreen() {
   const { theme } = useTheme();
   const { user, saveUser } = useAuth();
   const styles = useStyles(theme);
-  const params = useLocalSearchParams<{ matchId?: string; playerName?: string; playerAvatar?: string; matchScore?: string; isOrganizer?: string }>();
+  const params = useLocalSearchParams<{ matchId?: string | string[]; playerName?: string | string[]; playerAvatar?: string | string[]; matchScore?: string | string[]; isOrganizer?: string | string[] }>();
+  const matchId = pickParam(params.matchId);
+  const playerNameParam = pickParam(params.playerName);
+  const matchScoreParam = pickParam(params.matchScore);
+  const isOrganizerParam = pickParam(params.isOrganizer);
   const [scoreA, setScoreA] = useState(0);
   const [scoreB, setScoreB] = useState(0);
+  const [hasUnsavedScore, setHasUnsavedScore] = useState(false);
   const [evaluatedPlayers, setEvaluatedPlayers] = useState<Record<string, number>>({});
 
-  const [loading, setLoading] = useState(Boolean(params.matchId));
+  const [loading, setLoading] = useState(Boolean(matchId));
+  const [matchNotFound, setMatchNotFound] = useState(false);
   const [roster, setRoster] = useState<RosterPlayer[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<RosterPlayer | null>(null);
   const [pitchReviewVisible, setPitchReviewVisible] = useState(false);
@@ -52,102 +62,173 @@ export default function RateMatchScreen() {
   } | null>(null);
 
   const isOrganizer = Boolean(
-    params.isOrganizer === 'true' || 
+    isOrganizerParam === 'true' || 
     (matchData?.organizerId && user?.uid && matchData.organizerId === user.uid)
   );
   const isCaptain = Boolean(
     (matchData?.captainAId && user?.uid && matchData.captainAId === user.uid) ||
     (matchData?.captainBId && user?.uid && matchData.captainBId === user.uid)
   );
-  const canEditScore = Boolean(isOrganizer || isCaptain || (!matchData && !params.matchId));
+  const canEditScore = Boolean(isOrganizer || isCaptain || (!matchData && !matchId));
 
   useEffect(() => {
-    if (params.matchScore && params.matchScore.includes('-')) {
-      const parts = params.matchScore.split('-').map(s => parseInt(s.trim(), 10));
+    if (matchScoreParam && matchScoreParam.includes('-')) {
+      const parts = matchScoreParam.split('-').map(s => parseInt(s.trim(), 10));
       if (!isNaN(parts[0]) && !isNaN(parts[1])) {
         setScoreA(parts[0]);
         setScoreB(parts[1]);
+        setHasUnsavedScore(false);
       }
     }
-  }, [params.matchScore]);
+  }, [matchScoreParam]);
 
   useEffect(() => {
-    if (params.matchId) {
+    let isMounted = true;
+    if (matchId) {
       setLoading(true);
-      // Önce bu maça ait değerlendirilen oyuncuları depodan yükle
-      const storageKey = `@hiv_evaluated_${params.matchId}`;
+      setMatchNotFound(false);
+      // Önce bu maça ait değerlendirilen oyuncuları ve MVP oyunu depodan yükle
+      const storageKey = `@hiv_evaluated_${matchId}`;
       AsyncStorage.getItem(storageKey).then(raw => {
-        if (raw) setEvaluatedPlayers(JSON.parse(raw));
+        if (!isMounted || !raw) return;
+        try {
+          setEvaluatedPlayers(JSON.parse(raw));
+        } catch {}
       }).catch(() => {});
 
-      dbService.getMatchById(params.matchId).then((match) => {
-        if (match) {
-          setMatchData(match);
-          if (match.formaGoluTeam) {
-            setFormaGoluTeam(match.formaGoluTeam);
+      AsyncStorage.getItem(`@hiv_mvp_${matchId}`).then(mvpId => {
+        if (isMounted && mvpId) {
+          setMvpGivenToId(mvpId);
+        }
+      }).catch(() => {});
+
+      dbService.getMatchById(matchId).then((match) => {
+        if (!isMounted) return;
+        if (!match) {
+          setMatchNotFound(true);
+          return;
+        }
+        setMatchData(match);
+        if (match.formaGoluTeam) {
+          setFormaGoluTeam(match.formaGoluTeam);
+        }
+        if (match.arena) setMatchArena(match.arena);
+        if (match.score && match.score.includes('-')) {
+          const parts = match.score.split('-').map(s => parseInt(s.trim(), 10));
+          if (!isNaN(parts[0]) && !isNaN(parts[1])) {
+            setScoreA(parts[0]);
+            setScoreB(parts[1]);
+            setHasUnsavedScore(false);
           }
-          if (match.arena) setMatchArena(match.arena);
-          if (match.score && match.score.includes('-')) {
-            const parts = match.score.split('-').map(s => parseInt(s.trim(), 10));
-            if (!isNaN(parts[0]) && !isNaN(parts[1])) {
-              setScoreA(parts[0]);
-              setScoreB(parts[1]);
+        }
+        if (match.slots || match.benchA || match.benchB) {
+          const slotPlayers: RosterPlayer[] = match.slots
+            ? Object.entries(match.slots)
+                .filter((entry): entry is [string, NonNullable<typeof entry[1]>] => Boolean(entry[1] && entry[1].name))
+                .map(([slotKey, s], idx) => ({
+                  id: s.uid || `slot-${slotKey}`,
+                  name: s.name,
+                  avatar: s.avatar || DEFAULT_AVATAR,
+                  position: s.position || (slotKey.includes('OS') ? 'Orta Saha' : slotKey.includes('FORVET') ? 'Forvet' : slotKey.includes('DEF') || slotKey.includes('DF') ? 'Defans' : slotKey.includes('KL') ? 'Kaleci' : 'Oyuncu'),
+                  number: `#${idx + 1}`,
+                  team: slotKey.startsWith('B_') ? 'B' : 'A',
+                }))
+            : [];
+
+          const benchAPlayers: RosterPlayer[] = Array.isArray(match.benchA)
+            ? match.benchA.filter((b: any) => Boolean(b && b.name)).map((b: any, idx: number) => ({
+                id: b.uid || `benchA-${idx}`,
+                name: b.name,
+                avatar: b.avatar || DEFAULT_AVATAR,
+                position: 'Yedek (A)',
+                number: `#Y${idx + 1}`,
+                team: 'A' as const,
+              }))
+            : [];
+
+          const benchBPlayers: RosterPlayer[] = Array.isArray(match.benchB)
+            ? match.benchB.filter((b: any) => Boolean(b && b.name)).map((b: any, idx: number) => ({
+                id: b.uid || `benchB-${idx}`,
+                name: b.name,
+                avatar: b.avatar || DEFAULT_AVATAR,
+                position: 'Yedek (B)',
+                number: `#Y${idx + 1}`,
+                team: 'B' as const,
+              }))
+            : [];
+
+          const rawPlayers: RosterPlayer[] = [...slotPlayers, ...benchAPlayers, ...benchBPlayers];
+
+          // Kesin tekilleştirme: Kullanıcı veya aynı isimdeki oyuncular asla 2 kez çıkmaz
+          const seenKeys = new Set<string>();
+          const deduplicated: RosterPlayer[] = [];
+
+          rawPlayers.forEach((p) => {
+            const normName = normalizeTr(p.name.trim());
+            const isCurrentUser = (user?.uid && p.id === user.uid) ||
+                                  (user?.name && normName === normalizeTr(user.name.trim()));
+            const key = isCurrentUser ? '__CURRENT_USER__' : (p.id && !p.id.startsWith('slot-') ? p.id : normName);
+            if (!seenKeys.has(key)) {
+              seenKeys.add(key);
+              deduplicated.push({
+                ...p,
+                id: isCurrentUser && user?.uid ? user.uid : p.id
+              });
             }
-          }
-          if (match.slots) {
-            const rawPlayers: RosterPlayer[] = Object.entries(match.slots)
-              .filter((entry): entry is [string, NonNullable<typeof entry[1]>] => Boolean(entry[1] && entry[1].name))
-              .map(([slotKey, s], idx) => ({
-                id: s.uid || `slot-${slotKey}`,
-                name: s.name,
-                avatar: s.avatar || DEFAULT_AVATAR,
-                position: s.position || (slotKey.includes('OS') ? 'Orta Saha' : slotKey.includes('FORVET') ? 'Forvet' : slotKey.includes('DEF') || slotKey.includes('DF') ? 'Defans' : slotKey.includes('KL') ? 'Kaleci' : 'Oyuncu'),
-                number: `#${idx + 1}`,
-                team: slotKey.startsWith('B_') ? 'B' : 'A',
-              }));
+          });
 
-            // Kesin tekilleştirme: Kullanıcı veya aynı isimdeki oyuncular asla 2 kez çıkmaz
-            const seenKeys = new Set<string>();
-            const deduplicated: RosterPlayer[] = [];
-
-            rawPlayers.forEach((p) => {
-              const isCurrentUser = (user?.uid && p.id === user.uid) || 
-                                    (user?.name && p.name.trim().toLowerCase() === user.name.trim().toLowerCase());
-              const key = isCurrentUser ? '__CURRENT_USER__' : (p.id && !p.id.startsWith('slot-') ? p.id : p.name.trim().toLowerCase());
-              if (!seenKeys.has(key)) {
-                seenKeys.add(key);
-                deduplicated.push({
-                  ...p,
-                  id: isCurrentUser && user?.uid ? user.uid : p.id
-                });
-              }
-            });
-
-            if (deduplicated.length > 0) {
-              setRoster(deduplicated);
-              const found = deduplicated.find(p => p.name === params.playerName) || 
-                            deduplicated.find(p => p.id !== user?.uid) || 
-                            deduplicated[0];
-              setSelectedPlayer(found);
-            }
+          if (deduplicated.length > 0) {
+            setRoster(deduplicated);
+            const found = deduplicated.find(p => p.name === playerNameParam) ||
+                          deduplicated.find(p => p.id !== user?.uid) ||
+                          deduplicated[0];
+            setSelectedPlayer(found);
           }
         }
       }).catch((err) => {
         console.log('Maç bilgisi alınamadı:', err);
+        if (isMounted) setMatchNotFound(true);
       }).finally(() => {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       });
     } else {
       setLoading(false);
+      setMatchNotFound(true);
     }
-  }, [params.matchId, params.playerName, user?.uid, user?.name]);
+    return () => {
+      isMounted = false;
+    };
+  }, [matchId, playerNameParam, user?.uid, user?.name]);
 
   const [rating, setRating] = useState(8.0);
   const [isMvp, setIsMvp] = useState(false);
+  const [mvpGivenToId, setMvpGivenToId] = useState<string | null>(null);
   const [storyVisible, setStoryVisible] = useState(false);
   const [notifVisible, setNotifVisible] = useState(false);
-  const [activeTags, setActiveTags] = useState<string[]>(['Centilmen / Fair Play']);
+  const [activeTags, setActiveTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [savingScore, setSavingScore] = useState(false);
+
+  const handleSaveScore = async (silent?: boolean) => {
+    if (!matchId || !canEditScore || savingScore) return;
+    setSavingScore(true);
+    try {
+      const finalScoreStr = `${scoreA} - ${scoreB}`;
+      await dbService.updateMatchScore(matchId, finalScoreStr, formaGoluTeam);
+      setHasUnsavedScore(false);
+      if (!silent) {
+        appAlert.alert('Skor Kaydedildi', `Maç skoru (${finalScoreStr}) ve oyuncu istatistikleri güncellendi.`);
+      }
+    } catch {
+      if (!silent) {
+        appAlert.alert('Hata', 'Maç skoru kaydedilirken bir sorun oluştu.');
+      }
+    } finally {
+      setSavingScore(false);
+    }
+  };
+
+  const handleSaveScoreOnly = () => handleSaveScore(false);
 
   const tags = [
     'Paslaşmayı Seven',
@@ -161,24 +242,24 @@ export default function RateMatchScreen() {
 
   const handleScoreChange = (team: 'A' | 'B', delta: number) => {
     if (!canEditScore) {
-      Alert.alert('Yetki Gerekli', 'Maç skorunu sadece organizatör veya takım kaptanları güncelleyebilir.');
+      appAlert.alert('Yetki Gerekli', 'Maç skorunu sadece organizatör veya takım kaptanları güncelleyebilir.');
       return;
     }
+    setHasUnsavedScore(true);
     if (team === 'A') {
       setScoreA(prev => Math.max(0, prev + delta));
     } else {
       setScoreB(prev => Math.max(0, prev + delta));
     }
-    // Skor yalnızca "Kaydet" butonuyla DB'ye yazılır — burada sadece yerel state güncellenir
   };
 
   const handleFormaGoluSelect = (team: 'A' | 'B') => {
     if (!canEditScore) {
-      Alert.alert('Yetki Gerekli', 'Forma golü bilgisini sadece organizatör veya takım kaptanları belirleyebilir.');
+      appAlert.alert('Yetki Gerekli', 'Forma golü bilgisini sadece organizatör veya takım kaptanları belirleyebilir.');
       return;
     }
+    setHasUnsavedScore(true);
     setFormaGoluTeam(prev => prev === team ? null : team);
-    // DB'ye yazım yalnızca "Kaydet" butonunda yapılır
   };
 
 
@@ -190,60 +271,92 @@ export default function RateMatchScreen() {
     }
   };
 
+  const handleToggleMvp = () => {
+    if (!selectedPlayer) {
+      appAlert.alert('Oyuncu Seçin', 'Lütfen önce puanlamak istediğiniz oyuncuyu seçin.');
+      return;
+    }
+    if (isMvp) {
+      setIsMvp(false);
+      if (mvpGivenToId === selectedPlayer.id) {
+        setMvpGivenToId(null);
+      }
+    } else {
+      if (mvpGivenToId && mvpGivenToId !== selectedPlayer.id) {
+        appAlert.alert('MVP Sınırı', 'Bir maçta yalnızca 1 oyuncuya Maçın Adamı (MVP) oyu verebilirsiniz.');
+        return;
+      }
+      setIsMvp(true);
+      setMvpGivenToId(selectedPlayer.id);
+    }
+  };
+
   const handleSaveRating = async () => {
     if (saving) return;
+    if (!matchId) {
+      appAlert.alert('Maç Bulunamadı', 'Değerlendirme yapılacak geçerli bir maç kaydı bulunamadı.');
+      return;
+    }
     if (!selectedPlayer) {
-      Alert.alert('Oyuncu Seçin', 'Lütfen değerlendirmek istediğiniz oyuncuyu yukarıdaki kadro listesinden seçin.');
+      appAlert.alert('Oyuncu Seçin', 'Lütfen değerlendirmek istediğiniz oyuncuyu yukarıdaki kadro listesinden seçin.');
       return;
     }
     if (selectedPlayer?.id === user?.uid) {
-      Alert.alert('Centilmenlik Kuralı', 'Kendinizi puanlayamazsınız. Lütfen takım arkadaşlarınızı veya rakiplerinizi değerlendirin.');
+      appAlert.alert('Centilmenlik Kuralı', 'Kendinizi puanlayamazsınız. Lütfen takım arkadaşlarınızı veya rakiplerinizi değerlendirin.');
       return;
     }
     setSaving(true);
     try {
       const finalScoreStr = `${scoreA} - ${scoreB}`;
-      await dbService.saveMatchRating(params.matchId || 'general_match', {
+      const ratingPayload: any = {
         userId: user?.uid || 'anon',
-        ratedPlayerId: selectedPlayer?.id,
-        ratedPlayerName: selectedPlayer?.name,
+        ratedPlayerId: selectedPlayer.id,
+        ratedPlayerName: selectedPlayer.name,
         rating,
         isMvp,
-        mvpNominee: isMvp ? selectedPlayer?.id : undefined,
         comment: activeTags.join(', ')
-      });
-      
-      if (params.matchId) {
-        try {
-          if (canEditScore) {
-            await dbService.updateMatch(params.matchId, { 
-              score: finalScoreStr, 
-              formaGoluTeam,
-              status: 'completed' 
-            });
-          }
-          const raw = await AsyncStorage.getItem('@hiv_rated_matches');
-          const list: string[] = raw ? JSON.parse(raw) : [];
-          if (!list.includes(params.matchId)) {
-            list.push(params.matchId);
-            await AsyncStorage.setItem('@hiv_rated_matches', JSON.stringify(list));
-          }
-          if (user?.uid) {
-            await dbService.dismissMatchReview(user.uid, params.matchId);
-            await saveUser({
-              dismissedReviews: Array.from(new Set([...(user.dismissedReviews || []), params.matchId]))
-            });
-          }
+      };
+      if (isMvp && selectedPlayer.id) {
+        ratingPayload.mvpNominee = selectedPlayer.id;
+      }
+      await dbService.saveMatchRating(matchId, ratingPayload);
 
-          // Değerlendirilen oyuncular haritasını güncelle
-          if (selectedPlayer?.id) {
-            const updatedEval = { ...evaluatedPlayers, [selectedPlayer.id]: rating };
-            setEvaluatedPlayers(updatedEval);
-            await AsyncStorage.setItem(`@hiv_evaluated_${params.matchId}`, JSON.stringify(updatedEval));
-          }
-        } catch (err) {
-          console.log('Rated storage error:', err);
+      try {
+        if (canEditScore && hasUnsavedScore) {
+          await handleSaveScore(true);
         }
+        const raw = await AsyncStorage.getItem('@hiv_rated_matches');
+        const list: string[] = raw ? JSON.parse(raw) : [];
+        if (!list.includes(matchId)) {
+          list.push(matchId);
+          await AsyncStorage.setItem('@hiv_rated_matches', JSON.stringify(list));
+        }
+
+        if (isMvp && selectedPlayer.id) {
+          await AsyncStorage.setItem(`@hiv_mvp_${matchId}`, selectedPlayer.id);
+        } else if (mvpGivenToId === selectedPlayer.id && !isMvp) {
+          await AsyncStorage.removeItem(`@hiv_mvp_${matchId}`);
+        }
+
+        // Değerlendirilen oyuncular haritasını güncelle
+        const updatedEval = selectedPlayer.id
+          ? { ...evaluatedPlayers, [selectedPlayer.id]: rating }
+          : evaluatedPlayers;
+        if (selectedPlayer.id) {
+          setEvaluatedPlayers(updatedEval);
+          await AsyncStorage.setItem(`@hiv_evaluated_${matchId}`, JSON.stringify(updatedEval));
+        }
+
+        const rateableRoster = roster.filter(p => p.id !== user?.uid);
+        const allEvaluated = rateableRoster.length > 0 && rateableRoster.every(p => updatedEval[p.id] !== undefined);
+        if (user?.uid && allEvaluated) {
+          await dbService.dismissMatchReview(user.uid, matchId);
+          await saveUser({
+            dismissedReviews: Array.from(new Set([...(user.dismissedReviews || []), matchId]))
+          });
+        }
+      } catch (err) {
+        console.log('Rated storage error:', err);
       }
 
       setSuccessData({
@@ -256,7 +369,7 @@ export default function RateMatchScreen() {
       setSuccessModalVisible(true);
     } catch (e) {
       console.log('Puan kaydetme hatası:', e);
-      Alert.alert('Hata', 'Değerlendirme kaydedilirken bir sorun oluştu.');
+      appAlert.alert('Hata', 'Değerlendirme kaydedilirken bir sorun oluştu.');
     } finally {
       setSaving(false);
     }
@@ -266,7 +379,10 @@ export default function RateMatchScreen() {
     <SafeAreaView style={styles.container}>
       <MatchStoryModal
         visible={storyVisible}
-        mvpName={isMvp ? selectedPlayer?.name : 'KAPTAN SARI'}
+        mvpName={selectedPlayer?.name || 'OYUNCU'}
+        mvpAvatar={selectedPlayer?.avatar || DEFAULT_AVATAR}
+        venue={matchArena || 'Halı Saha'}
+        date={matchData?.dateTime || 'Bugün'}
         score={`${scoreA} - ${scoreB}`}
         onClose={() => setStoryVisible(false)}
       />
@@ -282,27 +398,35 @@ export default function RateMatchScreen() {
           <TouchableOpacity style={styles.iconBtnHover} onPress={() => {
             const rateableRoster = roster.filter(p => p.id !== user?.uid);
             const evaluatedCount = Object.keys(evaluatedPlayers).length;
-            const handleExit = () => {
-              if (params.matchId && user) {
+            const handleExit = async () => {
+              if (hasUnsavedScore && canEditScore && matchId) {
+                try {
+                  await handleSaveScore(true);
+                } catch (err) {
+                  console.log('Maç skoru çıkışta otomatik kaydedilemedi:', err);
+                }
+              }
+              if (matchId && user?.uid && evaluatedCount > 0) {
+                dbService.dismissMatchReview(user.uid, matchId).catch(() => {});
                 saveUser({
-                  dismissedReviews: Array.from(new Set([...(user.dismissedReviews || []), params.matchId]))
+                  dismissedReviews: Array.from(new Set([...(user.dismissedReviews || []), matchId]))
                 }).catch(() => {});
               }
-              if (router.canGoBack()) {
-                router.back();
+              const allEvaluated = rateableRoster.length > 0 && evaluatedCount >= rateableRoster.length;
+              if (allEvaluated) {
+                router.replace('/(tabs)/matches');
               } else {
-                router.replace('/(tabs)');
+                safeBack(router, '/(tabs)/matches');
               }
             };
 
             if (rateableRoster.length > 0 && evaluatedCount < rateableRoster.length) {
-              Alert.alert(
+              const confirmMsg = `${rateableRoster.length - evaluatedCount} oyuncuyu henüz değerlendirmediniz. Çıkmak istediğinize emin misiniz?`;
+              appAlert.confirm(
                 'Değerlendirme Tamamlanmadı',
-                `${rateableRoster.length - evaluatedCount} oyuncuyu henüz değerlendirmediniz. Çıkmak istediğinize emin misiniz?`,
-                [
-                  { text: 'Devam Et', style: 'cancel' },
-                  { text: 'Çık', style: 'destructive', onPress: handleExit },
-                ]
+                confirmMsg,
+                handleExit,
+                { confirmText: 'Çık', cancelText: 'Devam Et', destructive: true }
               );
             } else {
               handleExit();
@@ -322,6 +446,24 @@ export default function RateMatchScreen() {
           <ActivityIndicator size="large" color={theme.primary} />
           <Text style={styles.loadingText}>Maç ve kadro bilgileri yükleniyor...</Text>
         </View>
+      ) : matchNotFound ? (
+        <View style={styles.loadingContainer}>
+          <MaterialIcons name="sports-soccer" size={48} color={theme.textMuted} />
+          <Text style={[styles.loadingText, { fontFamily: Fonts.headlineBold, color: theme.text, fontSize: 16 }]}>
+            Maç Bulunamadı
+          </Text>
+          <Text style={[styles.loadingText, { textAlign: 'center', maxWidth: 280 }]}>
+            Bu maç silinmiş veya erişilebilir değil.
+          </Text>
+          <TouchableOpacity
+            style={{ marginTop: 12, backgroundColor: theme.primary, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12 }}
+            onPress={() => safeBack(router, '/(tabs)/matches')}
+          >
+            <Text style={{ fontFamily: Fonts.headlineBold, color: theme.onPrimary, fontSize: 13 }}>
+              MAÇLARA DÖN
+            </Text>
+          </TouchableOpacity>
+        </View>
       ) : (
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Match Score Section */}
@@ -331,9 +473,15 @@ export default function RateMatchScreen() {
               <MaterialIcons name="sports-score" size={20} color={theme.primary} />
               <Text style={styles.scoreSectionTitle}>MAÇ SKORU</Text>
             </View>
-            <View style={[styles.scoreStatusPill, !canEditScore && { backgroundColor: `${theme.secondary}20` }]}>
-              <Text style={[styles.scoreStatusPillText, !canEditScore && { color: theme.secondary }]}>
-                {canEditScore ? '👑 DÜZENLENEBİLİR' : '🔒 SALT OKUNUR'}
+            <View style={[
+              styles.scoreStatusPill, 
+              hasUnsavedScore ? { backgroundColor: 'rgba(234, 179, 8, 0.2)' } : !canEditScore && { backgroundColor: `${theme.secondary}20` }
+            ]}>
+              <Text style={[
+                styles.scoreStatusPillText, 
+                hasUnsavedScore ? { color: '#eab308' } : !canEditScore && { color: theme.secondary }
+              ]}>
+                {hasUnsavedScore ? '⚠️ DEĞİŞTİ (KAYDET BEKLİYOR)' : canEditScore ? '👑 DÜZENLENEBİLİR' : '🔒 SALT OKUNUR'}
               </Text>
             </View>
           </View>
@@ -425,7 +573,7 @@ export default function RateMatchScreen() {
                 <MaterialIcons 
                   name={formaGoluTeam === 'A' ? "check-circle" : "sports-soccer"} 
                   size={13} 
-                  color={formaGoluTeam === 'A' ? theme.background : theme.primary} 
+                  color={formaGoluTeam === 'A' ? theme.onPrimary : theme.primary} 
                 />
                 <Text style={[styles.formaGoluChoiceText, formaGoluTeam === 'A' && styles.formaGoluChoiceTextActive]}>
                   A
@@ -445,7 +593,7 @@ export default function RateMatchScreen() {
                 <MaterialIcons 
                   name={formaGoluTeam === 'B' ? "check-circle" : "sports-soccer"} 
                   size={13} 
-                  color={formaGoluTeam === 'B' ? theme.background : theme.secondary} 
+                  color={formaGoluTeam === 'B' ? theme.onSecondary : theme.secondary} 
                 />
                 <Text style={[styles.formaGoluChoiceText, formaGoluTeam === 'B' && styles.formaGoluChoiceTextActive]}>
                   B
@@ -465,6 +613,31 @@ export default function RateMatchScreen() {
               )}
             </View>
           </View>
+
+          {canEditScore && params.matchId && (
+            <TouchableOpacity
+              style={{
+                marginTop: 12,
+                backgroundColor: hasUnsavedScore ? theme.primary : `${theme.primary}20`,
+                borderWidth: 1,
+                borderColor: theme.primary,
+                borderRadius: 10,
+                paddingVertical: 10,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+              }}
+              onPress={handleSaveScoreOnly}
+              disabled={savingScore}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="save" size={16} color={hasUnsavedScore ? theme.onPrimary : theme.primary} />
+              <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: hasUnsavedScore ? theme.onPrimary : theme.primary }}>
+                {savingScore ? 'SKOR KAYDEDİLİYOR...' : hasUnsavedScore ? 'SKORU KAYDET (DEĞİŞİKLİKLERİ UYGULA)' : 'SKORU KAYDET'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Roster Picker Section */}
@@ -476,8 +649,8 @@ export default function RateMatchScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rosterList}>
             {roster.map((player) => {
               const isSelected = selectedPlayer?.id === player.id;
-              const isSelf = (user?.uid && player.id === user.uid) || 
-                             (user?.name && player.name.trim().toLowerCase() === user.name.trim().toLowerCase());
+              const isSelf = (user?.uid && player.id === user.uid) ||
+                             (user?.name && normalizeTr(player.name.trim()) === normalizeTr(user.name.trim()));
               const playerRating = evaluatedPlayers[player.id];
               const isRated = playerRating !== undefined;
 
@@ -492,10 +665,9 @@ export default function RateMatchScreen() {
                   ]}
                   onPress={() => {
                     if (isSelf) {
-                      Alert.alert(
-                        '⚖️ Centilmenlik Kuralı',
-                        'Centilmenlik ve lig adaleti gereği kendinizi puanlayamazsınız. Lütfen takım arkadaşlarınızı veya rakiplerinizi değerlendirin.',
-                        [{ text: 'Anladım' }]
+                      appAlert.alert(
+                        'Centilmenlik Kuralı',
+                        'Centilmenlik ve lig adaleti gereği kendinizi puanlayamazsınız. Lütfen takım arkadaşlarınızı veya rakiplerinizi değerlendirin.'
                       );
                       return;
                     }
@@ -505,7 +677,8 @@ export default function RateMatchScreen() {
                     } else {
                       setRating(8.0);
                     }
-                    setIsMvp(false);
+                    setIsMvp(mvpGivenToId === player.id);
+                    setActiveTags([]);
                   }}
                   activeOpacity={0.8}
                 >
@@ -517,7 +690,7 @@ export default function RateMatchScreen() {
                     <Image source={{ uri: player.avatar }} style={styles.rosterAvatar} />
                     {isSelected && (
                       <View style={styles.rosterSelectedBadge}>
-                        <MaterialIcons name="edit" size={9} color={theme.background} />
+                        <MaterialIcons name="edit" size={9} color={theme.onPrimary} />
                       </View>
                     )}
                     {isRated && !isSelected && (
@@ -527,7 +700,7 @@ export default function RateMatchScreen() {
                     )}
                     {isSelf && !isSelected && !isRated && (
                       <View style={[styles.rosterSelectedBadge, { backgroundColor: theme.secondary }]}>
-                        <Text style={{ fontSize: 7, color: theme.background, fontWeight: 'bold' }}>SİZ</Text>
+                        <Text style={{ fontSize: 7, color: theme.onSecondary, fontWeight: 'bold' }}>SİZ</Text>
                       </View>
                     )}
                   </View>
@@ -579,11 +752,11 @@ export default function RateMatchScreen() {
             isMvp && styles.mvpBoxActive
           ]} 
           activeOpacity={0.85}
-          onPress={() => setIsMvp(!isMvp)}
+          onPress={handleToggleMvp}
         >
           <View style={styles.mvpLeft}>
             <View style={[styles.mvpIconWrap, isMvp && { backgroundColor: theme.primary }]}>
-              <MaterialIcons name="emoji-events" size={24} color={isMvp ? theme.background : theme.textMuted} />
+              <MaterialIcons name="emoji-events" size={24} color={isMvp ? theme.onPrimary : theme.textMuted} />
             </View>
             <View>
               <Text style={[styles.mvpTitle, isMvp && { color: theme.primary }]}>MAÇIN ADAMI (MVP) SEÇ</Text>
@@ -640,7 +813,7 @@ export default function RateMatchScreen() {
                     {tag}
                   </Text>
                   {isActive && (
-                    <MaterialIcons name="check-circle" size={16} color={theme.background} style={{ marginLeft: 8 }} />
+                    <MaterialIcons name="check-circle" size={16} color={theme.onPrimary} style={{ marginLeft: 8 }} />
                   )}
                 </TouchableOpacity>
               )
@@ -656,10 +829,10 @@ export default function RateMatchScreen() {
           disabled={saving || !selectedPlayer || selectedPlayer?.id === user?.uid}
         >
           {saving ? (
-            <ActivityIndicator size="small" color={theme.background} />
+            <ActivityIndicator size="small" color={theme.onPrimary} />
           ) : (
             <>
-              <MaterialIcons name="check" size={20} color={theme.background} />
+              <MaterialIcons name="check" size={20} color={theme.onPrimary} />
               <Text style={styles.submitBtnText}>
                 {!selectedPlayer ? 'OYUNCU SEÇİN' : selectedPlayer?.id === user?.uid ? 'KENDİNİZİ PUANLAYAMAZSINIZ' : 'DEĞERLENDİRMEYİ GÖNDER'}
               </Text>
@@ -718,6 +891,27 @@ export default function RateMatchScreen() {
               </View>
             )}
 
+            {(() => {
+              const nextUnrated = roster.find(
+                p => p.id !== user?.uid && evaluatedPlayers[p.id] === undefined && p.id !== selectedPlayer?.id
+              );
+              return nextUnrated ? (
+                <TouchableOpacity
+                  style={[styles.storyActionBtn, { width: '100%', marginBottom: 8 }]}
+                  onPress={() => {
+                    setSuccessModalVisible(false);
+                    setSelectedPlayer(nextUnrated);
+                    setRating(8.0);
+                    setIsMvp(mvpGivenToId === nextUnrated.id);
+                    setActiveTags([]);
+                  }}
+                >
+                  <MaterialIcons name="person-add-alt-1" size={18} color={theme.onPrimary} />
+                  <Text style={styles.storyActionBtnText}>Sıradaki Oyuncuyu Değerlendir ({nextUnrated.name})</Text>
+                </TouchableOpacity>
+              ) : null;
+            })()}
+
             <View style={styles.modalActionsRow}>
               <TouchableOpacity
                 style={styles.storyActionBtn}
@@ -726,7 +920,7 @@ export default function RateMatchScreen() {
                   setStoryVisible(true);
                 }}
               >
-                <MaterialIcons name="auto-awesome" size={18} color={theme.background} />
+                <MaterialIcons name="auto-awesome" size={18} color={theme.onPrimary} />
                 <Text style={styles.storyActionBtnText}>Story Oluştur</Text>
               </TouchableOpacity>
 
@@ -734,10 +928,16 @@ export default function RateMatchScreen() {
                 style={styles.doneActionBtn}
                 onPress={() => {
                   setSuccessModalVisible(false);
-                  router.back();
+                  if (matchId && user?.uid) {
+                    dbService.dismissMatchReview(user.uid, matchId).catch(() => {});
+                    saveUser({
+                      dismissedReviews: Array.from(new Set([...(user.dismissedReviews || []), matchId]))
+                    }).catch(() => {});
+                  }
+                  router.replace('/(tabs)/matches');
                 }}
               >
-                <Text style={styles.doneActionBtnText}>Tamam / Geri Dön</Text>
+                <Text style={styles.doneActionBtnText}>Tamam / Maçlara Dön</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -932,7 +1132,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   tagTextInactive: {
     color: theme.text},
   tagTextActive: {
-    color: theme.background},
+    color: theme.onPrimary},
   submitBtn: {
     backgroundColor: theme.primary, // the gradient would be nice but simple flat works in RN unless SVG is used
     flexDirection: 'row',
@@ -948,7 +1148,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   submitBtnText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 18,
-    color: theme.background,
+    color: theme.onPrimary,
     fontStyle: 'italic',
     textTransform: 'uppercase',
     letterSpacing: -0.5},
@@ -1106,7 +1306,7 @@ const useStyles = (theme: any) => StyleSheet.create({
     color: theme.text,
   },
   formaGoluChoiceTextActive: {
-    color: theme.background,
+    color: theme.onPrimary,
   },
   formaGoluClearBtn: {
     width: 32,
@@ -1367,7 +1567,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   storyActionBtnText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 14,
-    color: theme.background,
+    color: theme.onPrimary,
   },
   doneActionBtn: {
     height: 46,

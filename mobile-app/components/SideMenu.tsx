@@ -1,12 +1,14 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Image, Animated, Alert, Platform, Linking, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Image, Animated, Platform, Linking, ScrollView } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useRouter, usePathname } from 'expo-router';
 import { useAuth } from '@/hooks/use-auth';
+import { checkIsAdmin } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { usePwaInstall } from '@/hooks/use-pwa-install';
+import { appAlert } from '@/services/appAlert';
 
 interface SideMenuProps {
   visible: boolean;
@@ -22,6 +24,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const { isInstalled, promptInstall } = usePwaInstall();
+  const [loggingOut, setLoggingOut] = React.useState(false);
 
   const slideAnim = React.useRef(new Animated.Value(-280)).current;
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
@@ -71,21 +74,13 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
     soon?: boolean;
   }
 
-  const ADMIN_EMAILS = [
-    'baranimoley@gmail.com',
-    'barandivatyali@gmail.com',
-    'admin@hivhalisaha.com',
-    'yonetim@hivhalisaha.com',
-  ];
-
-  const userEmail = (user?.email || '').toLowerCase().trim();
-  const isUserAdmin = user?.role === 'admin' || ADMIN_EMAILS.includes(userEmail);
+  const isUserAdmin = checkIsAdmin(user?.email, user?.role);
 
   const menuItems: MenuItem[] = [
     { label: 'PROFİL', icon: 'person', route: '/(tabs)/profile', active: pathname?.includes('profile') },
     { label: 'BİLDİRİMLER', icon: 'notifications', action: 'notifications' },
     { label: 'AYARLAR', icon: 'settings', route: '/settings', active: pathname?.includes('settings') },
-    ...(!isInstalled ? [{ label: 'UYGULAMAYI YÜKLE', icon: 'get-app', action: 'install' }] : []),
+    ...(Platform.OS === 'web' && !isInstalled ? [{ label: 'UYGULAMAYI YÜKLE', icon: 'get-app', action: 'install' }] : []),
     { label: 'NASIL KULLANILIR?', icon: 'help', action: 'guide' },
   ];
 
@@ -99,7 +94,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
       if (onOpenNotifications) {
         onOpenNotifications();
       } else {
-        Alert.alert('Bildirimler', 'Yeni bir bildiriminiz bulunmuyor.');
+        appAlert.alert('Bildirimler', 'Yeni bir bildiriminiz bulunmuyor.');
       }
       return;
     }
@@ -178,7 +173,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
                   <Text style={styles.userName} numberOfLines={1}>{user?.name || 'Kullanıcı'}</Text>
                   <View style={styles.levelRow}>
                     <View style={styles.levelBadge}><Text style={styles.levelBadgeText}>{user?.level || 'Amatör'}</Text></View>
-                    <Text style={styles.memberText}>H.İ.V. MENTER</Text>
+                    <Text style={styles.memberText}>H.İ.V. ÜYESİ</Text>
                   </View>
                 </View>
               </View>
@@ -230,13 +225,17 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
                 </TouchableOpacity>
               )}
 
-              <TouchableOpacity style={styles.logoutBtn} onPress={async () => {
+              <TouchableOpacity style={[styles.logoutBtn, loggingOut && { opacity: 0.6 }]} disabled={loggingOut} onPress={async () => {
+                if (loggingOut) return;
+                setLoggingOut(true);
                 try {
                   await logout();
                   onClose();
                   router.replace('/login');
                 } catch {
-                  Alert.alert('Hata', 'Çıkış yapılırken bir hata oluştu.');
+                  appAlert.alert('Hata', 'Çıkış yapılırken bir hata oluştu.');
+                } finally {
+                  setLoggingOut(false);
                 }
               }} activeOpacity={0.8}>
                 <Text style={styles.logoutLabel}>ÇIKIŞ YAP</Text>
@@ -245,7 +244,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, onOpenGuid
               
               <View style={styles.brandRow}>
                 <Text style={styles.brandNoir}>H.İ.V.</Text>
-                <Text style={styles.version}>v1.0.0 — Halısahaya İhtiyacım Var</Text>
+                <Text style={styles.version}>v1.0.2 — Halısahaya İhtiyacım Var</Text>
               </View>
             </View>
           </ScrollView>
@@ -304,7 +303,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   avatarBorder: { width: 54, height: 54, borderRadius: 27, borderWidth: 2, padding: 2, borderColor: theme.primary },
   avatar: { width: '100%', height: '100%', borderRadius: 25 },
   proBadge: { position: 'absolute', bottom: -2, right: -2, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3, backgroundColor: theme.primary },
-  proBadgeText: { color: '#000', fontSize: 8, fontFamily: Fonts.headlineBold, fontStyle: 'italic' },
+  proBadgeText: { color: theme.onPrimary, fontSize: 8, fontFamily: Fonts.headlineBold, fontStyle: 'italic' },
   profileText: { gap: 2 },
   userName: { fontSize: 16, fontFamily: Fonts.headlineBold, letterSpacing: -0.3, color: theme.text },
   levelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },

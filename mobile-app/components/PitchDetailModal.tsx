@@ -9,7 +9,9 @@ import {
   Switch, 
   Alert, 
   ActivityIndicator,
-  Linking
+  Linking,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -169,8 +171,12 @@ export const PitchDetailModal: React.FC<PitchDetailModalProps> = ({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.container}>
           {/* Header */}
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
@@ -239,7 +245,12 @@ export const PitchDetailModal: React.FC<PitchDetailModalProps> = ({
             </View>
           </View>
 
-          <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
+          <ScrollView 
+            style={styles.body} 
+            contentContainerStyle={styles.bodyContent} 
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             {isEditing ? (
               /* ─── DÜZENLEME & ÖNERİ FORMU ─── */
               <View style={styles.formContainer}>
@@ -618,7 +629,8 @@ export const PitchDetailModal: React.FC<PitchDetailModalProps> = ({
           </ScrollView>
         </View>
       </View>
-    </Modal>
+    </KeyboardAvoidingView>
+  </Modal>
   );
 };
 

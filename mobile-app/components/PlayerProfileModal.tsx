@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, Image, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, Image, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { AppModal } from '@/components/AppModal';
 import { useRouter } from 'expo-router';
 import { dbService } from '@/services/dbService';
+import { appAlert } from '@/services/appAlert';
 
 export interface PlayerProfileData {
   uid?: string;
@@ -88,7 +89,7 @@ export function PlayerProfileModal({ visible, onClose, player }: PlayerProfileMo
     return () => {
       isMounted = false;
     };
-  }, [visible, targetUid]);
+  }, [visible, targetUid, player]);
 
   if (!player && !fullPlayer) return null;
 
@@ -99,14 +100,14 @@ export function PlayerProfileModal({ visible, onClose, player }: PlayerProfileMo
   const assists = stats.assists ?? 0;
   const mvp = stats.mvpCount ?? 0;
   const reliability = stats.reliabilityScore ?? 100;
-  const rating = typeof data.rating === 'number' ? data.rating.toFixed(1) : (data.rating || '8.5');
+  const rating = typeof data.rating === 'number' ? data.rating.toFixed(1) : (data.rating || '5.0');
 
   const handleSendMessage = () => {
-    onClose();
     if (!targetUid) {
-      Alert.alert('Bilgi', 'Kullanıcı kimliği bulunamadı.');
+      appAlert.alert('Bilgi', 'Kullanıcı kimliği bulunamadı.');
       return;
     }
+    onClose();
     router.push({
       pathname: '/chat-detail',
       params: {
@@ -119,17 +120,30 @@ export function PlayerProfileModal({ visible, onClose, player }: PlayerProfileMo
 
   const handleInviteToClub = async () => {
     if (!user?.clubId) {
-      Alert.alert('Kulüp Bulunamadı', 'Bir oyuncuyu davet etmek için bir kulübünüz olmalıdır.');
+      appAlert.alert('Kulüp Bulunamadı', 'Bir oyuncuyu davet etmek için bir kulübünüz olmalıdır.');
       return;
     }
     if (!targetUid) return;
 
     try {
       setInviting(true);
+      // Kendi kulübünün kaptanı olup olmadığını kontrol et
+      const myClub = await dbService.getClubById(user.clubId);
+      if (!myClub) {
+        appAlert.alert('Kulüp Bulunamadı', 'Kulüp bilgilerine ulaşılamadı.');
+        return;
+      }
+
+      const myUid = user.uid;
+      if (myClub.captainId && myClub.captainId !== myUid) {
+        appAlert.alert('Yetki Yok', 'Kulübe oyuncu davet etme yetkisi yalnızca kulüp kaptanına aittir.');
+        return;
+      }
+
       await dbService.sendClubInvite(user.clubId, targetUid);
-      Alert.alert('✅ Davet Gönderildi', `${data.name} kulübünüze davet edildi.`);
+      appAlert.alert('✅ Davet Gönderildi', `${data.name} kulübünüze davet edildi.`);
     } catch {
-      Alert.alert('Hata', 'Davet gönderilemedi.');
+      appAlert.alert('Hata', 'Davet gönderilemedi.');
     } finally {
       setInviting(false);
     }
@@ -137,146 +151,148 @@ export function PlayerProfileModal({ visible, onClose, player }: PlayerProfileMo
 
   return (
     <AppModal visible={visible} onClose={onClose}>
-      <View style={styles.modalContent}>
-        {/* Close Button */}
-        <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <MaterialIcons name="close" size={20} color={theme.textMuted} />
-        </TouchableOpacity>
+      <View style={styles.overlay}>
+        <View style={styles.modalContent}>
+          {/* Close Button */}
+          <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <MaterialIcons name="close" size={20} color={theme.textMuted} />
+          </TouchableOpacity>
 
-        {loadingDetails && (
-          <View style={styles.loadingBar}>
-            <ActivityIndicator size="small" color={theme.primary} />
-          </View>
-        )}
-
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollBody}>
-          {/* Header Card */}
-          <View style={styles.headerSection}>
-            <View style={styles.avatarWrap}>
-              <Image 
-                source={{ uri: data.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200' }} 
-                style={styles.avatarImg} 
-              />
-              <View style={styles.ratingBadge}>
-                <MaterialIcons name="star" size={13} color="#f59e0b" />
-                <Text style={styles.ratingBadgeText}>{rating}</Text>
-              </View>
+          {loadingDetails && (
+            <View style={styles.loadingBar}>
+              <ActivityIndicator size="small" color={theme.primary} />
             </View>
+          )}
 
-            <Text style={styles.playerName} numberOfLines={1}>{data.name}</Text>
-            
-            <View style={styles.tagsRow}>
-              <View style={styles.tagItem}>
-                <MaterialIcons name="sports-soccer" size={13} color={theme.primary} />
-                <Text style={styles.tagText}>{data.position || 'Oyuncu'}</Text>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollBody}>
+            {/* Header Card */}
+            <View style={styles.headerSection}>
+              <View style={styles.avatarWrap}>
+                <Image 
+                  source={{ uri: data.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200' }} 
+                  style={styles.avatarImg} 
+                />
+                <View style={styles.ratingBadge}>
+                  <MaterialIcons name="star" size={13} color="#f59e0b" />
+                  <Text style={styles.ratingBadgeText}>{rating}</Text>
+                </View>
               </View>
-              {Boolean(data.city) && (
+
+              <Text style={styles.playerName} numberOfLines={1}>{data.name}</Text>
+              
+              <View style={styles.tagsRow}>
                 <View style={styles.tagItem}>
-                  <MaterialIcons name="location-on" size={13} color={theme.secondary} />
-                  <Text style={styles.tagText}>{data.city}{data.district ? ` / ${data.district}` : ''}</Text>
+                  <MaterialIcons name="sports-soccer" size={13} color={theme.primary} />
+                  <Text style={styles.tagText}>{data.position || 'Oyuncu'}</Text>
+                </View>
+                {Boolean(data.city) && (
+                  <View style={styles.tagItem}>
+                    <MaterialIcons name="location-on" size={13} color={theme.secondary} />
+                    <Text style={styles.tagText}>{data.city}{data.district ? ` / ${data.district}` : ''}</Text>
+                  </View>
+                )}
+                {Boolean(data.foot) && (
+                  <View style={styles.tagItem}>
+                    <MaterialIcons name="accessibility" size={13} color={theme.textMuted} />
+                    <Text style={styles.tagText}>{data.foot} Ayak</Text>
+                  </View>
+                )}
+              </View>
+
+              {data.isLookingForMatch && (
+                <View style={styles.matchSeekingCard}>
+                  <View style={styles.seekingDot} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.seekingTitle}>🟢 MAÇ ARIYOR</Text>
+                    {Boolean(data.availableNote) && (
+                      <Text style={styles.seekingNote}>&ldquo;{data.availableNote}&rdquo;</Text>
+                    )}
+                  </View>
                 </View>
               )}
-              {Boolean(data.foot) && (
-                <View style={styles.tagItem}>
-                  <MaterialIcons name="accessibility" size={13} color={theme.textMuted} />
-                  <Text style={styles.tagText}>{data.foot} Ayak</Text>
+            </View>
+
+            {/* Reliability Bar */}
+            <View style={styles.reliabilityCard}>
+              <View style={styles.reliabilityHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <MaterialIcons name="verified-user" size={16} color={reliability >= 90 ? '#22c55e' : '#f59e0b'} />
+                  <Text style={styles.reliabilityTitle}>Güvenilirlik Puanı</Text>
                 </View>
-              )}
-            </View>
-
-            {data.isLookingForMatch && (
-              <View style={styles.matchSeekingCard}>
-                <View style={styles.seekingDot} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.seekingTitle}>🟢 MAÇ ARIYOR</Text>
-                  {Boolean(data.availableNote) && (
-                    <Text style={styles.seekingNote}>"{data.availableNote}"</Text>
-                  )}
-                </View>
+                <Text style={[styles.reliabilityValue, { color: reliability >= 90 ? '#22c55e' : '#f59e0b' }]}>
+                  %{reliability}
+                </Text>
               </View>
-            )}
-          </View>
-
-          {/* Reliability Bar */}
-          <View style={styles.reliabilityCard}>
-            <View style={styles.reliabilityHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <MaterialIcons name="verified-user" size={16} color={reliability >= 90 ? '#22c55e' : '#f59e0b'} />
-                <Text style={styles.reliabilityTitle}>Güvenilirlik Puanı</Text>
+              <View style={styles.progressTrack}>
+                <View 
+                  style={[
+                    styles.progressFill, 
+                    { 
+                      width: `${Math.min(100, Math.max(0, reliability))}%`,
+                      backgroundColor: reliability >= 90 ? '#22c55e' : '#f59e0b'
+                    }
+                  ]} 
+                />
               </View>
-              <Text style={[styles.reliabilityValue, { color: reliability >= 90 ? '#22c55e' : '#f59e0b' }]}>
-                %{reliability}
-              </Text>
             </View>
-            <View style={styles.progressTrack}>
-              <View 
-                style={[
-                  styles.progressFill, 
-                  { 
-                    width: `${Math.min(100, Math.max(0, reliability))}%`,
-                    backgroundColor: reliability >= 90 ? '#22c55e' : '#f59e0b'
-                  }
-                ]} 
-              />
-            </View>
-          </View>
 
-          {/* Stats Grid */}
-          <Text style={styles.statsSectionTitle}>OYUNCU İSTATİSTİKLERİ</Text>
-          <View style={styles.statsGrid}>
-            <View style={styles.statBox}>
-              <Text style={styles.statVal}>{totalMatches}</Text>
-              <Text style={styles.statLabel}>Maç</Text>
+            {/* Stats Grid */}
+            <Text style={styles.statsSectionTitle}>OYUNCU İSTATİSTİKLERİ</Text>
+            <View style={styles.statsGrid}>
+              <View style={styles.statBox}>
+                <Text style={styles.statVal}>{totalMatches}</Text>
+                <Text style={styles.statLabel}>Maç</Text>
+              </View>
+              <View style={styles.statBox}>
+                <Text style={[styles.statVal, { color: theme.primary }]}>{goals}</Text>
+                <Text style={styles.statLabel}>Gol</Text>
+              </View>
+              <View style={styles.statBox}>
+                <Text style={[styles.statVal, { color: theme.secondary }]}>{assists}</Text>
+                <Text style={styles.statLabel}>Asist</Text>
+              </View>
+              <View style={styles.statBox}>
+                <Text style={[styles.statVal, { color: '#f59e0b' }]}>{mvp}</Text>
+                <Text style={styles.statLabel}>MVP</Text>
+              </View>
             </View>
-            <View style={styles.statBox}>
-              <Text style={[styles.statVal, { color: theme.primary }]}>{goals}</Text>
-              <Text style={styles.statLabel}>Gol</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Text style={[styles.statVal, { color: theme.secondary }]}>{assists}</Text>
-              <Text style={styles.statLabel}>Asist</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Text style={[styles.statVal, { color: '#f59e0b' }]}>{mvp}</Text>
-              <Text style={styles.statLabel}>MVP</Text>
-            </View>
-          </View>
 
-          {/* Actions */}
-          {!isSelf && (
-            <View style={styles.actionsWrap}>
-              <TouchableOpacity 
-                style={styles.directMessageBtn} 
-                onPress={handleSendMessage}
-                activeOpacity={0.85}
-              >
-                <MaterialIcons name="chat" size={18} color={theme.background} />
-                <Text style={styles.directMessageBtnText}>MESAJ GÖNDER</Text>
-              </TouchableOpacity>
-
-              {Boolean(user?.clubId) && (
+            {/* Actions */}
+            {!isSelf && (
+              <View style={styles.actionsWrap}>
                 <TouchableOpacity 
-                  style={styles.clubInviteBtn} 
-                  onPress={handleInviteToClub}
-                  disabled={inviting}
+                  style={styles.directMessageBtn} 
+                  onPress={handleSendMessage}
                   activeOpacity={0.85}
                 >
-                  <MaterialIcons name="shield" size={18} color={theme.primary} />
-                  <Text style={styles.clubInviteBtnText}>
-                    {inviting ? 'DAVET GÖNDERİLİYOR...' : 'KULÜBÜNE DAVET ET'}
-                  </Text>
+                  <MaterialIcons name="chat" size={18} color={theme.onPrimary} />
+                  <Text style={styles.directMessageBtnText}>MESAJ GÖNDER</Text>
                 </TouchableOpacity>
-              )}
-            </View>
-          )}
 
-          {isSelf && (
-            <View style={styles.selfNotice}>
-              <MaterialIcons name="info" size={16} color={theme.textMuted} />
-              <Text style={styles.selfNoticeText}>Bu sizin profil kartınızdır.</Text>
-            </View>
-          )}
-        </ScrollView>
+                {Boolean(user?.clubId) && (
+                  <TouchableOpacity 
+                    style={styles.clubInviteBtn} 
+                    onPress={handleInviteToClub}
+                    disabled={inviting}
+                    activeOpacity={0.85}
+                  >
+                    <MaterialIcons name="shield" size={18} color={theme.primary} />
+                    <Text style={styles.clubInviteBtnText}>
+                      {inviting ? 'DAVET GÖNDERİLİYOR...' : 'KULÜBÜNE DAVET ET'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {isSelf && (
+              <View style={styles.selfNotice}>
+                <MaterialIcons name="info" size={16} color={theme.textMuted} />
+                <Text style={styles.selfNoticeText}>Bu sizin profil kartınızdır.</Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
       </View>
     </AppModal>
   );
@@ -284,6 +300,13 @@ export function PlayerProfileModal({ visible, onClose, player }: PlayerProfileMo
 
 const useStyles = (theme: any) =>
   StyleSheet.create({
+    overlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.75)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 20,
+    },
     modalContent: {
       backgroundColor: theme.surface,
       borderRadius: 24,
@@ -495,7 +518,7 @@ const useStyles = (theme: any) =>
     directMessageBtnText: {
       fontFamily: Fonts.headlineBold,
       fontSize: 13,
-      color: theme.background,
+      color: theme.onPrimary,
       letterSpacing: 0.5,
     },
     clubInviteBtn: {

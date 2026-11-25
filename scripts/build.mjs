@@ -61,6 +61,19 @@ const mobilePublicDir = path.join(mobileDir, 'public');
 if (fs.existsSync(mobilePublicDir)) {
   copyDirRecursive(mobilePublicDir, distDir);
   console.log('✓ PWA assets (manifest.json, sw.js, icons/) copied to dist/');
+
+  // Update Cache Name with current build timestamp in dist/sw.js
+  const distSwPath = path.join(distDir, 'sw.js');
+  if (fs.existsSync(distSwPath)) {
+    let swContent = fs.readFileSync(distSwPath, 'utf8');
+    const newCacheName = `'hiv-halisaha-pwa-${Date.now()}'`;
+    swContent = swContent.replace(
+      /const CACHE_NAME = ['"][^'"]+['"];/,
+      `const CACHE_NAME = ${newCacheName};`
+    );
+    fs.writeFileSync(distSwPath, swContent, 'utf8');
+    console.log(`✓ Generated dynamic cache name (${newCacheName}) in dist/sw.js`);
+  }
 }
 
 // 1.2 Inject PWA headers and ServiceWorker into all HTML files
@@ -68,7 +81,7 @@ function injectPwa(dir) {
   const pwaHeadTags = `
     <!-- PWA & Mobile Web App Meta Tags -->
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#0e0e0e" />
+    <meta name="theme-color" content="#0A0D10" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -102,7 +115,12 @@ function injectPwa(dir) {
         injectPwa(fullPath);
       }
     } else if (entry.name.endsWith('.html')) {
+      if (entry.name === 'privacy.html' || entry.name === 'delete-account.html') {
+        continue;
+      }
       let html = fs.readFileSync(fullPath, 'utf8');
+      html = html.replace(/<html\s+lang="en"/i, '<html lang="tr"');
+      html = html.replace(/<title\s+data-rh="true">\s*<\/title>/i, '<title>H.İ.V. Halısaha</title>');
       if (!html.includes('rel="manifest"')) {
         html = html.replace('</head>', `${pwaHeadTags}\n</head>`);
       }

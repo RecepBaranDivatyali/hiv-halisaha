@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Alert, Image } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Image, KeyboardAvoidingView, Platform } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/use-auth';
 import { dbService, ClubModel } from '@/services/dbService';
+import { appAlert } from '@/services/appAlert';
 import { PITCH_DATABASE } from '@/config/pitches';
+
+const normalizeTr = (s: string) => s.toLocaleLowerCase('tr-TR').replace(/\u0307/g, '');
 
 interface ChallengeModalProps {
   visible: boolean;
@@ -38,42 +41,118 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
   const [selectedVenue, setSelectedVenue] = useState('');
   const [selectedDate, setSelectedDate] = useState(DEFAULT_DATES[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fetchedClubs, setFetchedClubs] = useState<ClubModel[]>([]);
+
+  const effectiveClubsList = useMemo(
+    () => (clubsList.length > 0 ? clubsList : fetchedClubs).filter(c => c.id !== user?.clubId),
+    [clubsList, fetchedClubs, user?.clubId]
+  );
 
   // Available pitches based on target club or user city
-  const city = targetClub?.city || user?.city || 'İstanbul';
-  const cityPitches = PITCH_DATABASE.filter(p => p.city === city);
-  const pitches = cityPitches.length > 0 ? cityPitches : PITCH_DATABASE;
-  const venueList: string[] = pitches.map(p => p.name);
+  const city = targetClub?.city || selectedClub?.city || user?.city || 'İstanbul';
+  const venueList: string[] = React.useMemo(() => {
+    const cityPitches = PITCH_DATABASE.filter(p => normalizeTr(p.city) === normalizeTr(city));
+    const pitches = cityPitches.length > 0 ? cityPitches : PITCH_DATABASE;
+    return pitches.map(p => p.name);
+  }, [city]);
 
   useEffect(() => {
+    if (!visible) return;
+    let isMounted = true;
+    if (!targetClub && clubsList.length === 0) {
+      dbService.getClubs().then(list => {
+        if (!isMounted) return;
+        const otherClubs = (list || []).filter(c => c.id !== user?.clubId);
+        setFetchedClubs(otherClubs);
+        if (otherClubs.length > 0) {
+          setSelectedClub(prev => {
+            if (prev && otherClubs.some(c => c.id === prev.id)) return prev;
+            const next = otherClubs[0];
+            setSelectedClubName(next.name);
+            return next;
+          });
+        } else {
+          setSelectedClub(null);
+          setSelectedClubName('');
+        }
+      }).catch(() => {
+        if (isMounted) {
+          setFetchedClubs([]);
+        }
+      });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [visible, targetClub, clubsList.length, user?.clubId]);
+
+  useEffect(() => {
+    if (!visible) return;
     if (targetClub?.name) {
       setSelectedClub(targetClub);
       setSelectedClubName(targetClub.name);
-    } else if (clubsList.length > 0) {
-      const other = clubsList.find(c => c.id !== user?.clubId) || clubsList[0];
-      setSelectedClub(other);
-      setSelectedClubName(other.name);
+    } else if (effectiveClubsList.length > 0) {
+      setSelectedClub(prev => {
+        if (prev && effectiveClubsList.some(c => c.id === prev.id)) return prev;
+        const next = effectiveClubsList[0];
+        setSelectedClubName(next.name);
+        return next;
+      });
     } else {
       setSelectedClub(null);
-      setSelectedClubName('Rakip Kulüp');
+      setSelectedClubName('');
     }
+  }, [visible, targetClub, effectiveClubsList]);
 
-    if (venueList.length > 0) {
+  useEffect(() => {
+    if (visible && venueList.length > 0 && (!selectedVenue || !venueList.includes(selectedVenue))) {
       setSelectedVenue(venueList[0]);
     }
-  }, [targetClub, clubsList, city, user?.clubId, venueList]);
+  }, [visible, venueList, selectedVenue]);
 
   const handleSendChallenge = async () => {
+    if (isSubmitting) return;
+
     if (!user?.clubId && !user?.clubName) {
-      Alert.alert('Kulübünüz Yok', 'Başka bir kulübe meydan okumak için önce kendi kulübünüzü kurmalı veya bir kulübe katılmalısınız.');
+      appAlert.alert(
+        'Kulübünüz Yok',
+        'Başka bir kulübe meydan okumak için önce kendi kulübünüzü kurmalı veya bir kulübe katılmalısınız.'
+      );
       return;
     }
 
     const resolvedTargetClubId = targetClub?.id || selectedClub?.id;
     const resolvedTargetClubName = targetClub?.name || selectedClub?.name || selectedClubName;
 
+    if (!resolvedTargetClubId || !resolvedTargetClubName) {
+      appAlert.alert('Rakip Seçin', 'Lütfen meydan okumak istediğiniz rakip kulübü seçin.');
+      return;
+    }
+
+    if (user.clubId && resolvedTargetClubId === user.clubId) {
+      appAlert.alert('Geçersiz Rakip', 'Kendi kulübünüze meydan okuyamazsınız.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
+      if (user.clubId) {
+        let myClub: ClubModel | null = null;
+        try {
+          myClub = await dbService.getClubById(user.clubId);
+        } catch {
+          appAlert.alert('Doğrulama Hatası', 'Kulüp kaptanlık yetkisi doğrulanamadı. Lütfen internet bağlantınızı kontrol edip tekrar deneyin.');
+          setIsSubmitting(false);
+          return;
+        }
+        const myUid = user.uid;
+        if (myClub && myClub.captainId && myClub.captainId !== myUid) {
+          appAlert.alert('Yetki Yok', 'Kulüp adına meydan okumayı yalnızca kulüp kaptanı gönderebilir.');
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       await dbService.sendClubChallenge({
         fromClubId: user.clubId || undefined,
         fromClubName: user.clubName || 'Kulübüm',
@@ -85,21 +164,26 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
         senderName: user.name || 'Kaptan',
       });
 
-      Alert.alert(
-        '⚔️ Meydan Okuma Gönderildi!',
-        `"${resolvedTargetClubName}" kulübüne maç teklifiniz iletildi.\n\n• Saha: ${selectedVenue}\n• Tarih: ${selectedDate}\n\nRakip kaptan onayladığında maç odası açılacaktır.`,
+      const successMsg = `"${resolvedTargetClubName}" kulübüne maç teklifiniz iletildi.\n\n• Saha: ${selectedVenue}\n• Tarih: ${selectedDate}\n\nRakip kaptan onayladığında maç odası açılacaktır.`;
+
+      appAlert.alert(
+        'Meydan Okuma Gönderildi',
+        successMsg,
         [{ text: 'Tamam', onPress: onClose }]
       );
     } catch {
-      Alert.alert('Hata', 'Meydan okuma gönderilirken bir sorun oluştu.');
+      appAlert.alert('Hata', 'Meydan okuma gönderilirken bir sorun oluştu.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
+    <Modal visible={visible} transparent animationType="slide" onClose={onClose} onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+      >
         <View style={styles.modalContent}>
           {/* Header */}
           <View style={styles.header}>
@@ -112,7 +196,11 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={styles.body}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* 1. Hedef Kulüp Kartı */}
             <View style={styles.section}>
               <Text style={styles.label}>RAKİP KULÜP</Text>
@@ -132,7 +220,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
                 </View>
               ) : (
                 <View style={styles.clubGrid}>
-                  {clubsList.filter(c => c.id !== user?.clubId).slice(0, 4).map((c) => (
+                  {effectiveClubsList.filter(c => c.id !== user?.clubId).slice(0, 6).map((c) => (
                     <TouchableOpacity
                       key={c.id || c.name}
                       style={[styles.clubCard, (selectedClub?.id === c.id || selectedClubName === c.name) && styles.clubCardActive]}
@@ -151,7 +239,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
 
             {/* 2. Saha Seçimi */}
             <View style={styles.section}>
-              <Text style={styles.label}>HALISAHA TESİSİ ({city.toUpperCase()})</Text>
+              <Text style={styles.label}>HALISAHA TESİSİ ({city.toLocaleUpperCase('tr-TR')})</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
                 {venueList.map((v: string) => (
                   <TouchableOpacity
@@ -159,7 +247,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
                     style={[styles.chip, selectedVenue === v && styles.chipActive]}
                     onPress={() => setSelectedVenue(v)}
                   >
-                    <MaterialIcons name="stadium" size={16} color={selectedVenue === v ? theme.background : theme.textMuted} />
+                    <MaterialIcons name="stadium" size={16} color={selectedVenue === v ? theme.onPrimary : theme.textMuted} />
                     <Text style={[styles.chipText, selectedVenue === v && styles.chipTextActive]}>{v}</Text>
                   </TouchableOpacity>
                 ))}
@@ -176,7 +264,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
                     style={[styles.chip, selectedDate === d && styles.chipActive]}
                     onPress={() => setSelectedDate(d)}
                   >
-                    <MaterialIcons name="event" size={16} color={selectedDate === d ? theme.background : theme.textMuted} />
+                    <MaterialIcons name="event" size={16} color={selectedDate === d ? theme.onPrimary : theme.textMuted} />
                     <Text style={[styles.chipText, selectedDate === d && styles.chipTextActive]}>{d}</Text>
                   </TouchableOpacity>
                 ))}
@@ -193,11 +281,11 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
               disabled={isSubmitting}
             >
               <Text style={styles.submitBtnText}>{isSubmitting ? 'GÖNDERİLİYOR...' : 'MEYDAN OKUMAYI GÖNDER'}</Text>
-              <MaterialIcons name="send" size={20} color={theme.background} />
+              <MaterialIcons name="send" size={20} color="#ffffff" />
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -227,7 +315,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   chip: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.surfaceContainer, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: theme.border },
   chipActive: { backgroundColor: theme.primary, borderColor: theme.primary },
   chipText: { fontFamily: Fonts.body, fontSize: 13, color: theme.text, fontWeight: '600' },
-  chipTextActive: { color: theme.background, fontWeight: 'bold' },
+  chipTextActive: { color: theme.onPrimary, fontWeight: 'bold' },
   footer: { paddingHorizontal: 24, paddingTop: 8 },
   submitBtn: { backgroundColor: '#a855f7', height: 56, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   submitBtnText: { fontFamily: Fonts.headlineBold, fontSize: 16, color: '#ffffff', fontStyle: 'italic', letterSpacing: 1 },

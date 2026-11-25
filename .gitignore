@@ -41,5 +41,12 @@ mobile-app/*.tsbuildinfo
 *.pem
 *.key
 *.jks
+*.keystore
+keystore.properties
+store-secrets/
 service-account*.json
 firebase-adminsdk*.json
+
+# Local seed/store export assets
+scripts/create-demo-user.mjs
+store-assets/

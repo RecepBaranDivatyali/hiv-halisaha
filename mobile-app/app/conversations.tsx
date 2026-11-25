@@ -1,14 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, RefreshControl } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
+import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { db } from '@/services/firebaseConfig';
 import { Fonts } from '@/constants/theme';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/use-auth';
-import { useMatches } from '@/hooks/use-matches';
+import { useMatches, isUserInMatchItem } from '@/hooks/use-matches';
 import { dbService } from '@/services/dbService';
+import { safeBack } from '@/utils/navigation';
 import { NotificationCenterModal } from '@/components/NotificationCenterModal';
+
+// In-Memory user profile cache to prevent N+1 Firestore queries across snapshots
+const userProfileCache = new Map<string, { name: string; avatar?: string }>();
 
 export default function ConversationsScreen() {
   const router = useRouter();
@@ -18,26 +24,134 @@ export default function ConversationsScreen() {
   const styles = useStyles(theme);
   const [notifVisible, setNotifVisible] = useState(false);
   const [conversations, setConversations] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [clubLogo, setClubLogo] = useState<string>('');
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadConversations = React.useCallback(async () => {
-    if (user?.uid) {
-      try {
-        const list = await dbService.getConversations(user.uid);
-        setConversations(list);
-      } catch (e) {
-        console.log('Sohbetler getirme hatası:', e);
-      }
-    }
-  }, [user?.uid]);
-
   useEffect(() => {
-    loadConversations();
-  }, [loadConversations]);
+    let mounted = true;
+    const directLogo = (user as any)?.clubLogo;
+    if (directLogo) {
+      setClubLogo(directLogo);
+      return;
+    }
+    if (!user?.clubId) {
+      setClubLogo('');
+      return;
+    }
+    dbService.getClubById(user.clubId).then(club => {
+      if (mounted && club?.logo) {
+        setClubLogo(club.logo);
+      }
+    }).catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
+
+  // Live real-time Firestore conversation subscription
+  useEffect(() => {
+    let isMounted = true;
+    let latestSeq = 0;
+
+    if (!user?.uid) {
+      setConversations([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    const convRef = collection(db, 'conversations');
+    const q = query(convRef, where('participants', 'array-contains', user.uid));
+
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const seq = ++latestSeq;
+      try {
+        const rawList = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+
+        // Sort descending by lastMessageTime client-side
+        rawList.sort((a: any, b: any) => {
+          const tA = a.lastMessageTime?.toMillis 
+            ? a.lastMessageTime.toMillis() 
+            : (a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0);
+          const tB = b.lastMessageTime?.toMillis 
+            ? b.lastMessageTime.toMillis() 
+            : (b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0);
+          return tB - tA;
+        });
+
+        // Filter out non-DM channels (match & club specific rooms)
+        const dmList = rawList.filter((c: any) => 
+          !c.id.startsWith('match_') && 
+          !c.id.startsWith('club_') && 
+          c.id !== 'general_chat'
+        );
+
+        // Resolve other user info for DMs
+        const enriched = await Promise.all(dmList.map(async (conv: any) => {
+          const otherUid = Array.isArray(conv.participants) 
+            ? conv.participants.find((p: string) => p !== user.uid)
+            : undefined;
+
+          let otherName = conv.otherUserName;
+          let otherAvatar = conv.avatar;
+
+          if (otherUid && (!otherName || !otherAvatar)) {
+            if (userProfileCache.has(otherUid)) {
+              const cached = userProfileCache.get(otherUid)!;
+              otherName = otherName || cached.name;
+              otherAvatar = otherAvatar || cached.avatar;
+            } else {
+              try {
+                const uSnap = await getDoc(doc(db, 'users', otherUid));
+                if (uSnap.exists()) {
+                  const uData = uSnap.data();
+                  const fetchedName = uData.name || 'Oyuncu';
+                  const fetchedAvatar = uData.avatar;
+                  userProfileCache.set(otherUid, { name: fetchedName, avatar: fetchedAvatar });
+                  otherName = otherName || fetchedName;
+                  otherAvatar = otherAvatar || fetchedAvatar;
+                }
+              } catch {
+                // fallback
+              }
+            }
+          }
+
+          return {
+            ...conv,
+            otherUid,
+            otherUserName: otherName || 'Oyuncu',
+            avatar: otherAvatar,
+          };
+        }));
+
+        if (!isMounted || seq !== latestSeq) return;
+        setConversations(enriched);
+      } catch (err) {
+        console.error('Conversations real-time sync error:', err);
+      } finally {
+        if (isMounted && seq === latestSeq) {
+          setIsLoading(false);
+        }
+      }
+    }, (error) => {
+      console.warn('Conversations snapshot listener error:', error);
+      if (isMounted) setIsLoading(false);
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [user?.uid]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([loadConversations(), reloadMatches()]);
+    await reloadMatches();
     setRefreshing(false);
   };
 
@@ -46,7 +160,12 @@ export default function ConversationsScreen() {
     try {
       const date = typeof timeVal?.toDate === 'function' ? timeVal.toDate() : new Date(timeVal);
       if (isNaN(date.getTime())) return '';
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const now = new Date();
+      const isToday = date.toDateString() === now.toDateString();
+      if (isToday) {
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+      return `${date.getDate()} ${['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'][date.getMonth()]}`;
     } catch {
       return '';
     }
@@ -58,7 +177,7 @@ export default function ConversationsScreen() {
       {/* TopAppBar */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity style={styles.iconBtnHover} onPress={() => router.back()} accessibilityLabel="Geri" accessibilityRole="button">
+          <TouchableOpacity style={styles.iconBtnHover} onPress={() => safeBack(router, '/(tabs)')} accessibilityLabel="Geri" accessibilityRole="button">
             <MaterialIcons name="arrow-back" size={24} color={theme.primary} />
           </TouchableOpacity>
           <Text style={styles.brandTitle}>SOHBETLER</Text>
@@ -75,23 +194,33 @@ export default function ConversationsScreen() {
       >
         
         {/* Club Team Chat Card */}
-        {user?.clubName && (
+        {Boolean(user?.clubName && user?.clubId) && (
           <View style={styles.sectionMargin}>
             <TouchableOpacity 
               style={styles.chatCard} 
               activeOpacity={0.9} 
               onPress={() => router.push({
                 pathname: '/chat-detail',
-                params: { conversationId: `club_${user?.clubId || 'general'}`, title: user?.clubName || 'Kulüp Sohbeti' }
+                params: {
+                  conversationId: `club_${user!.clubId}`,
+                  title: user?.clubName || 'Kulüp Sohbeti',
+                  avatar: clubLogo || undefined,
+                }
               })}
             >
               <View style={styles.primaryIndicator} />
               <View style={styles.avatarWrapBig}>
-                <Image source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB9ajYvZlLwGKklQrdhNZj2Hw6UfNjRkinE7u1WI2aUCqKMIBvubgMs0lYgfGBObbyPffWxiRmf8vzMfpLq83EmiY9JBQtsCL0JmkWvdr1D4xg_D17lRZVxb6LrjxrW-NgGggmODKkZYEEiEWFThsfXNMWShj645JR0GZ7PDxxqwZAMsvIwLgpIsmh10Xogocg-F_KBpHmhapAGS3HNMxyva93y5CtC9-NwbMQM1AZzddHdezG_LjqGzSNyOf1hNYA1Uxuy79e41trH' }} style={styles.avatarImgBig} />
+                {clubLogo ? (
+                  <Image source={{ uri: clubLogo }} style={styles.avatarImgBig} />
+                ) : (
+                  <View style={[styles.avatarImgBig, { backgroundColor: `${theme.secondary}20`, alignItems: 'center', justifyContent: 'center' }]}>
+                    <MaterialIcons name="shield" size={24} color={theme.secondary} />
+                  </View>
+                )}
               </View>
               <View style={styles.chatInfo}>
                 <View style={styles.chatHeader}>
-                  <Text style={styles.chatTitle} numberOfLines={1}>{user.clubName}</Text>
+                  <Text style={styles.chatTitle} numberOfLines={1}>{user?.clubName}</Text>
                   <Text style={styles.chatTime}>Kulüp</Text>
                 </View>
                 <Text style={styles.chatMessageItalic} numberOfLines={1}>Kulüp üyeleri canlı sohbet odası</Text>
@@ -108,13 +237,15 @@ export default function ConversationsScreen() {
           </View>
           
           <View style={styles.listWrap}>
-            {matches.length === 0 ? (
-              <View style={{ padding: 20, alignItems: 'center' }}>
-                <Text style={{ color: theme.textMuted, fontFamily: Fonts.body, fontSize: 13 }}>
-                  Aktif maç bulunamadı. Yeni bir maç oluşturduğunuzda oda sohbeti burada açılır.
-                </Text>
-              </View>
-            ) : matches.map((match) => (
+            {(() => {
+              const myMatches = matches.filter((m) => isUserInMatchItem(m, user?.uid, user?.name));
+              return myMatches.length === 0 ? (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <Text style={{ color: theme.textMuted, fontFamily: Fonts.body, fontSize: 13, textAlign: 'center' }}>
+                    Dahil olduğunuz aktif maç sohbeti bulunamadı. Bir maça katıldığınızda veya maç oluşturduğunuzda oda sohbeti burada açılır.
+                  </Text>
+                </View>
+              ) : myMatches.map((match) => (
               <TouchableOpacity 
                 key={match.id} 
                 style={styles.chatCard} 
@@ -139,7 +270,8 @@ export default function ConversationsScreen() {
                   <Text style={styles.chatMessageItalic} numberOfLines={1}>{match.dateTime} • Kadro Odası</Text>
                 </View>
               </TouchableOpacity>
-            ))}
+            ));
+            })()}
           </View>
         </View>
 
@@ -153,7 +285,14 @@ export default function ConversationsScreen() {
           </View>
 
           <View style={styles.listWrapSmall}>
-            {conversations.length === 0 ? (
+            {isLoading ? (
+              <View style={{ padding: 24, alignItems: 'center', gap: 10 }}>
+                <ActivityIndicator size="small" color={theme.primary} />
+                <Text style={{ color: theme.textMuted, fontFamily: Fonts.body, fontSize: 12 }}>
+                  Sohbetler yükleniyor...
+                </Text>
+              </View>
+            ) : conversations.length === 0 ? (
               <View style={{ padding: 24, alignItems: 'center', gap: 10 }}>
                 <MaterialIcons name="chat-bubble-outline" size={32} color={theme.surfaceContainerHighest} />
                 <Text style={{ color: theme.textMuted, fontFamily: Fonts.body, fontSize: 13, textAlign: 'center' }}>
@@ -186,7 +325,13 @@ export default function ConversationsScreen() {
                 activeOpacity={0.9} 
                 onPress={() => router.push({
                   pathname: '/chat-detail',
-                  params: { conversationId: conv.id, title: conv.otherUserName || 'Özel Sohbet' }
+                  params: { 
+                    conversationId: conv.id, 
+                    title: conv.otherUserName || 'Özel Sohbet',
+                    userName: conv.otherUserName || 'Oyuncu',
+                    avatar: conv.avatar || '',
+                    recipientId: conv.otherUid || '',
+                  }
                 })}
               >
                 <View style={styles.avatarWrapSmall}>
@@ -200,7 +345,9 @@ export default function ConversationsScreen() {
                       {formatTimestamp(conv.lastMessageTime)}
                     </Text>
                   </View>
-                  <Text style={styles.dmMessageBold} numberOfLines={1}>{conv.lastMessage || 'Mesaj başlatıldı.'}</Text>
+                  <Text style={styles.dmMessageBold} numberOfLines={1}>
+                    {conv.lastSenderId === user?.uid ? 'Siz: ' : ''}{conv.lastMessage || 'Mesaj başlatıldı.'}
+                  </Text>
                 </View>
               </TouchableOpacity>
             ))}

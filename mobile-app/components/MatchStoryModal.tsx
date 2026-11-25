@@ -1,9 +1,11 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Image, Alert } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Image, Share, Platform } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
+import { appAlert } from '@/services/appAlert';
 
 interface MatchStoryModalProps {
   visible: boolean;
@@ -11,6 +13,7 @@ interface MatchStoryModalProps {
   score?: string;
   mvpName?: string;
   mvpAvatar?: string;
+  mvpStatsText?: string;
   venue?: string;
   date?: string;
   onClose: () => void;
@@ -22,26 +25,53 @@ export const MatchStoryModal: React.FC<MatchStoryModalProps> = ({
   score = '5 - 2',
   mvpName = 'KEREM AKTÜRKOĞLU',
   mvpAvatar = 'https://lh3.googleusercontent.com/aida-public/AB6AXuB3zN4BMEVqYUF3QeCqfMmUKmw5cBXxBSRW3VsxvUV-KXfxcfUNy6Y82Uw5RqW42gjFGsQrYA81GzfjxHDInaql-eBPtBAeWIzYvIo5IstQNOYNqQ8g3WQjb_WA4gUlWI3jtxS0-dZvcC5Az1uvxxCDgdHFIH9RwA7ZsebYxmMiF16BfI2i_Ms9TkF9YUXKDArXyw9YMuFV1_yUlUT27aKrZhO--9EpUrIuSs9PmeIxM6YUFzjuQBP3bjtPS29-G09qbUuQ9_U0i825',
+  mvpStatsText,
   venue = 'Beşiktaş Arena',
   date = 'Bugün 21:00',
   onClose,
 }) => {
   const { theme } = useTheme();
   const styles = useStyles(theme);
-  const handleShareStory = () => {
-    Alert.alert(
-      '📸 Instagram Story Hazır!',
-      'Görsel panoya kopyalandı. Instagram Story açılıyor...',
-      [{ text: 'Tamam', onPress: onClose }]
-    );
+  const shareText = `⚽ H.İ.V. MAÇ ÖZETİ\n🏟️ ${venue} • ${date}\n🏆 ${matchTitle}: ${score}\n👑 Maçın Adamı (MVP): ${mvpName}\n\n#HIVApp #Halısaha`;
+
+  const handleCopySummary = async () => {
+    try {
+      await Clipboard.setStringAsync(shareText);
+      appAlert.alert('Kopyalandı', 'Maç kartı özeti panoya kopyalandı.');
+    } catch {
+      appAlert.alert('Hata', 'Maç özeti panoya kopyalanamadı.');
+    }
   };
 
-  const handleSaveImage = () => {
-    Alert.alert('✅ Kaydedildi', 'Story kartı galerinize kaydedildi.', [{ text: 'Tamam' }]);
+  const handleShareStory = async () => {
+    if (Platform.OS === 'web') {
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        try {
+          await navigator.share({ title: 'H.İ.V. Maç Kartı', text: shareText });
+          return;
+        } catch (err: any) {
+          if (err?.name === 'AbortError') return;
+        }
+      }
+      await handleCopySummary();
+      return;
+    }
+    try {
+      await Share.share({
+        title: 'H.İ.V. Maç Kartı',
+        message: shareText,
+      });
+    } catch {
+      appAlert.alert('Bilgi', 'Paylaşım menüsü açılamadı.');
+    }
+  };
+
+  const handleSaveImage = async () => {
+    await handleCopySummary();
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onClose={onClose} onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.modalContent}>
           {/* Header */}
@@ -83,7 +113,7 @@ export const MatchStoryModal: React.FC<MatchStoryModalProps> = ({
                   <Image source={{ uri: mvpAvatar }} style={styles.storyMvpAvatar} />
                 </View>
                 <Text style={styles.storyMvpName}>{mvpName}</Text>
-                <Text style={styles.storyMvpStats}>9.5 RATING • 3 GOL • 1 ASİST</Text>
+                <Text style={styles.storyMvpStats}>{mvpStatsText || `${venue} • ${date}`}</Text>
               </View>
 
               {/* Bottom Footer */}
@@ -100,7 +130,7 @@ export const MatchStoryModal: React.FC<MatchStoryModalProps> = ({
               <Text style={styles.shareBtnText}>{"INSTAGRAM STORY'DE PAYLAŞ"}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.saveBtn} activeOpacity={0.85} onPress={handleSaveImage}>
-              <MaterialIcons name="download" size={20} color={theme.text} />
+              <MaterialIcons name="content-copy" size={20} color={theme.text} />
             </TouchableOpacity>
           </View>
         </View>
@@ -116,7 +146,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerTitle: { fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.primary, fontStyle: 'italic', letterSpacing: 0.5 },
   closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: theme.surfaceContainerHighest, alignItems: 'center', justifyContent: 'center' },
-  storyCardWrapper: { width: '100%', aspectRatio: 9 / 14, borderRadius: 16, overflow: 'hidden', borderWidth: 2, borderColor: theme.primary, marginBottom: 16 },
+  storyCardWrapper: { width: '100%', maxHeight: 420, aspectRatio: 9 / 14, borderRadius: 16, overflow: 'hidden', borderWidth: 2, borderColor: theme.primary, marginBottom: 16 },
   storyCard: { flex: 1, backgroundColor: theme.surface, padding: 20, justifyContent: 'space-between', alignItems: 'center' },
   storyTopBranding: { alignItems: 'center' },
   storyBrandName: { fontFamily: Fonts.headlineBold, fontSize: 24, color: theme.primary, fontStyle: 'italic', letterSpacing: -1 },

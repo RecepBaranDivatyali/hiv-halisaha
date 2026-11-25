@@ -1,0 +1,375 @@
+name: Build and Deploy iOS to App Store Connect
+
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: 'Yayın hedefi (TestFlight veya App Store)'
+        required: true
+        default: 'testflight'
+        type: choice
+        options:
+          - testflight
+          - appstore
+      build_number:
+        description: 'İsteğe bağlı iOS Build Number (boş bırakılırsa app.json ios.buildNumber kullanılır)'
+        required: false
+        default: ''
+        type: string
+  push:
+    tags:
+      - 'ios-v*'
+
+concurrency:
+  group: ios-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build & Upload iOS IPA (com.hiv.halisaha)
+    runs-on: macos-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: mobile-app/package-lock.json
+
+      - name: Validate required secrets
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+        run: |
+          missing=()
+          for var in \
+            IOS_CERTIFICATE_BASE64 \
+            IOS_CERTIFICATE_PASSWORD \
+            IOS_PROVISIONING_PROFILE_BASE64 \
+            APP_STORE_CONNECT_KEY_ID \
+            APP_STORE_CONNECT_ISSUER_ID \
+            APP_STORE_CONNECT_API_KEY_BASE64; do
+            if [ -z "${!var}" ]; then
+              missing+=("$var")
+            fi
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Eksik GitHub Secrets: ${missing[*]}"
+            exit 1
+          fi
+          echo "Tüm zorunlu iOS ve App Store Connect secret değerleri mevcut."
+
+      - name: Install mobile-app dependencies
+        working-directory: mobile-app
+        run: npm ci
+
+      - name: Resolve app version and build metadata
+        working-directory: mobile-app
+        env:
+          INPUT_TRACK: ${{ inputs.track }}
+          INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const appJson = JSON.parse(fs.readFileSync("app.json", "utf8"));
+            const version = appJson.expo?.version || "1.0.0";
+            const bundleId = appJson.expo?.ios?.bundleIdentifier || "com.hiv.halisaha";
+            const appJsonBuild = String(appJson.expo?.ios?.buildNumber || "").trim();
+            const inputBuild = (process.env.INPUT_BUILD_NUMBER || "").trim();
+            const buildNumber = inputBuild || appJsonBuild || String(process.env.GITHUB_RUN_NUMBER || "1");
+            const track = process.env.INPUT_TRACK || (process.env.GITHUB_EVENT_NAME === "push" ? "appstore" : "testflight");
+
+            fs.appendFileSync(process.env.GITHUB_ENV, [
+              `APP_VERSION=${version}`,
+              `BUILD_NUMBER=${buildNumber}`,
+              `BUNDLE_ID=${bundleId}`,
+              `DEPLOY_TRACK=${track}`
+            ].join("\n") + "\n");
+
+            console.log(`Resolved iOS Metadata -> Bundle: ${bundleId} | Version: ${version} | Build: ${buildNumber} | Track: ${track}`);
+          '
+
+      - name: Run Expo Prebuild (iOS)
+        working-directory: mobile-app
+        env:
+          CI: '1'
+        run: |
+          npx expo prebuild --platform ios --non-interactive --no-install
+          WORKSPACE_PATH=$(find ios -maxdepth 1 -name "*.xcworkspace" | head -n 1)
+          if [ -z "$WORKSPACE_PATH" ]; then
+            PROJECT_PATH=$(find ios -maxdepth 1 -name "*.xcodeproj" | head -n 1)
+            SCHEME_NAME=$(basename "$PROJECT_PATH" .xcodeproj)
+          else
+            SCHEME_NAME=$(basename "$WORKSPACE_PATH" .xcworkspace)
+          fi
+          if [ -z "$SCHEME_NAME" ]; then
+            echo "::error::ios/ altında Xcode proje veya workspace bulunamadı!"
+            exit 1
+          fi
+          echo "SCHEME_NAME=${SCHEME_NAME}" >> "$GITHUB_ENV"
+          echo "Detected Xcode scheme: ${SCHEME_NAME}"
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            mobile-app/ios/Pods
+            ~/Library/Caches/CocoaPods
+          key: pods-${{ runner.os }}-${{ hashFiles('mobile-app/package-lock.json', 'mobile-app/app.json') }}
+          restore-keys: |
+            pods-${{ runner.os }}-
+
+      - name: Install CocoaPods dependencies
+        working-directory: mobile-app/ios
+        env:
+          LANG: en_US.UTF-8
+          LC_ALL: en_US.UTF-8
+        run: pod install --repo-update
+
+      - name: Setup temporary keychain, signing certificate, provisioning profile & API key
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/hiv-signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 24)
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
+
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
+          PROFILE_PLIST="$RUNNER_TEMP/profile.plist"
+
+          # 1. Decode .p12 certificate and .mobileprovision profile
+          echo -n "$IOS_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+          echo -n "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+
+          # 2. Create and configure temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # 3. Import Apple Distribution certificate into temporary keychain
+          security import "$CERT_PATH" \
+            -P "$IOS_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+
+          # 4. Inspect and install Provisioning Profile
+          security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" "$PROFILE_PLIST")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" "$PROFILE_PLIST")
+          PROFILE_TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" "$PROFILE_PLIST")
+          TEAM_ID="${APPLE_TEAM_ID:-$PROFILE_TEAM_ID}"
+
+          if [ -z "$PROFILE_UUID" ] || [ -z "$PROFILE_NAME" ] || [ -z "$TEAM_ID" ]; then
+            echo "::error::Provisioning profile metadata (UUID/Name/TeamID) çözümlenemedi."
+            exit 1
+          fi
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID}.mobileprovision"
+
+          # 5. Install App Store Connect API .p8 key
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          API_KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+          echo -n "$APP_STORE_CONNECT_API_KEY_BASE64" | base64 --decode > "$API_KEY_PATH"
+          chmod 600 "$API_KEY_PATH"
+
+          # Export non-secret build metadata to subsequent steps
+          {
+            echo "KEYCHAIN_PATH=${KEYCHAIN_PATH}"
+            echo "PROFILE_UUID=${PROFILE_UUID}"
+            echo "PROFILE_NAME=${PROFILE_NAME}"
+            echo "RESOLVED_TEAM_ID=${TEAM_ID}"
+          } >> "$GITHUB_ENV"
+
+          echo "Keychain, sertifika, profil (${PROFILE_NAME} / ${PROFILE_UUID}) ve App Store Connect API anahtarı kuruldu."
+
+      - name: Configure Xcode manual signing for app target
+        working-directory: mobile-app
+        run: |
+          node -e '
+            const fs = require("fs");
+            const scheme = process.env.SCHEME_NAME;
+            const bundleId = process.env.BUNDLE_ID;
+            const teamId = process.env.RESOLVED_TEAM_ID;
+            const profileName = process.env.PROFILE_NAME;
+            const appVersion = process.env.APP_VERSION;
+            const buildNumber = process.env.BUILD_NUMBER;
+
+            const pbxPath = `ios/${scheme}.xcodeproj/project.pbxproj`;
+            let pbx = fs.readFileSync(pbxPath, "utf8");
+
+            // Ensure ProvisioningStyle is Manual in TargetAttributes
+            pbx = pbx.replace(/ProvisioningStyle\s*=\s*Automatic;/g, "ProvisioningStyle = Manual;");
+
+            // Patch only the Release XCBuildConfiguration belonging to our app bundle ID
+            const configRegex = /([A-F0-9]{24}\s*\/\*\s*Release\s*\*\/\s*=\s*\{\s*isa\s*=\s*XCBuildConfiguration;\s*buildSettings\s*=\s*\{)([\s\S]*?)(\n\t\t\t\};\s*name\s*=\s*Release;\s*\};)/g;
+            let matched = 0;
+
+            pbx = pbx.replace(configRegex, (full, prefix, settings, suffix) => {
+              const bundlePattern = new RegExp(`PRODUCT_BUNDLE_IDENTIFIER\\s*=\\s*"?${bundleId.replace(/\./g, "\\.")}"?;`);
+              if (!bundlePattern.test(settings)) {
+                return full;
+              }
+              matched++;
+
+              const upsert = (block, key, rawValue) => {
+                const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                const lineRegex = new RegExp(`(^|\\n)(\\s*)${escaped}\\s*=\\s*[^;]+;`);
+                if (lineRegex.test(block)) {
+                  return block.replace(lineRegex, `$1$2${key} = ${rawValue};`);
+                }
+                return `${block}\n\t\t\t\t${key} = ${rawValue};`;
+              };
+
+              let next = settings;
+              next = upsert(next, "CODE_SIGN_STYLE", "Manual");
+              next = upsert(next, "DEVELOPMENT_TEAM", teamId);
+              next = upsert(next, "CODE_SIGN_IDENTITY", "\"Apple Distribution\"");
+              next = upsert(next, "\"CODE_SIGN_IDENTITY[sdk=iphoneos*]\"", "\"Apple Distribution\"");
+              next = upsert(next, "PROVISIONING_PROFILE_SPECIFIER", `"${profileName}"`);
+              next = upsert(next, "CURRENT_PROJECT_VERSION", buildNumber);
+              next = upsert(next, "MARKETING_VERSION", appVersion);
+              return `${prefix}${next}${suffix}`;
+            });
+
+            if (matched === 0) {
+              console.error(`Release XCBuildConfiguration bulunamadı (bundleId: ${bundleId})!`);
+              process.exit(1);
+            }
+
+            fs.writeFileSync(pbxPath, pbx, "utf8");
+            console.log(`Patched ${matched} Release buildSettings block(s) in ${pbxPath}`);
+          '
+
+      - name: Build iOS Archive (xcodebuild archive)
+        working-directory: mobile-app/ios
+        env:
+          CI: '1'
+          NODE_ENV: production
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/build"
+          xcodebuild archive \
+            -workspace "${SCHEME_NAME}.xcworkspace" \
+            -scheme "${SCHEME_NAME}" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/build/${SCHEME_NAME}.xcarchive" \
+            COMPILER_INDEX_STORE_ENABLE=NO
+
+      - name: Export signed IPA (xcodebuild -exportArchive)
+        run: |
+          set -euo pipefail
+          cat << EOF > "$RUNNER_TEMP/ExportOptions.plist"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>${RESOLVED_TEAM_ID}</string>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
+            <key>uploadSymbols</key>
+            <true/>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${BUNDLE_ID}</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+
+          mkdir -p "$RUNNER_TEMP/export"
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/build/${SCHEME_NAME}.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export"
+
+          IPA_PATH=$(find "$RUNNER_TEMP/export" -name "*.ipa" | head -n 1)
+          if [ -z "$IPA_PATH" ]; then
+            echo "::error::Export sonrası .ipa dosyası üretilemedi!"
+            exit 1
+          fi
+          echo "IPA_PATH=${IPA_PATH}" >> "$GITHUB_ENV"
+          ls -lh "$IPA_PATH"
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HIV-iOS-v${{ env.APP_VERSION }}-b${{ env.BUILD_NUMBER }}
+          path: ${{ env.IPA_PATH }}
+          retention-days: 14
+
+      - name: Upload to App Store Connect (TestFlight / App Store)
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          echo "Uploading ${IPA_PATH} to App Store Connect (track: ${DEPLOY_TRACK})..."
+          xcrun altool --upload-app \
+            --type ios \
+            --file "$IPA_PATH" \
+            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
+
+          {
+            echo "## iOS Build & App Store Connect Yükleme Özeti"
+            echo ""
+            echo "- **Uygulama:** H.İ.V. Halısaha (\`${BUNDLE_ID}\`)"
+            echo "- **Sürüm:** \`${APP_VERSION}\` (Build \`${BUILD_NUMBER}\`)"
+            echo "- **Hedef Kanal:** \`${DEPLOY_TRACK}\`"
+            if [ "${DEPLOY_TRACK}" = "appstore" ]; then
+              echo "- **Sonraki Adım:** Apple işleme (processing) tamamlandığında App Store Connect → App Store sürümüne bu build'i bağlayıp incelemeye gönderebilirsiniz."
+            else
+              echo "- **Sonraki Adım:** Apple işleme (processing) tamamlandığında build otomatik olarak TestFlight üzerinde test kullanıcılarına açılır."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cleanup temporary keychain and signing secrets
+        if: always()
+        run: |
+          if [ -n "${KEYCHAIN_PATH:-}" ] && [ -f "${KEYCHAIN_PATH}" ]; then
+            security delete-keychain "${KEYCHAIN_PATH}" || true
+          fi
+          if [ -n "${PROFILE_UUID:-}" ]; then
+            rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID}.mobileprovision"
+          fi
+          rm -f "$RUNNER_TEMP/certificate.p12" \
+                "$RUNNER_TEMP/profile.mobileprovision" \
+                "$RUNNER_TEMP/profile.plist" \
+                "$RUNNER_TEMP/ExportOptions.plist"
+          rm -rf "$HOME/.appstoreconnect/private_keys"
+          echo "Geçici keychain, sertifika, profil ve API anahtarı temizlendi."

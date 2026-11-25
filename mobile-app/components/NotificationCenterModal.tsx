@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, TouchableWithoutFeedback } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/use-auth';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '@/services/firebaseConfig';
+import { appAlert } from '@/services/appAlert';
 
 export interface NotificationItem {
   id: string;
@@ -15,48 +16,105 @@ export interface NotificationItem {
   title: string;
   message: string;
   time: string;
+  createdAt?: any;
   read: boolean;
-  route?: string;
+  route?: string | { pathname: string; params?: Record<string, any> };
 }
+
+const formatRelativeTime = (rawTime: any): string => {
+  if (!rawTime) return 'Az önce';
+  let date: Date;
+  if (typeof rawTime?.toDate === 'function') {
+    date = rawTime.toDate();
+  } else if (rawTime instanceof Date) {
+    date = rawTime;
+  } else if (typeof rawTime === 'number') {
+    date = new Date(rawTime);
+  } else if (typeof rawTime === 'string') {
+    date = new Date(rawTime);
+  } else {
+    return 'Az önce';
+  }
+
+  const now = Date.now();
+  const diffMs = now - date.getTime();
+  if (diffMs < 0 || isNaN(diffMs)) return 'Az önce';
+
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+
+  if (diffSec < 60) {
+    return 'Az önce';
+  } else if (diffMin < 60) {
+    return `${diffMin} dk önce`;
+  } else if (diffHour < 24) {
+    return `${diffHour} saat önce`;
+  } else if (diffDay < 7) {
+    return `${diffDay} gün önce`;
+  } else {
+    const d = date.getDate().toString().padStart(2, '0');
+    const m = (date.getMonth() + 1).toString().padStart(2, '0');
+    return `${d}.${m}`;
+  }
+};
 
 interface NotificationCenterModalProps {
   visible: boolean;
   onClose: () => void;
 }
 
-const DEFAULT_NOTIFS: NotificationItem[] = [
-  { id: '1', type: 'reminder', title: 'MAÇ GÜNÜ UYARISI', message: 'Beşiktaş Arena maçınıza 2 saat kaldı! Sağanak yağış riski var, yağmurluk almayı unutmayın.', time: '10dk önce', read: false, route: '/match-room' },
-  { id: '2', type: 'chat', title: 'YENİ SOHBET MESAJI', message: 'Kaptan_Sarı: "Beyler kırmızı formalarla geliyoruz, unutmayın!"', time: '45dk önce', read: false, route: '/conversations' },
-  { id: '3', type: 'alert', title: 'KADRO GÜNCELLEMESİ', message: 'Ege_Def kadrodan ayrıldı. Defans mevkii boşaldı, maça oyuncu çağırabilirsiniz.', time: '2 saat önce', read: true, route: '/match-room' },
-  { id: '4', type: 'match', title: 'ÖDEME ONAYLANDI', message: '150 ₺ maç ücretiniz Kaptan tarafından FAST ile alındı ve onaylandı.', time: 'Dün', read: true, route: '/match-room' },
-];
-
 export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = ({ visible, onClose }) => {
   const router = useRouter();
   const { theme } = useTheme();
   const { user } = useAuth();
   const styles = useStyles(theme);
-  const [notifs, setNotifs] = useState<NotificationItem[]>(DEFAULT_NOTIFS);
   const [firestoreNotifs, setFirestoreNotifs] = useState<NotificationItem[]>([]);
+  const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!visible || !user?.uid) return;
+    return () => {
+      if (navTimerRef.current) clearTimeout(navTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setFirestoreNotifs([]);
+      return;
+    }
+    if (!visible) return;
     try {
       const q = query(
         collection(db, 'users', user.uid, 'notifications'),
-        orderBy('createdAt', 'desc')
+        orderBy('createdAt', 'desc'),
+        limit(50)
       );
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const items: NotificationItem[] = snapshot.docs.map(d => {
           const data = d.data();
+          const ALLOWED_PREFIXES = ['/(tabs)', '/match-room', '/my-club', '/rate-match', '/chat-detail', '/conversations', '/profile', '/settings'];
+          const rawRoute = typeof data.route === 'string' && ALLOWED_PREFIXES.some(p => data.route.startsWith(p))
+            ? data.route
+            : '/(tabs)';
+          let resolvedRoute: string | { pathname: string; params?: Record<string, any> } = rawRoute;
+          if (data.type === 'club_invite' && data.clubId) {
+            resolvedRoute = { pathname: '/my-club', params: { clubId: data.clubId } };
+          } else if (data.type === 'club_challenge' || data.type === 'club_join_request') {
+            resolvedRoute = '/my-club';
+          } else if (data.type === 'club_challenge_accepted' && data.matchId) {
+            resolvedRoute = { pathname: '/match-room', params: { matchId: data.matchId } };
+          }
           return {
             id: d.id,
-            type: data.type === 'club_challenge' ? 'alert' : data.type === 'club_invite' ? 'match' : 'reminder',
+            type: data.type === 'club_challenge' ? 'alert' : data.type === 'club_invite' || data.type === 'club_challenge_accepted' ? 'match' : 'reminder',
             title: data.title || 'BİLDİRİM',
             message: data.body || data.message || '',
-            time: 'Yeni',
+            time: formatRelativeTime(data.createdAt),
+            createdAt: data.createdAt,
             read: Boolean(data.read),
-            route: data.type === 'club_challenge' || data.type === 'club_invite' ? '/my-club' : (data.route || '/(tabs)'),
+            route: resolvedRoute,
           };
         });
         setFirestoreNotifs(items);
@@ -69,18 +127,21 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
     }
   }, [visible, user?.uid]);
 
-  const activeNotifs = firestoreNotifs.length > 0 ? firestoreNotifs : notifs;
+  const activeNotifs = firestoreNotifs;
 
   const markAllRead = async () => {
-    setNotifs(prev => prev.map(n => ({ ...n, read: true })));
+    const unreadIds = firestoreNotifs.filter(n => !n.read).map(n => n.id);
+    setFirestoreNotifs(prev => prev.map(n => ({ ...n, read: true })));
     const currentUserId = user?.uid;
-    if (currentUserId && firestoreNotifs.length > 0) {
+    if (currentUserId && unreadIds.length > 0) {
       try {
-        const batch = writeBatch(db);
-        firestoreNotifs.filter(n => !n.read).forEach(n => {
-          batch.update(doc(db, 'users', currentUserId, 'notifications', n.id), { read: true });
-        });
-        await batch.commit();
+        for (let i = 0; i < unreadIds.length; i += 450) {
+          const batch = writeBatch(db);
+          unreadIds.slice(i, i + 450).forEach(id => {
+            batch.update(doc(db, 'users', currentUserId, 'notifications', id), { read: true });
+          });
+          await batch.commit();
+        }
       } catch (e) {
         console.warn('Tümünü okundu işaretleme hatası:', e);
       }
@@ -88,8 +149,33 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
   };
 
   const clearAll = () => {
-    setNotifs([]);
-    setFirestoreNotifs([]);
+    const toDelete = [...firestoreNotifs];
+    if (toDelete.length === 0) return;
+
+    appAlert.confirm(
+      'Bildirimleri Temizle',
+      'Tüm bildirimler kalıcı olarak silinecek. Emin misiniz?',
+      async () => {
+        const currentUserId = user?.uid;
+        setFirestoreNotifs([]);
+        if (currentUserId && toDelete.length > 0) {
+          try {
+            for (let i = 0; i < toDelete.length; i += 450) {
+              const batch = writeBatch(db);
+              toDelete.slice(i, i + 450).forEach(n => {
+                batch.delete(doc(db, 'users', currentUserId, 'notifications', n.id));
+              });
+              await batch.commit();
+            }
+          } catch (e) {
+            console.warn('Bildirimleri temizleme hatası:', e);
+            setFirestoreNotifs(toDelete);
+            appAlert.alert('Hata', 'Bildirimler temizlenirken bir sorun oluştu.');
+          }
+        }
+      },
+      { confirmText: 'Evet, Temizle', cancelText: 'Vazgeç', destructive: true }
+    );
   };
 
   const getItemIcon = (type: NotificationItem['type']) => {
@@ -106,7 +192,6 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
   };
 
   const handleItemPress = async (item: NotificationItem) => {
-    setNotifs(prev => prev.map(n => n.id === item.id ? { ...n, read: true } : n));
     setFirestoreNotifs(prev => prev.map(n => n.id === item.id ? { ...n, read: true } : n));
     const currentUserId = user?.uid;
     if (currentUserId && firestoreNotifs.some(n => n.id === item.id)) {
@@ -119,7 +204,8 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
     const targetRoute = item.route;
     onClose();
     if (targetRoute) {
-      setTimeout(() => {
+      if (navTimerRef.current) clearTimeout(navTimerRef.current);
+      navTimerRef.current = setTimeout(() => {
         try {
           router.push(targetRoute as any);
         } catch (e) {
@@ -127,7 +213,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
         }
       }, 150);
     } else {
-      Alert.alert(item.title, item.message);
+      appAlert.alert(item.title, item.message);
     }
   };
 
@@ -136,8 +222,11 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onClose={onClose} onRequestClose={onClose}>
       <View style={styles.overlay}>
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View style={StyleSheet.absoluteFillObject} />
+        </TouchableWithoutFeedback>
         <View style={styles.modalContent}>
           {/* Header */}
           <View style={styles.header}>
@@ -148,9 +237,36 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                 <Text style={styles.headerSub}>{unreadCount > 0 ? `${unreadCount} Okunmamış Bildirim` : 'Tüm Bildirimler Okundu'}</Text>
               </View>
             </View>
-            <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-              <MaterialIcons name="close" size={20} color={theme.text} />
-            </TouchableOpacity>
+            <View style={styles.headerRightRow}>
+              {activeNotifs.length > 0 && (
+                <View style={styles.headerActions}>
+                  <TouchableOpacity 
+                    style={styles.headerActionBtn} 
+                    onPress={markAllRead}
+                    activeOpacity={0.7}
+                    accessibilityLabel="Tümünü Okundu Yap"
+                  >
+                    <MaterialIcons name="done-all" size={20} color={theme.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.headerActionBtn} 
+                    onPress={clearAll}
+                    activeOpacity={0.7}
+                    accessibilityLabel="Temizle"
+                  >
+                    <MaterialIcons name="delete-sweep" size={20} color={theme.error} />
+                  </TouchableOpacity>
+                </View>
+              )}
+              <TouchableOpacity
+                style={styles.closeBtn}
+                onPress={onClose}
+                accessibilityRole="button"
+                accessibilityLabel="Kapat"
+              >
+                <MaterialIcons name="close" size={20} color={theme.text} />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Action Row */}
@@ -213,6 +329,9 @@ const useStyles = (theme: any) => StyleSheet.create({
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   headerTitle: { fontFamily: Fonts.headlineBold, fontSize: 18, color: theme.primary, fontStyle: 'italic', letterSpacing: -0.5 },
   headerSub: { fontFamily: Fonts.body, fontSize: 10, color: theme.textMuted },
+  headerRightRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  headerActionBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: theme.surfaceContainerHighest, alignItems: 'center', justifyContent: 'center' },
   closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: theme.surfaceContainerHighest, alignItems: 'center', justifyContent: 'center' },
   actionRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 24, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: theme.borderSubtle },
   actionLink: { flexDirection: 'row', alignItems: 'center', gap: 6 },

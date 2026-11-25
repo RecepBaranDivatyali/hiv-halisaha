@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   StyleSheet, View, Text, TouchableOpacity,
-  ScrollView, TextInput, Alert, Switch, FlatList,
-  Platform, ActivityIndicator,
+  ScrollView, TextInput, Switch, FlatList,
+  Platform, ActivityIndicator, KeyboardAvoidingView,
 } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -12,6 +12,9 @@ import { useMatches } from '@/hooks/use-matches';
 import { useAuth } from '@/hooks/use-auth';
 import { PITCH_DATABASE, PitchDatabaseItem } from '@/config/pitches';
 import { PitchDetailModal } from './PitchDetailModal';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '@/services/firebaseConfig';
+import { appAlert } from '@/services/appAlert';
 
 export interface NewMatchData {
   id: string;
@@ -73,6 +76,13 @@ const formatDateTR = (date: Date): string => {
   return `${days[date.getDay()]}, ${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
 };
 
+const formatDateInputLocal = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
 export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   visible,
   onClose,
@@ -86,37 +96,129 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   // ── Şehir ──────────────────────────────────────────────
   const normalizeCity = (c?: string): string => {
     if (!c) return 'İstanbul';
-    const clean = c.trim().toLowerCase();
+    const clean = c.trim().toLocaleLowerCase('tr');
     if (clean === 'ankara') return 'Ankara';
-    if (clean === 'izmir' || clean === 'i̇zmir') return 'İzmir';
-    return 'İstanbul';
+    if (clean === 'izmir') return 'İzmir';
+    if (clean === 'bursa') return 'Bursa';
+    if (clean === 'antalya') return 'Antalya';
+    const found = CITIES.find(city => city.trim().toLocaleLowerCase('tr') === clean);
+    return found || 'İstanbul';
   };
 
   const [selectedCity, setSelectedCity] = useState(() => normalizeCity(user?.city));
   const [citySelectorOpen, setCitySelectorOpen] = useState(false);
 
+  // ── Halısaha Listesi & Dinamik Firestore Entegrasyonu ─────────────
+  const [pitchList, setPitchList] = useState<PitchDatabaseItem[]>(PITCH_DATABASE);
+
+  // Modal açıldığında Web Admin panelinden eklenen/güncellenen sahaları çek ve birleştir
+  useEffect(() => {
+    if (!visible) return;
+
+    let isMounted = true;
+    const fetchDbPitches = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'pitches'));
+        if (!isMounted) return;
+
+        const map = new Map<string, PitchDatabaseItem>();
+        PITCH_DATABASE.forEach(p => map.set(p.id, p));
+
+        snap.docs.forEach(d => {
+          const p = { id: d.id, ...d.data() } as any;
+          if (p.status === 'deleted') {
+            map.delete(p.id);
+            return;
+          }
+          const base = map.get(p.id);
+          const resolvedName = p.name || base?.name || 'Halısaha';
+          const subFields = Array.isArray(p.subFields) && p.subFields.length > 0
+            ? p.subFields
+            : (Array.isArray(base?.subFields) && base!.subFields.length > 0
+                ? base!.subFields
+                : [{ id: `${p.id}-1`, name: `${resolvedName} Sahası`, surface: 'Suni Çim' }]);
+          const rawFee = Number(p.hourlyFee ?? p.price ?? p.hourlyRateNormal ?? p.fee ?? base?.hourlyFee ?? 2000);
+          const hourlyFee = Number.isFinite(rawFee) && rawFee > 0 ? rawFee : (base?.hourlyFee ?? 2000);
+
+          map.set(p.id, {
+            ...(base || {}),
+            id: p.id,
+            city: p.city || base?.city || 'İstanbul',
+            district: p.district || base?.district || 'Merkez',
+            name: resolvedName,
+            rating: typeof p.rating === 'number' ? p.rating : (base?.rating ?? 5.0),
+            isPopular: p.isPopular !== undefined ? Boolean(p.isPopular) : Boolean(base?.isPopular),
+            hourlyFee,
+            subscriberFee: p.subscriberFee ?? p.hourlyRateSubscriber ?? base?.subscriberFee,
+            openingTime: p.openingTime || base?.openingTime || '09:00',
+            closingTime: p.closingTime || base?.closingTime || '00:00',
+            optimalModes: Array.isArray(p.optimalModes) && p.optimalModes.length > 0 ? p.optimalModes : (base?.optimalModes || ['7v7', '8v8']),
+            tightModes: Array.isArray(p.tightModes) && p.tightModes.length > 0 ? p.tightModes : (base?.tightModes || ['6v6', '9v9']),
+            phone: p.phone ?? base?.phone,
+            address: p.address ?? base?.address,
+            equipmentRental: p.equipmentRental ?? base?.equipmentRental,
+            subFields,
+          } as PitchDatabaseItem);
+        });
+
+        const merged = Array.from(map.values());
+        setPitchList(merged);
+      } catch (err) {
+        console.warn('Firestore sahaları çekilemedi, statik liste kullanılıyor:', err);
+      }
+    };
+
+    fetchDbPitches();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [visible]);
+
   // ── Halısaha Picker ──────────────────────────────────────────────
   const [pitchPickerOpen, setPitchPickerOpen] = useState(false);
   const [pitchSearch, setPitchSearch] = useState('');
   const cityPitches = useMemo(
-    () => PITCH_DATABASE.filter(p => p.city.toLowerCase() === selectedCity.toLowerCase()),
-    [selectedCity]
+    () => pitchList.filter(p => (p.city || '').trim().toLocaleLowerCase('tr') === selectedCity.trim().toLocaleLowerCase('tr')),
+    [pitchList, selectedCity]
   );
   const filteredPitches = useMemo(() => {
     if (!pitchSearch.trim()) return cityPitches;
-    const q = pitchSearch.toLowerCase();
-    return PITCH_DATABASE.filter(
-      p => p.name.toLowerCase().includes(q) || p.district.toLowerCase().includes(q) || p.city.toLowerCase().includes(q)
+    const q = pitchSearch.trim().toLocaleLowerCase('tr');
+    return pitchList.filter(
+      p => (p.name || '').trim().toLocaleLowerCase('tr').includes(q) ||
+           (p.district || '').trim().toLocaleLowerCase('tr').includes(q) ||
+           (p.city || '').trim().toLocaleLowerCase('tr').includes(q)
     );
-  }, [cityPitches, pitchSearch]);
+  }, [pitchList, cityPitches, pitchSearch]);
 
   const [selectedPitch, setSelectedPitch] = useState<PitchDatabaseItem>(() => {
     const initialCity = normalizeCity(user?.city);
-    return PITCH_DATABASE.find(p => p.city.toLowerCase() === initialCity.toLowerCase()) || PITCH_DATABASE[0];
+    return PITCH_DATABASE.find(p => (p.city || '').trim().toLocaleLowerCase('tr') === initialCity.trim().toLocaleLowerCase('tr')) || PITCH_DATABASE[0];
   });
   const [selectedSubField, setSelectedSubField] = useState(
-    selectedPitch.subFields[0]?.name || 'Tek Saha'
+    selectedPitch?.subFields?.[0]?.name || 'Tek Saha'
   );
+
+  // Firestore'dan gelen güncel saha bilgisiyle seçili sahayı eşitle
+  useEffect(() => {
+    setSelectedPitch(prev => {
+      if (!prev) return pitchList[0] || PITCH_DATABASE[0];
+      const updated = pitchList.find(p => p.id === prev.id);
+      if (!updated) {
+        const fallback = pitchList[0] || PITCH_DATABASE[0];
+        if (fallback) {
+          setTotalFeeInput(String(fallback.hourlyFee || 2000));
+        }
+        return fallback;
+      }
+      if (updated.hourlyFee !== prev.hourlyFee || updated.name !== prev.name || updated.subscriberFee !== prev.subscriberFee) {
+        setTotalFeeInput(String(updated.hourlyFee || 2000));
+        return updated;
+      }
+      return prev;
+    });
+  }, [pitchList]);
 
   // ── Saha & Rezervasyon Esnekliği ──
   const [isPitchFlexible, setIsPitchFlexible] = useState(false);
@@ -128,11 +230,11 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     const norm = normalizeCity(c);
     setSelectedCity(norm);
     setCitySelectorOpen(false);
-    const firstPitch = PITCH_DATABASE.find(p => p.city.toLowerCase() === norm.toLowerCase());
+    const firstPitch = pitchList.find(p => (p.city || '').trim().toLocaleLowerCase('tr') === norm.trim().toLocaleLowerCase('tr'));
     if (firstPitch) {
       setSelectedPitch(firstPitch);
       setPreferredDistrict(firstPitch.district);
-      setSelectedSubField(firstPitch.subFields[0]?.name || 'Tek Saha');
+      setSelectedSubField(firstPitch.subFields?.[0]?.name || 'Tek Saha');
     }
   };
 
@@ -166,7 +268,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
 
   // Seçili alt saha objesi
   const currentSubFieldObj = useMemo(() => {
-    return selectedPitch?.subFields.find(s => s.name === selectedSubField) || selectedPitch?.subFields[0];
+    return selectedPitch?.subFields?.find(s => s.name === selectedSubField) || selectedPitch?.subFields?.[0];
   }, [selectedPitch, selectedSubField]);
 
   // Alt sahaya göre dinamik saat listesi ve popüler saatler (son saat kısıtlaması dahil)
@@ -307,7 +409,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     return n * 2;
   };
   const totalPlayersCount = getPlayerCount(selectedMode);
-  const totalFeeNum = parseInt(totalFeeInput, 10) || 0;
+  const totalFeeNum = parseInt(totalFeeInput.replace(/[^0-9]/g, ''), 10) || 0;
   // 2 kaleci (her iki takımdan 1 kaleci) ücretten muaf
   const payingPlayersCount = isGkFree ? Math.max(1, totalPlayersCount - 2) : totalPlayersCount;
   const perPlayerFee = payingPlayersCount > 0 ? Math.round(totalFeeNum / payingPlayersCount) : 0;
@@ -317,7 +419,8 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     setSelectedPitch(pitch);
     setSelectedCity(pitch.city); // Sync city!
     setPreferredDistrict(pitch.district);
-    setSelectedSubField(pitch.subFields[0]?.name || 'Tek Saha');
+    setSelectedSubField(pitch.subFields?.[0]?.name || 'Tek Saha');
+    setTotalFeeInput(String(pitch.hourlyFee || 2100));
     setPitchPickerOpen(false);
     setPitchSearch('');
   };
@@ -339,9 +442,26 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   const handleCreate = async () => {
     if (isSubmitting) return;
 
-    if (totalFeeNum <= 0 || isNaN(totalFeeNum)) {
-      Alert.alert('Geçersiz Ücret', 'Lütfen geçerli bir toplam halısaha ücreti giriniz.');
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const selectedDayStart = new Date(selectedDate);
+    selectedDayStart.setHours(0, 0, 0, 0);
+    if (selectedDayStart.getTime() < startOfToday.getTime()) {
+      appAlert.alert('Geçersiz Tarih', 'Geçmiş bir tarih için maç ilanı oluşturamazsınız. Lütfen bugün veya ileri bir tarih seçiniz.');
       return;
+    }
+
+    if (!Number.isFinite(totalFeeNum) || totalFeeNum <= 0) {
+      appAlert.alert('Geçersiz Ücret', 'Lütfen geçerli bir toplam halısaha ücreti giriniz.');
+      return;
+    }
+
+    const cleanIban = organizerIban.replace(/\s+/g, '').toUpperCase();
+    if (showIbanInput) {
+      if (!/^TR\d{24}$/.test(cleanIban)) {
+        appAlert.alert('Geçersiz IBAN', 'Lütfen TR ile başlayan 26 haneli geçerli bir IBAN numarası giriniz (veya IBAN seçeneğini kapatınız).');
+        return;
+      }
     }
 
     if (isToday(selectedDate) && !isTimeFlexible && selectedTimeSlot) {
@@ -352,7 +472,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
         const slotDate = new Date();
         slotDate.setHours(startHour, startMin, 0, 0);
         if (slotDate.getTime() < Date.now()) {
-          Alert.alert('Geçersiz Saat', 'Seçtiğiniz maç saati geçmişte kalmıştır. Lütfen ileri bir saat dilimi seçiniz.');
+          appAlert.alert('Geçersiz Saat', 'Seçtiğiniz maç saati geçmişte kalmıştır. Lütfen ileri bir saat dilimi seçiniz.');
           return;
         }
       }
@@ -398,7 +518,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       isTimeFlexible,
       preferredPitch: selectedPitch?.name,
       preferredTimeSlot: isTimeFlexible ? undefined : selectedTimeSlot,
-      organizerIban: showIbanInput && organizerIban ? organizerIban.trim() : undefined,
+      organizerIban: showIbanInput && cleanIban ? cleanIban : undefined,
       organizerIbanName: showIbanInput && organizerIbanName ? organizerIbanName.trim() : undefined,
       organizerBankName: showIbanInput && organizerBankName ? organizerBankName.trim() : undefined,
       positions: { KL: 1, DF: 2, OS: 2, FV: 1 },
@@ -415,8 +535,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       }
     } catch (err) {
       console.error('Maç oluşturma hatası:', err);
-      // Hata durumunda: Tik çıkmaz, ana ekrana dönülmez, uyarı penceresi gösterilir
-      Alert.alert(
+      appAlert.alert(
         'Maç Oluşturulamadı ⚠️',
         'Maç ilanı oluşturulurken bir sorun meydana geldi. Lütfen bilgilerinizi kontrol edip tekrar deneyin.',
         [{ text: 'Tamam' }]
@@ -430,7 +549,10 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+      >
         <View style={styles.modalContent}>
 
           {/* ── HEADER ── */}
@@ -506,11 +628,11 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                       <MaterialIcons name="stadium" size={22} color={theme.primary} />
                       <View style={{ flex: 1 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text style={styles.pitchSelectedName}>{selectedPitch.name}</Text>
+                          <Text style={styles.pitchSelectedName}>{selectedPitch?.name || 'Halısaha Seçin'}</Text>
                           <MaterialIcons name="info-outline" size={14} color={theme.primary} />
                         </View>
                         <Text style={styles.pitchSelectedDistrict}>
-                          {selectedPitch.district}  •  ★ {selectedPitch.rating}  •  <Text style={{ color: theme.primary, fontWeight: 'bold' }}>Detay & Bilgi</Text>
+                          {selectedPitch?.district || selectedCity}  •  ★ {selectedPitch?.rating ?? 5.0}  •  <Text style={{ color: theme.primary, fontWeight: 'bold' }}>Detay & Bilgi</Text>
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -526,11 +648,11 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                   </View>
 
                   {/* Alt Saha Seçimi */}
-                  {selectedPitch.subFields.length > 0 && (
+                  {(selectedPitch?.subFields?.length || 0) > 0 && (
                     <View>
                       <Text style={styles.subLabel}>SAHA / PARÇA</Text>
                       <View style={styles.subFieldRow}>
-                        {selectedPitch.subFields.map(sub => (
+                        {(selectedPitch?.subFields || []).map(sub => (
                           <TouchableOpacity
                             key={sub.id}
                             style={[styles.subFieldChip, selectedSubField === sub.name && styles.subFieldChipActive]}
@@ -635,8 +757,8 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                   onPress={() => setDatePickerOpen(true)}
                   activeOpacity={0.8}
                 >
-                  <MaterialIcons name="calendar-today" size={15} color={!isToday(selectedDate) && !isTomorrow(selectedDate) ? theme.background : theme.primary} />
-                  <Text style={[styles.datePickerBtnText, !isToday(selectedDate) && !isTomorrow(selectedDate) && { color: theme.background }]}>
+                  <MaterialIcons name="calendar-today" size={15} color={!isToday(selectedDate) && !isTomorrow(selectedDate) ? theme.onPrimary : theme.primary} />
+                  <Text style={[styles.datePickerBtnText, !isToday(selectedDate) && !isTomorrow(selectedDate) && { color: theme.onPrimary }]}>
                     Tarih Seç
                   </Text>
                 </TouchableOpacity>
@@ -798,7 +920,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                       color={matchFormatType === 'single_organizer' ? theme.primary : theme.textMuted} 
                     />
                     <Text style={[styles.orgModelTitle, matchFormatType === 'single_organizer' && { color: theme.primary }]}>
-                      👑 Tek Organizatör (Karma Kadro / 14 Kişi)
+                      👑 Tek Organizatör (Karma Kadro / {totalPlayersCount} Kişi)
                     </Text>
                   </View>
                   <Text style={styles.orgModelDesc}>
@@ -817,9 +939,9 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                   style={styles.feeInput}
                   keyboardType="numeric"
                   value={totalFeeInput}
-                  onChangeText={setTotalFeeInput}
+                  onChangeText={(t) => setTotalFeeInput(t.replace(/[^0-9]/g, ''))}
                   placeholder="0"
-                  placeholderTextColor="#adaaaa"
+                  placeholderTextColor={theme.textMuted}
                 />
               </View>
 
@@ -886,7 +1008,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                   value={showIbanInput}
                   onValueChange={setShowIbanInput}
                   trackColor={{ false: theme.surfaceContainerHighest, true: theme.primary }}
-                  thumbColor={showIbanInput ? theme.text : theme.textMuted}
+                  thumbColor={showIbanInput ? theme.onPrimary : theme.textMuted}
                 />
               </TouchableOpacity>
 
@@ -899,7 +1021,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                       value={organizerBankName}
                       onChangeText={setOrganizerBankName}
                       placeholder="Örn: Ziraat Bankası, Garanti BBVA"
-                      placeholderTextColor="#adaaaa"
+                      placeholderTextColor={theme.textMuted}
                     />
                   </View>
 
@@ -910,7 +1032,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                       value={organizerIbanName}
                       onChangeText={setOrganizerIbanName}
                       placeholder="Örn: Ahmet Yılmaz"
-                      placeholderTextColor="#adaaaa"
+                      placeholderTextColor={theme.textMuted}
                     />
                   </View>
 
@@ -921,7 +1043,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                       value={organizerIban}
                       onChangeText={(t) => setOrganizerIban(t.toUpperCase())}
                       placeholder="TR00 0000 0000 0000 0000 0000 00"
-                      placeholderTextColor="#adaaaa"
+                      placeholderTextColor={theme.textMuted}
                       autoCapitalize="characters"
                     />
                   </View>
@@ -946,7 +1068,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                 value={isSubscription}
                 onValueChange={setIsSubscription}
                 trackColor={{ false: theme.surfaceContainerHighest, true: theme.primary }}
-                thumbColor={isSubscription ? theme.text : theme.textMuted}
+                thumbColor={isSubscription ? theme.onPrimary : theme.textMuted}
               />
             </View>
 
@@ -959,12 +1081,12 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
             >
               {isSubmitting ? (
                 <>
-                  <ActivityIndicator size="small" color={theme.background} />
+                  <ActivityIndicator size="small" color={theme.onPrimary} />
                   <Text style={styles.createBtnText}>KAYDEDİLİYOR...</Text>
                 </>
               ) : (
                 <>
-                  <MaterialIcons name="check-circle" size={22} color={theme.background} />
+                  <MaterialIcons name="check-circle" size={22} color={theme.onPrimary} />
                   <Text style={styles.createBtnText}>MAÇ İLANINI KAYDET</Text>
                 </>
               )}
@@ -972,14 +1094,14 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
 
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
 
       {/* ── HALISAHA PICKER MODAL ── */}
       <Modal visible={pitchPickerOpen} transparent animationType="slide" onRequestClose={() => setPitchPickerOpen(false)}>
         <View style={styles.pickerOverlay}>
           <View style={styles.pickerSheet}>
             <View style={styles.pickerHeader}>
-              <Text style={styles.pickerTitle}>HALİSAHA SEÇİN</Text>
+              <Text style={styles.pickerTitle}>HALISAHA SEÇİN</Text>
               <TouchableOpacity style={styles.closeBtn} onPress={() => { setPitchPickerOpen(false); setPitchSearch(''); }}>
                 <MaterialIcons name="close" size={20} color={theme.text} />
               </TouchableOpacity>
@@ -991,10 +1113,9 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               <TextInput
                 style={styles.searchInput}
                 placeholder="Tesis veya semt ara..."
-                placeholderTextColor="#adaaaa"
+                placeholderTextColor={theme.textMuted}
                 value={pitchSearch}
                 onChangeText={setPitchSearch}
-                autoFocus
               />
               {pitchSearch.length > 0 && (
                 <TouchableOpacity onPress={() => setPitchSearch('')}>
@@ -1016,7 +1137,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                 </View>
               }
               renderItem={({ item }) => {
-                const isSelected = selectedPitch.id === item.id;
+                const isSelected = selectedPitch?.id === item.id;
                 return (
                   <TouchableOpacity
                     style={[styles.pitchListItem, isSelected && styles.pitchListItemActive]}
@@ -1030,7 +1151,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                       <View>
                         <Text style={[styles.pitchListName, isSelected && { color: theme.primary }]}>{item.name}</Text>
                         <Text style={styles.pitchListDistrict}>
-                          {item.district}  •  {item.subFields.length} saha  •  ★ {item.rating}
+                          {item.district}  •  {(item.subFields?.length || 0)} saha  •  ★ {item.rating ?? 5.0}
                         </Text>
                         {item.isPopular && (
                           <View style={styles.popularBadge}>
@@ -1090,7 +1211,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                 return (
                   <TouchableOpacity
                     style={[styles.timeListItem, isActive && styles.timeListItemActive]}
-                    onPress={() => { setSelectedTimeSlot(item); setTimePickerOpen(false); }}
+                    onPress={() => { setSelectedTimeSlot(item); setIsTimeFlexible(false); setTimePickerOpen(false); }}
                     activeOpacity={0.8}
                   >
                     <MaterialIcons name="schedule" size={14} color={isActive ? theme.onPrimary : theme.textMuted} />
@@ -1136,8 +1257,8 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                     cursor: 'pointer',
                     outline: 'none',
                   }}
-                  min={new Date().toISOString().split('T')[0]}
-                  value={selectedDate.toISOString().split('T')[0]}
+                  min={formatDateInputLocal(new Date())}
+                  value={formatDateInputLocal(selectedDate)}
                   onChange={(e: any) => {
                     if (e.target.value) {
                       const [y, m, d] = e.target.value.split('-').map(Number);
@@ -1301,7 +1422,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   gkFreeSwitch: { width: 44, height: 24, borderRadius: 12, backgroundColor: theme.surfaceContainerHighest, justifyContent: 'center', paddingHorizontal: 2 },
   gkFreeSwitchActive: { backgroundColor: theme.primary },
   gkFreeThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: theme.textMuted },
-  gkFreeThumbActive: { backgroundColor: theme.background, alignSelf: 'flex-end' },
+  gkFreeThumbActive: { backgroundColor: theme.onPrimary, alignSelf: 'flex-end' },
 
   perPlayerBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: `${theme.primary}1A`, padding: 12, borderRadius: 10 },
   perPlayerText: { fontFamily: Fonts.body, fontSize: 12, color: theme.text },
@@ -1323,7 +1444,7 @@ const useStyles = (theme: any) => StyleSheet.create({
 
   // Kaydet
   createBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: theme.primary, paddingVertical: 16, borderRadius: 14, marginTop: 4 },
-  createBtnText: { fontFamily: Fonts.headlineBold, fontSize: 14, color: theme.background, letterSpacing: 0.5 },
+  createBtnText: { fontFamily: Fonts.headlineBold, fontSize: 14, color: theme.onPrimary, letterSpacing: 0.5 },
 
   // ── Picker Modalları ──
   pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'flex-end' },
@@ -1356,14 +1477,14 @@ const useStyles = (theme: any) => StyleSheet.create({
   offsetSwitch: { width: 44, height: 24, borderRadius: 12, backgroundColor: theme.surfaceContainerHighest, justifyContent: 'center', paddingHorizontal: 2 },
   offsetSwitchOn: { backgroundColor: theme.primary },
   offsetSwitchThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: theme.textMuted },
-  offsetSwitchThumbOn: { backgroundColor: theme.background, alignSelf: 'flex-end' },
+  offsetSwitchThumbOn: { backgroundColor: theme.onPrimary, alignSelf: 'flex-end' },
 
   // Saat Listesi
   timeList: { paddingHorizontal: 20, paddingVertical: 12, gap: 8 },
   timeListItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: theme.surface, borderRadius: 10, paddingVertical: 12, borderWidth: 1, borderColor: theme.borderSubtle },
   timeListItemActive: { backgroundColor: theme.primary, borderColor: theme.primary },
   timeListText: { fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.text },
-  timeListTextActive: { color: theme.background },
+  timeListTextActive: { color: theme.onPrimary },
 
   // Tarih Picker
   dateList: { paddingHorizontal: 20, paddingVertical: 12, gap: 8 },
@@ -1391,7 +1512,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   pitchModeTabActive: { backgroundColor: theme.primary },
   pitchModeTabActiveWarning: { backgroundColor: '#f59e0b' },
   pitchModeTabText: { fontFamily: Fonts.headlineBold, fontSize: 11, color: theme.textMuted },
-  pitchModeTabTextActive: { color: theme.background, fontWeight: 'bold' },
+  pitchModeTabTextActive: { color: theme.onPrimary, fontWeight: 'bold' },
 
   resStatusRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
   resStatusCard: { flex: 1, backgroundColor: theme.surfaceContainer, borderRadius: 12, padding: 12, borderWidth: 1.5, borderColor: theme.borderSubtle, gap: 4 },

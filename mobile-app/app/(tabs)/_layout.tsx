@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import { HapticTab } from '@/components/haptic-tab';
@@ -9,6 +10,7 @@ import { Fonts } from '@/constants/theme';
 
 export default function TabLayout() {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
@@ -26,9 +28,9 @@ export default function TabLayout() {
           shadowOpacity: 0,
           shadowOffset: { width: 0, height: 0 },
           shadowRadius: 0,
-          height: 76,
+          height: 62 + insets.bottom,
           paddingTop: 8,
-          paddingBottom: 14,
+          paddingBottom: Math.max(10, insets.bottom),
         },
         tabBarItemStyle: {
           justifyContent: 'center',

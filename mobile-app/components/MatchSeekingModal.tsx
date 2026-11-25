@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, TextInput, Alert, ActivityIndicator, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/use-auth';
-import { dbService } from '@/services/dbService';
+import { appAlert } from '@/services/appAlert';
 import { PITCH_DATABASE } from '@/config/pitches';
 
 interface MatchSeekingModalProps {
@@ -28,6 +28,13 @@ const DISTRICTS_MAP: Record<string, string[]> = {
 const TURKISH_DAYS = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
 const TURKISH_MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 
+const normalizeCityName = (cityStr?: string): string => {
+  if (!cityStr) return 'İstanbul';
+  const low = cityStr.toLocaleLowerCase('tr-TR').replace(/\u0307/g, '').trim();
+  const matched = CITIES_LIST.find(c => c.toLocaleLowerCase('tr-TR').replace(/\u0307/g, '') === low);
+  return matched || cityStr.trim();
+};
+
 export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
   visible,
   onClose,
@@ -38,7 +45,7 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
   const { user, saveUser } = useAuth();
 
   const [selectedDates, setSelectedDates] = useState<string[]>(['Bugün']);
-  const [selectedCity, setSelectedCity] = useState(user?.city || 'İstanbul');
+  const [selectedCity, setSelectedCity] = useState(normalizeCityName(user?.city));
   const [selectedDistrict, setSelectedDistrict] = useState(user?.preferredDistrict || 'Tüm İlçeler');
   const [selectedPitch, setSelectedPitch] = useState('Tüm Sahalar');
   const [note, setNote] = useState(user?.availableNote || '');
@@ -80,7 +87,7 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
         ? user.availableDate.split(',').map((d: string) => d.trim()).filter((d: string) => d.length > 0 && d !== 'Hafta Sonu' && d !== 'Bu Hafta')
         : ['Bugün'];
       setSelectedDates(parsedDates.length > 0 ? parsedDates : ['Bugün']);
-      setSelectedCity(user.city || 'İstanbul');
+      setSelectedCity(normalizeCityName(user.city));
       setSelectedDistrict(user.preferredDistrict || 'Tüm İlçeler');
       setSelectedPitch((user as any).preferredPitch || 'Tüm Sahalar');
       setNote(user.availableNote || '');
@@ -88,18 +95,16 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
   }, [visible, user]);
 
   const toggleDate = (dateVal: string) => {
-    setSelectedDates(prev => {
-      const match = prev.find(d => d === dateVal || d.startsWith(dateVal));
-      if (match) {
-        if (prev.length <= 1) {
-          Alert.alert('Uyarı', 'En az 1 tarih seçili olmalıdır.');
-          return prev;
-        }
-        return prev.filter(d => d !== match);
-      } else {
-        return [...prev, dateVal];
+    const match = selectedDates.find(d => d === dateVal || d.startsWith(dateVal));
+    if (match) {
+      if (selectedDates.length <= 1) {
+        appAlert.alert('Uyarı', 'En az 1 tarih seçili olmalıdır.');
+        return;
       }
-    });
+      setSelectedDates(selectedDates.filter(d => d !== match));
+    } else {
+      setSelectedDates([...selectedDates, dateVal]);
+    }
   };
 
   const calculateAvailableUntil = (dates: string[]): number => {
@@ -137,7 +142,9 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
   };
 
   const availableDistricts = ['Tüm İlçeler', ...(DISTRICTS_MAP[selectedCity] || ['Merkez'])];
-  const cityPitches = PITCH_DATABASE.filter(p => p.city === selectedCity);
+  const cityPitches = PITCH_DATABASE.filter(
+    p => p.city.toLocaleLowerCase('tr-TR').replace(/\u0307/g, '') === selectedCity.toLocaleLowerCase('tr-TR').replace(/\u0307/g, '')
+  );
 
   const handleActivate = async () => {
     if (!user) return;
@@ -148,8 +155,7 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
       const finalDatesStr = selectedDates.length > 0 ? selectedDates.join(', ') : 'Bugün';
       const availableUntil = calculateAvailableUntil(selectedDates);
 
-      const updatedUser = {
-        ...user,
+      await saveUser({
         isLookingForMatch: true,
         availableDate: finalDatesStr,
         availableUntil,
@@ -158,21 +164,9 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
         preferredDistrict: finalDistrict,
         preferredPitch: finalPitch,
         availableNote: note.trim(),
-      };
-      await saveUser(updatedUser as any);
+      } as any);
 
-      if (user.uid) {
-        await dbService.setUserLookingForMatch(user.uid, true, {
-          availableDate: finalDatesStr,
-          availableUntil,
-          city: selectedCity,
-          district: finalDistrict,
-          preferredPitch: finalPitch,
-          availableNote: note.trim(),
-        });
-      }
-
-      Alert.alert(
+      appAlert.alert(
         '🟢 Maç Arama Sinyali Açıldı!',
         `Durumunuz "${finalDatesStr}" (${selectedCity}${finalDistrict ? ` - ${finalDistrict}` : ''}) için aktif edildi. Kaptanlar sizi Oyuncu Arama listesinde en üstte görebilecek.`
       );
@@ -180,7 +174,7 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
       onClose();
     } catch (e) {
       console.error('Maç arama durumu güncelleme hatası:', e);
-      Alert.alert('Hata', 'Durum güncellenirken bir sorun oluştu.');
+      appAlert.alert('Hata', 'Durum güncellenirken bir sorun oluştu.');
     } finally {
       setLoading(false);
     }
@@ -190,22 +184,16 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
     if (!user) return;
     setLoading(true);
     try {
-      const updatedUser = {
-        ...user,
+      await saveUser({
         isLookingForMatch: false,
-      };
-      await saveUser(updatedUser);
+      } as any);
 
-      if (user.uid) {
-        await dbService.setUserLookingForMatch(user.uid, false);
-      }
-
-      Alert.alert('Sinyal Kapatıldı', 'Maç arama durumunuz devre dışı bırakıldı.');
+      appAlert.alert('Sinyal Kapatıldı', 'Maç arama durumunuz devre dışı bırakıldı.');
       if (onSuccess) onSuccess();
       onClose();
     } catch (e) {
       console.error('Maç arama durumu kapatma hatası:', e);
-      Alert.alert('Hata', 'Durum güncellenirken bir sorun oluştu.');
+      appAlert.alert('Hata', 'Durum güncellenirken bir sorun oluştu.');
     } finally {
       setLoading(false);
     }
@@ -214,8 +202,12 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
   const isCurrentlyActive = Boolean(user?.isLookingForMatch);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
+    <Modal visible={visible} transparent animationType="slide" onClose={onClose} onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <View style={styles.overlay}>
         <View style={styles.modalContent}>
           {/* Header */}
           <View style={styles.header}>
@@ -275,7 +267,7 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
                       <MaterialIcons 
                         name={isSelected ? "check" : "add"} 
                         size={14} 
-                        color={isSelected ? '#ffffff' : theme.textMuted} 
+                        color={isSelected ? theme.onPrimary : theme.textMuted} 
                       />
                       <Text style={[styles.dateChipText, isSelected && styles.dateChipTextActive]}>{opt.label}</Text>
                     </TouchableOpacity>
@@ -291,7 +283,7 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
                     activeOpacity={0.8}
                   >
                     <Text style={[styles.dateChipText, styles.dateChipTextActive]}>{d}</Text>
-                    <MaterialIcons name="close" size={13} color="#ffffff" style={{ marginLeft: 2 }} />
+                    <MaterialIcons name="close" size={13} color={theme.onPrimary} style={{ marginLeft: 2 }} />
                   </TouchableOpacity>
                 ))}
 
@@ -397,10 +389,10 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
                 activeOpacity={0.85}
               >
                 {loading ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
+                  <ActivityIndicator size="small" color={theme.onPrimary} />
                 ) : (
                   <>
-                    <MaterialIcons name="check-circle" size={20} color="#ffffff" />
+                    <MaterialIcons name="check-circle" size={20} color={theme.onPrimary} />
                     <Text style={styles.activateBtnText}>
                       {isCurrentlyActive ? 'GÜNCELLE' : 'YAYINI BAŞLAT (MAÇ ARIYORUM)'}
                     </Text>
@@ -581,7 +573,8 @@ export const MatchSeekingModal: React.FC<MatchSeekingModalProps> = ({
           )}
         </View>
       </View>
-    </Modal>
+    </KeyboardAvoidingView>
+  </Modal>
   );
 };
 
@@ -706,8 +699,8 @@ const useStyles = (theme: any) =>
       borderColor: theme.borderSubtle,
     },
     dateChipActive: {
-      backgroundColor: '#22c55e',
-      borderColor: '#22c55e',
+      backgroundColor: theme.primary,
+      borderColor: theme.primary,
     },
     dateChipText: {
       fontFamily: Fonts.headlineBold,
@@ -715,7 +708,7 @@ const useStyles = (theme: any) =>
       color: theme.text,
     },
     dateChipTextActive: {
-      color: '#ffffff',
+      color: theme.onPrimary,
       fontWeight: 'bold',
     },
     datePickerBtn: {
@@ -809,7 +802,7 @@ const useStyles = (theme: any) =>
       alignItems: 'center',
       justifyContent: 'center',
       gap: 8,
-      backgroundColor: '#22c55e',
+      backgroundColor: theme.primary,
       paddingVertical: 14,
       paddingHorizontal: 20,
       borderRadius: 12,
@@ -817,7 +810,7 @@ const useStyles = (theme: any) =>
     activateBtnText: {
       fontFamily: Fonts.headlineBold,
       fontSize: 13,
-      color: '#ffffff',
+      color: theme.onPrimary,
       letterSpacing: 0.3,
     },
     pickerModalOverlay: {

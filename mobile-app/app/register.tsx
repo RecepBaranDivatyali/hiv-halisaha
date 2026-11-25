@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, ImageBackground, Alert, Image } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, ImageBackground, Image, Keyboard, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
@@ -9,7 +9,8 @@ import { useImagePicker } from '@/hooks/use-image-picker';
 import { CustomInput } from '@/components/CustomInput';
 import { useTheme } from '@/context/ThemeContext';
 import { authService, getTurkishAuthErrorMessage } from '@/services/authService';
-import { dbService } from '@/services/dbService';
+import { appAlert } from '@/services/appAlert';
+import { safeBack } from '@/utils/navigation';
 
 const TURKISH_CITIES = [
   'Adana', 'Adıyaman', 'Afyonkarahisar', 'Ağrı', 'Amasya', 'Ankara', 'Antalya', 'Artvin', 'Aydın',
@@ -36,15 +37,16 @@ export default function RegisterScreen() {
     name: '',
     email: '',
     password: '',
+    passwordConfirm: '',
     city: '',
     position: '',
     level: '',
     avatar: ''
   });
-  const [errors, setErrors] = useState({ name: '', email: '', password: '', city: '', kvkk: '' });
+  const [errors, setErrors] = useState({ name: '', email: '', password: '', passwordConfirm: '', city: '', kvkk: '' });
   const [citySearch, setCitySearch] = useState('');
   const [showCityList, setShowCityList] = useState(false);
-  const [acceptedKvkk, setAcceptedKvkk] = useState(true);
+  const [acceptedKvkk, setAcceptedKvkk] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -56,35 +58,53 @@ export default function RegisterScreen() {
   );
 
   const validateStep1 = () => {
-    const newErrors = { name: '', email: '', password: '', city: '', kvkk: '' };
+    const newErrors = { name: '', email: '', password: '', passwordConfirm: '', city: '', kvkk: '' };
     let valid = true;
-    if (!formData.name.trim()) {
+    const cleanName = formData.name.trim();
+    if (!cleanName) {
       newErrors.name = 'Ad soyad zorunludur';
       valid = false;
+    } else if (cleanName.length < 2) {
+      newErrors.name = 'Ad soyad en az 2 karakter olmalıdır';
+      valid = false;
     }
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!formData.email.trim()) {
+    const cleanEmail = formData.email.trim();
+    if (!cleanEmail) {
       newErrors.email = 'E-posta zorunludur';
       valid = false;
-    } else if (!emailRegex.test(formData.email.trim())) {
-      newErrors.email = 'Geçerli bir e-posta girin';
+    } else if (!emailRegex.test(cleanEmail)) {
+      newErrors.email = 'Geçerli bir e-posta adresi girin';
       valid = false;
     }
-    if (!formData.password.trim()) {
+
+    if (!formData.password) {
       newErrors.password = 'Şifre zorunludur';
       valid = false;
     } else if (formData.password.length < 6) {
-      newErrors.password = 'Şifre en az 6 karakter olmalı';
+      newErrors.password = 'Şifre en az 6 karakter olmalıdır';
       valid = false;
     }
+
+    if (!formData.passwordConfirm) {
+      newErrors.passwordConfirm = 'Şifre onayı zorunludur';
+      valid = false;
+    } else if (formData.password !== formData.passwordConfirm) {
+      newErrors.passwordConfirm = 'Şifreler birbiriyle eşleşmiyor';
+      valid = false;
+    }
+
     if (!formData.city.trim()) {
       newErrors.city = 'Şehir seçimi zorunludur';
       valid = false;
     }
+
     if (!acceptedKvkk) {
-      newErrors.kvkk = 'Kullanım koşullarını kabul etmelisiniz';
+      newErrors.kvkk = 'Lütfen kullanıcı sözleşmesi ve KVKK metnini onaylayın';
       valid = false;
     }
+
     setErrors(newErrors);
     return valid;
   };
@@ -95,41 +115,41 @@ export default function RegisterScreen() {
       setStep(2);
     } else if (step === 2) {
       if (!formData.position) {
-        Alert.alert('Pozisyon Seçin', 'Lütfen bir pozisyon seçin.');
+        appAlert.alert('Pozisyon Seçin', 'Lütfen bir pozisyon seçin.');
         return;
       }
       setStep(3);
     } else {
       if (!formData.level) {
-        Alert.alert('Seviye Seçin', 'Lütfen oyun seviyenizi seçin.');
+        appAlert.alert('Seviye Seçin', 'Lütfen oyun seviyenizi seçin.');
         return;
       }
       if (isLoading) return;
       setIsLoading(true);
       setSubmitError(null);
       try {
-        const cleanEmail = formData.email.trim();
-        // 1. Firebase Auth ile kullanıcı oluştur
-        const user = await authService.register(cleanEmail, formData.password);
+        const cleanEmail = formData.email.trim().toLowerCase();
+        // 1. Firebase Auth ve Firestore profilini atomik ve rollback güvencesiyle oluştur
+        const user = await authService.registerAndCreateProfile(cleanEmail, formData.password, {
+          name: formData.name.trim(),
+          city: formData.city,
+          position: formData.position,
+          level: formData.level,
+          ...(formData.avatar ? { avatar: formData.avatar } : {})
+        });
         
         if (user) {
-          // 2. Firestore'a kullanıcı detaylarını kaydet
-          await dbService.createUserProfile(user.uid, {
-            name: formData.name.trim(),
-            email: cleanEmail,
-            city: formData.city,
-            position: formData.position,
-            level: formData.level,
-            ...(formData.avatar ? { avatar: formData.avatar } : {})
-          });
-
-          // 3. Lokal oturum state'ini güncelle
+          // 2. Lokal oturum state'ini eksiksiz güncelle
           await saveUser({
+            uid: user.uid,
             name: formData.name.trim(),
             email: cleanEmail,
             city: formData.city,
             position: formData.position,
             level: formData.level,
+            role: 'user',
+            isBanned: false,
+            rating: 5.0,
             ...(formData.avatar ? { avatar: formData.avatar } : {}),
             isLoggedIn: true
           });
@@ -140,11 +160,7 @@ export default function RegisterScreen() {
         console.error('Kayıt Hatası Detayı:', error);
         const errorMsg = getTurkishAuthErrorMessage(error);
         setSubmitError(errorMsg);
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-          window.alert('Kayıt Hatası: ' + errorMsg);
-        } else {
-          Alert.alert('Kayıt Hatası', errorMsg);
-        }
+        appAlert.alert('Kayıt Hatası', errorMsg);
       } finally {
         setIsLoading(false);
       }
@@ -166,7 +182,7 @@ export default function RegisterScreen() {
           <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
             {/* Header */}
             <View style={styles.header}>
-              <TouchableOpacity onPress={() => step > 1 ? setStep(step - 1) : router.back()} accessibilityLabel="Geri" accessibilityRole="button">
+              <TouchableOpacity onPress={() => step > 1 ? setStep(step - 1) : safeBack(router, '/login')} accessibilityLabel="Geri" accessibilityRole="button">
                 <MaterialIcons name="arrow-back" size={24} color={theme.text} />
               </TouchableOpacity>
               <View style={styles.stepIndicator}>
@@ -225,32 +241,60 @@ export default function RegisterScreen() {
                   icon="person"
                   placeholder="Ad Soyad"
                   value={formData.name}
-                  onChangeText={(val) => setFormData({...formData, name: val})}
+                  onChangeText={(val) => {
+                    setFormData({...formData, name: val});
+                    if (errors.name) setErrors({...errors, name: ''});
+                  }}
+                  autoCorrect={false}
                   error={errors.name}
                 />
                 <CustomInput
                   icon="email"
                   placeholder="E-posta"
                   value={formData.email}
-                  onChangeText={(val) => setFormData({...formData, email: val})}
+                  onChangeText={(val) => {
+                    setFormData({...formData, email: val});
+                    if (errors.email) setErrors({...errors, email: ''});
+                  }}
                   autoCapitalize="none"
+                  autoCorrect={false}
                   keyboardType="email-address"
+                  textContentType="emailAddress"
                   error={errors.email}
                 />
                 <CustomInput
                   icon="lock"
-                  placeholder="Şifre"
+                  placeholder="Şifre (En az 6 karakter)"
                   value={formData.password}
-                  onChangeText={(val) => setFormData({...formData, password: val})}
+                  onChangeText={(val) => {
+                    setFormData({...formData, password: val});
+                    if (errors.password) setErrors({...errors, password: ''});
+                  }}
                   secureTextEntry
                   isPassword
+                  textContentType="newPassword"
                   error={errors.password}
+                />
+                <CustomInput
+                  icon="lock-outline"
+                  placeholder="Şifre Tekrar"
+                  value={formData.passwordConfirm}
+                  onChangeText={(val) => {
+                    setFormData({...formData, passwordConfirm: val});
+                    if (errors.passwordConfirm) setErrors({...errors, passwordConfirm: ''});
+                  }}
+                  secureTextEntry
+                  isPassword
+                  textContentType="newPassword"
+                  error={errors.passwordConfirm}
                 />
 
                 <View>
                   <TouchableOpacity
                     style={[styles.inputContainer, errors.city ? styles.inputError : null]}
                     onPress={() => { setShowCityList(!showCityList); setCitySearch(''); }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Şehir Seçimi"
                   >
                     <MaterialIcons name="location-on" size={18} color={errors.city ? theme.error : theme.textMuted} style={styles.inputIcon} />
                     <Text style={[styles.input, { color: formData.city ? theme.text : theme.textMuted }]}>
@@ -270,43 +314,68 @@ export default function RegisterScreen() {
                           style={styles.citySearchInput}
                           value={citySearch}
                           onChangeText={setCitySearch}
+                          autoCorrect={false}
                           autoFocus
                         />
                       </View>
-                      <ScrollView style={{ maxHeight: 160 }} nestedScrollEnabled>
-                        {filteredCities.map((city) => (
-                          <TouchableOpacity
-                            key={city}
-                            style={styles.cityItem}
-                            onPress={() => {
-                              setFormData({...formData, city});
-                              setShowCityList(false);
-                              setErrors({...errors, city: ''});
-                            }}
-                          >
-                            <Text style={styles.cityItemText}>{city}</Text>
-                          </TouchableOpacity>
-                        ))}
+                      <ScrollView style={{ maxHeight: 160 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                        {filteredCities.length === 0 ? (
+                          <View style={styles.cityItem}>
+                            <Text style={[styles.cityItemText, { color: theme.textMuted }]}>
+                              Aramanızla eşleşen şehir bulunamadı.
+                            </Text>
+                          </View>
+                        ) : (
+                          filteredCities.map((city) => (
+                            <TouchableOpacity
+                              key={city}
+                              style={styles.cityItem}
+                              onPress={() => {
+                                setFormData({...formData, city});
+                                setShowCityList(false);
+                                setErrors({...errors, city: ''});
+                                Keyboard.dismiss();
+                              }}
+                            >
+                              <Text style={styles.cityItemText}>{city}</Text>
+                            </TouchableOpacity>
+                          ))
+                        )}
                       </ScrollView>
                     </View>
                   )}
                 </View>
 
-                {/* KVKK Checkbox */}
-                <TouchableOpacity 
-                  style={styles.kvkkRow} 
-                  activeOpacity={0.8}
-                  onPress={() => setAcceptedKvkk(!acceptedKvkk)}
-                >
-                  <MaterialIcons 
-                    name={acceptedKvkk ? 'check-box' : 'check-box-outline-blank'} 
-                    size={20} 
-                    color={acceptedKvkk ? theme.primary : theme.textMuted} 
-                  />
+                {/* KVKK Checkbox & Privacy Policy Link (Google Play & Huawei Store Compliance) */}
+                <View style={styles.kvkkContainer}>
+                  <TouchableOpacity 
+                    style={styles.kvkkCheckbox} 
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      const nextVal = !acceptedKvkk;
+                      setAcceptedKvkk(nextVal);
+                      if (nextVal && errors.kvkk) setErrors({ ...errors, kvkk: '' });
+                    }}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: acceptedKvkk }}
+                    accessibilityLabel="Kullanım Koşulları Onayı"
+                  >
+                    <MaterialIcons 
+                      name={acceptedKvkk ? 'check-box' : 'check-box-outline-blank'} 
+                      size={22} 
+                      color={acceptedKvkk ? theme.primary : theme.textMuted} 
+                    />
+                  </TouchableOpacity>
                   <Text style={styles.kvkkText}>
-                    Kullanıcı Sözleşmesi ve KVKK Aydınlatma Metnini okudum, onaylıyorum.
+                    <Text 
+                      onPress={() => router.push('/privacy' as any)}
+                      style={[styles.kvkkLink, { color: theme.primary }]}
+                    >
+                      Kullanıcı Sözleşmesi ve KVKK Aydınlatma Metni
+                    </Text>
+                    &apos;ni okudum, kabul ediyorum.
                   </Text>
-                </TouchableOpacity>
+                </View>
                 {errors.kvkk ? <Text style={styles.errorText}>{errors.kvkk}</Text> : null}
               </View>
             )}
@@ -318,6 +387,7 @@ export default function RegisterScreen() {
                     key={pos}
                     style={[styles.levelCard, formData.position === pos && styles.levelCardActive]}
                     onPress={() => setFormData({...formData, position: pos})}
+                    activeOpacity={0.85}
                   >
                     <View style={styles.levelHeader}>
                       <Text style={[styles.levelTitle, formData.position === pos && styles.levelTitleActive]}>{pos}</Text>
@@ -335,6 +405,7 @@ export default function RegisterScreen() {
                     key={lvl}
                     style={[styles.levelCard, formData.level === lvl && styles.levelCardActive]}
                     onPress={() => setFormData({...formData, level: lvl})}
+                    activeOpacity={0.85}
                   >
                     <View style={styles.levelHeader}>
                       <Text style={[styles.levelTitle, formData.level === lvl && styles.levelTitleActive]}>{lvl}</Text>
@@ -346,28 +417,36 @@ export default function RegisterScreen() {
             )}
 
             {submitError && (
-              <View style={{ backgroundColor: 'rgba(255, 75, 75, 0.15)', borderWidth: 1, borderColor: theme.error, borderRadius: 12, padding: 12, marginVertical: 12 }}>
-                <Text style={{ color: theme.error, fontFamily: Fonts.body, fontSize: 13, textAlign: 'center' }}>
+              <View style={styles.errorBanner}>
+                <MaterialIcons name="error-outline" size={18} color={theme.error} style={{ marginRight: 6 }} />
+                <Text style={styles.errorBannerText}>
                   {submitError}
                 </Text>
               </View>
             )}
 
             <TouchableOpacity 
-              style={[styles.nextBtn, isLoading && { opacity: 0.6 }]} 
+              style={[styles.nextBtn, isLoading && { opacity: 0.7 }]} 
               onPress={handleNext}
               disabled={isLoading}
-              activeOpacity={0.9}
+              activeOpacity={0.88}
+              accessibilityRole="button"
+              accessibilityLabel={step < 3 ? 'Devam Et' : 'Kaydı Tamamla'}
             >
+              {isLoading ? (
+                <ActivityIndicator size="small" color={theme.onPrimary} style={{ marginRight: 6 }} />
+              ) : null}
               <Text style={{ fontFamily: Fonts.headlineBold, color: theme.onPrimary, fontSize: 15 }}>
                 {isLoading ? 'KAYDEDİLİYOR...' : step < 3 ? 'DEVAM ET' : 'KAYDI TAMAMLA'}
               </Text>
-              <MaterialIcons name={step === 3 ? "done" : "arrow-forward"} size={20} color={theme.onPrimary} />
+              {!isLoading && (
+                <MaterialIcons name={step === 3 ? "done" : "arrow-forward"} size={20} color={theme.onPrimary} />
+              )}
             </TouchableOpacity>
 
             <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 32 }}>
               <Text style={{ color: theme.textMuted, fontFamily: Fonts.body }}>Zaten üye misiniz? </Text>
-              <TouchableOpacity onPress={() => router.push('/login')}>
+              <TouchableOpacity onPress={() => router.push('/login')} disabled={isLoading}>
                 <Text style={{ color: theme.primary, fontFamily: Fonts.headlineBold }}>Giriş Yap</Text>
               </TouchableOpacity>
             </View>
@@ -418,8 +497,27 @@ const useStyles = (theme: any) => StyleSheet.create({
   cityItem: { paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: theme.borderSubtle },
   cityItemText: { fontFamily: Fonts.body, fontSize: 14, color: theme.text },
 
-  kvkkRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  kvkkText: { flex: 1, fontFamily: Fonts.body, fontSize: 12, color: theme.textMuted, lineHeight: 16 },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: `${theme.error}15`,
+    borderWidth: 1,
+    borderColor: `${theme.error}40`,
+    borderRadius: 12,
+    padding: 12,
+    marginVertical: 12,
+  },
+  errorBannerText: {
+    flex: 1,
+    color: theme.error,
+    fontFamily: Fonts.body,
+    fontSize: 13,
+  },
+
+  kvkkContainer: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 6 },
+  kvkkCheckbox: { marginRight: 8, marginTop: 1 },
+  kvkkText: { flex: 1, fontFamily: Fonts.body, fontSize: 12, color: theme.textMuted, lineHeight: 18 },
+  kvkkLink: { fontFamily: Fonts.bodySemiBold, textDecorationLine: 'underline' },
 
   nextBtn: {
     backgroundColor: theme.primary,

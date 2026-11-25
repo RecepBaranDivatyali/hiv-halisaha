@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Image, Alert, TextInput } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Image, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
@@ -11,6 +11,25 @@ import { useImagePicker } from '@/hooks/use-image-picker';
 import { ToastMessage, ToastNotification } from '@/components/ToastNotification';
 import { CustomInput } from '@/components/CustomInput';
 import { AppModal } from '@/components/AppModal';
+import { db } from '@/services/firebaseConfig';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { appAlert } from '@/services/appAlert';
+import { safeBack } from '@/utils/navigation';
+
+const normalizeTr = (s: string) => s.toLocaleLowerCase('tr-TR').replace(/\u0307/g, '');
+
+const TURKISH_CITIES = [
+  'Adana', 'Adıyaman', 'Afyonkarahisar', 'Ağrı', 'Amasya', 'Ankara', 'Antalya', 'Artvin', 'Aydın',
+  'Balıkesir', 'Bilecik', 'Bingöl', 'Bitlis', 'Bolu', 'Burdur', 'Bursa', 'Çanakkale', 'Çankırı',
+  'Çorum', 'Denizli', 'Diyarbakır', 'Edirne', 'Elazığ', 'Erzincan', 'Erzurum', 'Eskişehir',
+  'Gaziantep', 'Giresun', 'Gümüşhane', 'Hakkari', 'Hatay', 'Isparta', 'Mersin', 'İstanbul',
+  'İzmir', 'Kars', 'Kastamonu', 'Kayseri', 'Kırklareli', 'Kırşehir', 'Kocaeli', 'Konya',
+  'Kütahya', 'Malatya', 'Manisa', 'Kahramanmaraş', 'Mardin', 'Muğla', 'Muş', 'Nevşehir',
+  'Niğde', 'Ordu', 'Rize', 'Sakarya', 'Samsun', 'Siirt', 'Sinop', 'Sivas', 'Tekirdağ',
+  'Tokat', 'Trabzon', 'Tunceli', 'Şanlıurfa', 'Uşak', 'Van', 'Yozgat', 'Zonguldak',
+  'Aksaray', 'Bayburt', 'Karaman', 'Kırıkkale', 'Batman', 'Şırnak', 'Bartın', 'Ardahan',
+  'Iğdır', 'Yalova', 'Karabük', 'Kilis', 'Osmaniye', 'Düzce',
+];
 
 const TURKISH_BANKS = [
   'Ziraat Bankası',
@@ -66,7 +85,14 @@ export default function EditProfileScreen() {
 
   const [name, setName] = useState(user?.name || '');
   const [position, setPosition] = useState(user?.position || 'Orta Saha');
-  const [city, setCity] = useState(user?.city || 'İSTANBUL');
+  const [city, setCity] = useState(() => {
+    const raw = (user?.city || 'İstanbul').trim();
+    const norm = normalizeTr(raw);
+    const matched = TURKISH_CITIES.find(c => normalizeTr(c) === norm);
+    return matched || raw;
+  });
+  const [cityModalVisible, setCityModalVisible] = useState(false);
+  const [citySearch, setCitySearch] = useState('');
   const [bio, setBio] = useState(user?.bio || 'Futbol tutkunu, takım oyuncusu.');
   const [avatar, setAvatar] = useState(user?.avatar || '');
   const [iban, setIban] = useState(formatTurkishIban(user?.iban || ''));
@@ -84,28 +110,43 @@ export default function EditProfileScreen() {
   }, []);
 
   const handlePickAvatar = async () => {
-    const uri = await promptPicker();
-    if (uri) {
-      setAvatar(uri);
+    try {
+      const uri = await promptPicker();
+      if (uri) {
+        setAvatar(uri);
+      }
+    } catch {
+      appAlert.alert('Hata', 'Fotoğraf seçilirken bir sorun oluştu.');
     }
   };
 
   const handleSave = async () => {
+    if (saving) return;
+    const trimmedName = name.trim();
+    const trimmedCity = city.trim() || 'İstanbul';
+    const trimmedBio = bio.trim();
+    const trimmedIbanName = ibanName.trim();
+    const trimmedBankName = bankName.trim();
+
+    if (!trimmedName) {
+      appAlert.alert('İsim Gerekli', 'Lütfen ad ve soyadınızı girin.');
+      return;
+    }
     const cleanIban = iban.trim();
     if (cleanIban) {
       if (!isValidTurkishIban(cleanIban)) {
-        Alert.alert(
+        appAlert.alert(
           'Geçersiz IBAN',
           'IBAN "TR" ile başlamalı ve toplam 26 karakter (TR + 24 rakam) olmalıdır.\nÖrn: TR00 0000 0000 0000 0000 0000 00'
         );
         return;
       }
-      if (!bankName.trim()) {
-        Alert.alert('Banka Seçimi Gerekli', 'Lütfen IBAN hesabınızın ait olduğu bankayı listeden seçin.');
+      if (!trimmedBankName) {
+        appAlert.alert('Banka Seçimi Gerekli', 'Lütfen IBAN hesabınızın ait olduğu bankayı listeden seçin.');
         return;
       }
-      if (!ibanName.trim()) {
-        Alert.alert('Hesap Sahibi Gerekli', 'Lütfen IBAN hesabının ait olduğu ad ve soyadı girin.');
+      if (!trimmedIbanName) {
+        appAlert.alert('Hesap Sahibi Gerekli', 'Lütfen IBAN hesabının ait olduğu ad ve soyadı girin.');
         return;
       }
     }
@@ -113,15 +154,52 @@ export default function EditProfileScreen() {
     setSaving(true);
     try {
       await saveUser({
-        name,
+        name: trimmedName,
         position,
-        city,
-        bio,
+        city: trimmedCity,
+        bio: trimmedBio,
         avatar,
         iban: cleanIban,
-        ibanName,
-        bankName,
+        ibanName: trimmedIbanName,
+        bankName: trimmedBankName,
       });
+
+      // Eğer kullanıcının adı veya IBAN bilgisi değişmişse ve kullanıcı bir kulübün kaptanıysa kulüpteki captainName bilgisini de senkronize et
+      const effectiveUid = user?.uid;
+      const targetClubId = user?.clubId;
+      const hasNameChanged = trimmedName !== (user?.name || '');
+      const hasIbanChanged = cleanIban !== (user?.iban || '') || trimmedIbanName !== (user?.ibanName || '');
+
+      if (targetClubId && effectiveUid && (hasNameChanged || hasIbanChanged)) {
+        try {
+          const clubDocRef = doc(db, 'clubs', targetClubId);
+          const clubSnap = await getDoc(clubDocRef);
+          if (clubSnap.exists()) {
+            const clubData = clubSnap.data();
+            const isCap = clubData.captainId === effectiveUid || clubData.captainName === user?.name;
+            if (isCap) {
+              const clubUpdates: any = {};
+              if (hasNameChanged && trimmedName) {
+                clubUpdates.captainName = trimmedName;
+              }
+              if (cleanIban) {
+                clubUpdates.captainIban = cleanIban;
+              }
+              if (trimmedIbanName) {
+                clubUpdates.captainIbanName = trimmedIbanName;
+              }
+              if (trimmedBankName) {
+                clubUpdates.captainBankName = trimmedBankName;
+              }
+              if (Object.keys(clubUpdates).length > 0) {
+                await updateDoc(clubDocRef, clubUpdates);
+              }
+            }
+          }
+        } catch (syncErr) {
+          console.warn('Kulüp kaptan bilgisi senkronizasyon hatası:', syncErr);
+        }
+      }
 
       setToast({
         id: Date.now().toString(),
@@ -130,11 +208,11 @@ export default function EditProfileScreen() {
         message: 'Profil bilgileriniz kaydedildi.',
       });
       timeoutRef.current = setTimeout(() => {
-        router.back();
+        safeBack(router, '/(tabs)/profile');
       }, 1000);
     } catch (e) {
       console.log('Profil kaydetme hatası:', e);
-      Alert.alert('Hata', 'Profil güncellenirken bir sorun oluştu.');
+      appAlert.alert('Hata', 'Profil güncellenirken bir sorun oluştu. Lütfen bağlantınızı kontrol edip tekrar deneyin.');
     } finally {
       setSaving(false);
     }
@@ -146,13 +224,17 @@ export default function EditProfileScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} accessibilityLabel="Geri" accessibilityRole="button">
+        <TouchableOpacity style={styles.backBtn} onPress={() => safeBack(router, '/(tabs)/profile')} accessibilityLabel="Geri" accessibilityRole="button">
           <MaterialIcons name="arrow-back" size={24} color={theme.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Profili Düzenle</Text>
         <View style={{ width: 40 }} />
       </View>
 
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+      >
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* Avatar Section */}
         <View style={styles.avatarSection}>
@@ -180,22 +262,84 @@ export default function EditProfileScreen() {
 
         <View style={styles.formGroup}>
           <Text style={styles.label}>MEVKİ</Text>
-          <CustomInput
-            icon="sports-soccer"
-            value={position}
-            onChangeText={setPosition}
-            placeholder="Mevkiniz (Örn: Forvet, Kaleci)"
-          />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {['Kaleci', 'Defans', 'Orta Saha', 'Forvet'].map((pos) => {
+              const isSelected = normalizeTr(position) === normalizeTr(pos);
+              return (
+                <TouchableOpacity
+                  key={pos}
+                  onPress={() => setPosition(pos)}
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    borderRadius: 10,
+                    backgroundColor: isSelected ? theme.primary : theme.surfaceContainerHigh,
+                    borderWidth: 1,
+                    borderColor: isSelected ? theme.primary : theme.border,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: Fonts.headlineBold,
+                      fontSize: 12,
+                      color: isSelected ? theme.onPrimary : theme.text,
+                    }}
+                  >
+                    {pos}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
 
         <View style={styles.formGroup}>
           <Text style={styles.label}>ŞEHİR</Text>
-          <CustomInput
-            icon="location-on"
-            value={city}
-            onChangeText={setCity}
-            placeholder="Bulunduğunuz Şehir"
-          />
+          <TouchableOpacity
+            style={styles.selectorBtn}
+            onPress={() => {
+              setCitySearch('');
+              setCityModalVisible(true);
+            }}
+            activeOpacity={0.8}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+              <MaterialIcons name="location-city" size={20} color={city ? theme.primary : theme.textMuted} />
+              <Text style={[styles.selectorBtnText, !city && { color: theme.textMuted }]} numberOfLines={1}>
+                {city || 'Şehir Seçiniz (81 İl)...'}
+              </Text>
+            </View>
+            <MaterialIcons name="arrow-drop-down" size={24} color={theme.textMuted} />
+          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+            {['İstanbul', 'Ankara', 'İzmir', 'Bursa', 'Antalya'].map((c) => {
+              const isSelected = normalizeTr(city) === normalizeTr(c);
+              return (
+                <TouchableOpacity
+                  key={c}
+                  onPress={() => setCity(c)}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 7,
+                    borderRadius: 8,
+                    backgroundColor: isSelected ? theme.primary : theme.surfaceContainerHigh,
+                    borderWidth: 1,
+                    borderColor: isSelected ? theme.primary : theme.border,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: Fonts.headlineBold,
+                      fontSize: 11,
+                      color: isSelected ? theme.onPrimary : theme.text,
+                    }}
+                  >
+                    {c}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
 
         <View style={styles.formGroup}>
@@ -276,10 +420,81 @@ export default function EditProfileScreen() {
           <Text style={styles.saveBtnText}>{saving ? 'KAYDEDİLİYOR...' : 'KAYDET'}</Text>
         </Bouncable>
       </View>
+      </KeyboardAvoidingView>
+
+      {/* Şehir Seçim Modalı */}
+      <AppModal
+        visible={cityModalVisible}
+        onClose={() => setCityModalVisible(false)}
+        onRequestClose={() => setCityModalVisible(false)}
+        animationType="slide"
+        transparent
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <MaterialIcons name="location-city" size={22} color={theme.primary} />
+                <Text style={styles.modalTitle}>ŞEHİR SEÇİNİZ (81 İL)</Text>
+              </View>
+              <TouchableOpacity onPress={() => setCityModalVisible(false)} style={styles.closeBtn}>
+                <MaterialIcons name="close" size={22} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.searchWrap}>
+              <MaterialIcons name="search" size={20} color={theme.textMuted} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Şehir ara..."
+                placeholderTextColor={theme.textMuted}
+                value={citySearch}
+                onChangeText={setCitySearch}
+              />
+              {Boolean(citySearch) && (
+                <TouchableOpacity onPress={() => setCitySearch('')}>
+                  <MaterialIcons name="close" size={18} color={theme.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <ScrollView style={{ maxHeight: 350 }} showsVerticalScrollIndicator={false}>
+              {TURKISH_CITIES
+                .filter(c => normalizeTr(c).includes(normalizeTr(citySearch.trim())))
+                .map((c) => {
+                  const isSelected = normalizeTr(city) === normalizeTr(c);
+                  return (
+                    <TouchableOpacity
+                      key={c}
+                      style={[styles.bankItem, isSelected && styles.bankItemActive]}
+                      onPress={() => {
+                        setCity(c);
+                        setCityModalVisible(false);
+                      }}
+                    >
+                      <MaterialIcons
+                        name="location-on"
+                        size={18}
+                        color={isSelected ? theme.primary : theme.textMuted}
+                      />
+                      <Text style={[styles.bankItemText, isSelected && { color: theme.primary, fontFamily: Fonts.headlineBold }]}>
+                        {c}
+                      </Text>
+                      {isSelected && (
+                        <MaterialIcons name="check" size={20} color={theme.primary} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+            </ScrollView>
+          </View>
+        </View>
+      </AppModal>
 
       {/* Banka Seçim Modalı */}
       <AppModal
         visible={bankModalVisible}
+        onClose={() => setBankModalVisible(false)}
         onRequestClose={() => setBankModalVisible(false)}
         animationType="slide"
         transparent
@@ -314,7 +529,7 @@ export default function EditProfileScreen() {
 
             <ScrollView style={{ maxHeight: 350 }} showsVerticalScrollIndicator={false}>
               {TURKISH_BANKS
-                .filter(b => b.toLowerCase().includes(bankSearch.toLowerCase().trim()))
+                .filter(b => normalizeTr(b).includes(normalizeTr(bankSearch.trim())))
                 .map((bank) => {
                   const isSelected = bankName === bank;
                   return (

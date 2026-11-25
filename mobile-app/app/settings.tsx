@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Switch, Alert, Platform } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Switch, Alert, Platform, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Fonts, THEMES, ThemeType } from '@/constants/theme';
 import { Bouncable } from '@/components/Bouncable';
+import { AppModal } from '@/components/AppModal';
+import { CustomInput } from '@/components/CustomInput';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/use-auth';
 import { usePwaInstall } from '@/hooks/use-pwa-install';
 import { authService, getTurkishAuthErrorMessage } from '@/services/authService';
+import { appAlert } from '@/services/appAlert';
+import { safeBack } from '@/utils/navigation';
 import Constants from 'expo-constants';
 
 const NOTIFS_STORAGE_KEY = '@hiv_notifications_enabled';
@@ -21,6 +25,11 @@ export default function SettingsScreen() {
   const { isInstalled, promptInstall } = usePwaInstall();
   const styles = useStyles(theme);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [reauthModalVisible, setReauthModalVisible] = useState(false);
+  const [reauthPassword, setReauthPassword] = useState('');
+  const [reauthError, setReauthError] = useState('');
 
   useEffect(() => {
     AsyncStorage.getItem(NOTIFS_STORAGE_KEY).then((val) => {
@@ -38,44 +47,62 @@ export default function SettingsScreen() {
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      "Çıkış Yap",
-      "Hesabınızdan çıkış yapmak istediğinize emin misiniz?",
-      [
-        { text: "İptal", style: "cancel" },
-        { 
-          text: "Çıkış Yap", 
-          style: "destructive",
-          onPress: async () => {
-            await logout();
-            router.replace('/login');
-          }
+    if (isLoggingOut) return;
+    appAlert.confirm(
+      'Çıkış Yap',
+      'Hesabınızdan çıkış yapmak istediğinize emin misiniz?',
+      async () => {
+        if (isLoggingOut) return;
+        setIsLoggingOut(true);
+        try {
+          await logout();
+          router.replace('/login');
+        } finally {
+          setIsLoggingOut(false);
         }
-      ]
+      },
+      { confirmText: 'Çıkış Yap', cancelText: 'İptal', destructive: true }
     );
   };
 
+  const executeDeleteAccount = async (password?: string) => {
+    if (isDeleting) return;
+    setIsDeleting(true);
+    setReauthError('');
+    try {
+      await authService.deleteUserAccount(password);
+      setReauthModalVisible(false);
+      setReauthPassword('');
+      await logout();
+      appAlert.alert('Hesap Silindi', 'Hesabınız başarıyla silinmiştir.', [
+        { text: 'Tamam', onPress: () => router.replace('/login') },
+      ]);
+      router.replace('/login');
+    } catch (err: any) {
+      if (err?.code === 'auth/requires-recent-login') {
+        setReauthPassword('');
+        setReauthError('');
+        setReauthModalVisible(true);
+        return;
+      }
+      const errMsg = getTurkishAuthErrorMessage(err);
+      if (reauthModalVisible) {
+        setReauthError(errMsg);
+      } else {
+        appAlert.alert('Hata', errMsg);
+      }
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const handleDeleteAccount = () => {
-    Alert.alert(
-      "Hesabı Sil",
-      "Hesabınızı kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz ve tüm maç verileriniz silinir.",
-      [
-        { text: "Vazgeç", style: "cancel" },
-        { 
-          text: "Evet, Hesabımı Sil", 
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await authService.deleteUserAccount();
-              await logout();
-              Alert.alert("Hesap Silindi", "Hesabınız başarıyla silinmiştir.");
-              router.replace('/login');
-            } catch (err: any) {
-              Alert.alert("Hata", getTurkishAuthErrorMessage(err));
-            }
-          }
-        }
-      ]
+    if (isDeleting) return;
+    appAlert.confirm(
+      'Hesabı Sil',
+      'Hesabınızı kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz ve tüm maç verileriniz silinir.',
+      () => executeDeleteAccount(),
+      { confirmText: 'Evet, Hesabımı Sil', cancelText: 'Vazgeç', destructive: true }
     );
   };
 
@@ -99,7 +126,7 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} accessibilityLabel="Geri" accessibilityRole="button">
+        <TouchableOpacity style={styles.backBtn} onPress={() => safeBack(router, '/(tabs)/profile')} accessibilityLabel="Geri" accessibilityRole="button">
           <MaterialIcons name="arrow-back" size={24} color={theme.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>AYARLAR</Text>
@@ -119,14 +146,14 @@ export default function SettingsScreen() {
                 'Lütfen yeni şifrenizi girin (en az 6 karakter):',
                 async (newPass) => {
                   if (!newPass || newPass.length < 6) {
-                    Alert.alert('Geçersiz Şifre', 'Şifre en az 6 karakter olmalıdır.');
+                    appAlert.alert('Geçersiz Şifre', 'Şifre en az 6 karakter olmalıdır.');
                     return;
                   }
                   try {
                     await authService.changePassword(newPass);
-                    Alert.alert('Başarılı', 'Şifreniz başarıyla güncellendi.');
+                    appAlert.alert('Başarılı', 'Şifreniz başarıyla güncellendi.');
                   } catch (err: any) {
-                    Alert.alert('Hata', getTurkishAuthErrorMessage(err));
+                    appAlert.alert('Hata', getTurkishAuthErrorMessage(err));
                   }
                 },
                 'secure-text'
@@ -154,56 +181,120 @@ export default function SettingsScreen() {
         </View>
 
         <Text style={styles.sectionTitle}>TEMA</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8, paddingHorizontal: 16, marginHorizontal: -16 }}>
-          <View style={{ flexDirection: 'row', gap: 12, paddingRight: 32 }}>
-            {themeOptions.map((t) => (
-              <TouchableOpacity 
-                key={t}
-                style={[styles.themeOption, currentTheme === t && styles.themeOptionActive]}
-                onPress={() => setTheme(t)}
-              >
-                <View style={[styles.themePreview, { backgroundColor: THEMES[t].background }]}>
-                  <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: THEMES[t].primary }} />
-                </View>
-                <Text style={[styles.themeName, currentTheme === t && { color: theme.primary }]}>
-                  {t.replace('-', ' ').toUpperCase()}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ marginTop: 8, marginHorizontal: -16 }}
+          contentContainerStyle={{ flexDirection: 'row', gap: 12, paddingHorizontal: 16 }}
+        >
+          {themeOptions.map((t) => (
+            <TouchableOpacity 
+              key={t}
+              style={[styles.themeOption, currentTheme === t && styles.themeOptionActive]}
+              onPress={() => setTheme(t)}
+            >
+              <View style={[styles.themePreview, { backgroundColor: THEMES[t].background }]}>
+                <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: THEMES[t].primary }} />
+              </View>
+              <Text style={[styles.themeName, currentTheme === t && { color: theme.primary }]}>
+                {t.replace('-', ' ').toUpperCase()}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </ScrollView>
 
-        <Text style={styles.sectionTitle}>UYGULAMA</Text>
-        <View style={styles.sectionCard}>
-          {renderSettingRow(
-            isInstalled ? 'check-circle' : 'get-app',
-            isInstalled ? 'Uygulama Yüklendi' : 'Uygulamayı Cihaza Yükle',
-            isInstalled ? 'Cihazınızda bağımsız uygulama olarak yüklü' : 'Ana ekrana ekleyip tam ekran deneyimi yaşayın',
-            !isInstalled ? () => promptInstall() : undefined
-          )}
-        </View>
+        {Platform.OS === 'web' && (
+          <>
+            <Text style={styles.sectionTitle}>UYGULAMA</Text>
+            <View style={styles.sectionCard}>
+              {renderSettingRow(
+                isInstalled ? 'check-circle' : 'get-app',
+                isInstalled ? 'Uygulama Yüklendi' : 'Uygulamayı Cihaza Yükle',
+                isInstalled ? 'Cihazınızda bağımsız uygulama olarak yüklü' : 'Ana ekrana ekleyip tam ekran deneyimi yaşayın',
+                !isInstalled ? () => promptInstall() : undefined
+              )}
+            </View>
+          </>
+        )}
 
         <Text style={styles.sectionTitle}>DİĞER</Text>
         <View style={styles.sectionCard}>
-          {renderSettingRow('privacy-tip', 'Gizlilik Politikası', '', () => Alert.alert('Gizlilik Politikası', 'Kullanıcı verileriniz KVKK standartlarına uygun olarak korunmaktadır.'))}
+          {renderSettingRow('privacy-tip', 'Gizlilik Politikası', '', () => router.push('/privacy' as any))}
           <View style={styles.divider} />
-          {renderSettingRow('description', 'Kullanım Koşulları', '', () => Alert.alert('Kullanım Koşulları', 'H.İ.V. halısaha topluluk kuralları ve fair-play prensipleri geçerlidir.'))}
+          {renderSettingRow('description', 'Kullanım Koşulları', '', () => appAlert.alert('Kullanım Koşulları', 'H.İ.V. halısaha topluluk kuralları ve fair-play prensipleri geçerlidir.'))}
           <View style={styles.divider} />
-          {renderSettingRow('help-outline', 'Yardım ve Destek', '', () => Alert.alert('Yardım ve Destek', 'Destek için: destek@hivhalisaha.com'))}
+          {renderSettingRow(
+            'help-outline', 
+            'Yardım ve Destek', 
+            'barandivatyali@gmail.com', 
+            () => {
+              Linking.openURL('mailto:barandivatyali@gmail.com').catch(() => {
+                appAlert.alert('Yardım ve Destek', 'Destek ve geri bildirim için: barandivatyali@gmail.com');
+              });
+            }
+          )}
         </View>
 
-        <Bouncable style={styles.logoutBtn} onPress={handleLogout}>
+        <Bouncable style={[styles.logoutBtn, isLoggingOut && { opacity: 0.6 }]} onPress={handleLogout} disabled={isLoggingOut}>
           <MaterialIcons name="logout" size={20} color={theme.error} />
-          <Text style={styles.logoutText}>ÇIKIŞ YAP</Text>
+          <Text style={styles.logoutText}>{isLoggingOut ? 'ÇIKIŞ YAPILIYOR...' : 'ÇIKIŞ YAP'}</Text>
         </Bouncable>
 
-        <TouchableOpacity style={styles.deleteAccountBtn} onPress={handleDeleteAccount}>
-          <Text style={styles.deleteAccountText}>Hesabımı Kalıcı Olarak Sil</Text>
+        <TouchableOpacity style={styles.deleteAccountBtn} onPress={handleDeleteAccount} disabled={isDeleting}>
+          <Text style={styles.deleteAccountText}>{isDeleting ? 'Hesap Siliniyor...' : 'Hesabımı Kalıcı Olarak Sil'}</Text>
         </TouchableOpacity>
 
         <Text style={styles.versionText}>H.İ.V. v{Constants.expoConfig?.version || '1.0.0'}</Text>
 
       </ScrollView>
+
+      <AppModal
+        visible={reauthModalVisible}
+        transparent
+        animationType="fade"
+        onClose={() => { if (!isDeleting) setReauthModalVisible(false); }}
+        onRequestClose={() => { if (!isDeleting) setReauthModalVisible(false); }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>GÜVENLİK DOĞRULAMASI</Text>
+            <Text style={styles.modalDesc}>
+              Hesabınızı kalıcı olarak silmek için mevcut şifrenizi girin:
+            </Text>
+            <CustomInput
+              icon="lock"
+              value={reauthPassword}
+              onChangeText={(t) => {
+                setReauthPassword(t);
+                if (reauthError) setReauthError('');
+              }}
+              placeholder="Mevcut şifreniz"
+              isPassword
+              error={reauthError || undefined}
+            />
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                disabled={isDeleting}
+                onPress={() => {
+                  setReauthModalVisible(false);
+                  setReauthPassword('');
+                  setReauthError('');
+                }}
+              >
+                <Text style={styles.modalCancelText}>Vazgeç</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalConfirmBtn, (isDeleting || !reauthPassword) && { opacity: 0.6 }]}
+                disabled={isDeleting || !reauthPassword}
+                onPress={() => executeDeleteAccount(reauthPassword)}
+              >
+                <Text style={styles.modalConfirmText}>{isDeleting ? 'Siliniyor...' : 'Hesabı Sil'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </AppModal>
     </SafeAreaView>
   );
 }
@@ -356,5 +447,63 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontSize: 10,
     color: theme.textMuted,
     textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalBox: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: theme.surfaceContainer,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: theme.border,
+    gap: 12,
+  },
+  modalTitle: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 16,
+    color: theme.error,
+    letterSpacing: 0.5,
+  },
+  modalDesc: {
+    fontFamily: Fonts.body,
+    fontSize: 13,
+    color: theme.textMuted,
+    lineHeight: 19,
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 6,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: theme.surfaceContainerHighest,
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 13,
+    color: theme.text,
+  },
+  modalConfirmBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: theme.error,
+    alignItems: 'center',
+  },
+  modalConfirmText: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 13,
+    color: '#ffffff',
   },
 });

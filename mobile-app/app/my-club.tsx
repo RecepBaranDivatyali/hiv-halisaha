@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, RefreshControl, Alert, ActivityIndicator, TextInput } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, RefreshControl, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -13,26 +13,92 @@ import { ClubActionModal } from '@/components/ClubActionModal';
 import { AppModal } from '@/components/AppModal';
 import { useTheme } from '@/context/ThemeContext';
 import { dbService, ClubModel, ClubChallengeModel } from '@/services/dbService';
-import { auth } from '@/services/firebaseConfig';
+import { auth, db } from '@/services/firebaseConfig';
+import { doc, updateDoc } from 'firebase/firestore';
+import { appAlert } from '@/services/appAlert';
+import { pickParam, safeBack } from '@/utils/navigation';
 
 export default function MyClubScreen() {
   const { theme } = useTheme();
   const styles = useStyles(theme);
   const router = useRouter();
   const params = useLocalSearchParams<{ clubId?: string }>();
+  const paramClubId = pickParam(params.clubId);
   const { user, saveUser } = useAuth();
+  const userRef = useRef(user);
+  userRef.current = user;
   const [menuVisible, setMenuVisible] = useState(false);
   const [challengeModalVisible, setChallengeModalVisible] = useState(false);
   const [inviteModalVisible, setInviteModalVisible] = useState(false);
   const [clubActionModalVisible, setClubActionModalVisible] = useState(false);
   const [clubData, setClubData] = useState<ClubModel | null>(null);
   const [membersList, setMembersList] = useState<any[]>([]);
+  const [isLoadingClub, setIsLoadingClub] = useState<boolean>(Boolean(paramClubId || user?.clubId));
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [incomingChallenges, setIncomingChallenges] = useState<ClubChallengeModel[]>([]);
   const [policyModalVisible, setPolicyModalVisible] = useState(false);
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [joinInviteInput, setJoinInviteInput] = useState('');
+
+  // Kaptan İçin Kulüp Bilgilerini Düzenleme State'leri
+  const [editClubModalVisible, setEditClubModalVisible] = useState(false);
+  const [editClubName, setEditClubName] = useState('');
+  const [editClubDesc, setEditClubDesc] = useState('');
+  const [editClubCity, setEditClubCity] = useState('');
+  const [editClubDistrict, setEditClubDistrict] = useState('');
+  const [editClubAvailableDate, setEditClubAvailableDate] = useState('');
+  const [editClubVenueName, setEditClubVenueName] = useState('');
+  const [savingClubEdit, setSavingClubEdit] = useState(false);
+
+  const handleOpenEditClubModal = () => {
+    if (!clubData) return;
+    setEditClubName(clubData.name || '');
+    setEditClubDesc(clubData.desc || (clubData as any).description || '');
+    setEditClubCity(clubData.city || 'İstanbul');
+    setEditClubDistrict(clubData.district || '');
+    setEditClubAvailableDate(clubData.availableDate || '');
+    setEditClubVenueName((clubData as any).venueName || clubData.reservationDetails || '');
+    setEditClubModalVisible(true);
+  };
+
+  const handleSaveClubDetails = async () => {
+    if (!clubData?.id) return;
+    if (!editClubName.trim()) {
+      appAlert.alert('Eksik Bilgi', 'Lütfen kulüp adını giriniz.');
+      return;
+    }
+
+    setSavingClubEdit(true);
+    try {
+      const updates: any = {
+        name: editClubName.trim(),
+        desc: editClubDesc.trim(),
+        description: editClubDesc.trim(),
+        city: editClubCity.trim(),
+        district: editClubDistrict.trim(),
+        availableDate: editClubAvailableDate.trim(),
+        venueName: editClubVenueName.trim(),
+        reservationDetails: editClubVenueName.trim(),
+      };
+
+      await updateDoc(doc(db, 'clubs', clubData.id), updates);
+
+      setClubData(prev => prev ? { ...prev, ...updates } : null);
+
+      if (user?.clubId === clubData.id && editClubName.trim() !== user.clubName) {
+        await saveUser({ clubName: editClubName.trim() });
+      }
+
+      setEditClubModalVisible(false);
+      appAlert.alert('✓ Kulüp Güncellendi', 'Kulüp bilgileri başarıyla kaydedildi.');
+    } catch (error) {
+      console.error('Kulüp güncelleme hatası:', error);
+      appAlert.alert('Hata', 'Kulüp bilgileri güncellenirken bir sorun oluştu.');
+    } finally {
+      setSavingClubEdit(false);
+    }
+  };
 
   const [confirmModal, setConfirmModal] = useState<{
     visible: boolean;
@@ -53,9 +119,9 @@ export default function MyClubScreen() {
     actionType: 'delete',
   });
 
-  const targetClubId = params.clubId || user?.clubId;
-  const hasClub = !!targetClubId || !!clubData;
-  const isViewingOwnClub = !params.clubId || Boolean(user?.clubId && params.clubId === user.clubId);
+  const targetClubId = paramClubId || user?.clubId;
+  const hasClub = Boolean(clubData);
+  const isViewingOwnClub = !paramClubId || Boolean(user?.clubId && paramClubId === user.clubId);
 
   const effectiveUserId = user?.uid || auth.currentUser?.uid || user?.email || 'player';
 
@@ -63,13 +129,11 @@ export default function MyClubScreen() {
     isViewingOwnClub && (
       // 1. Explicit captainId match with uid or email
       (clubData?.captainId && effectiveUserId && (clubData.captainId === effectiveUserId || clubData.captainId === user?.email)) ||
-      // 2. Captain name match with user name
-      (clubData?.captainName && user?.name && clubData.captainName.trim().toLowerCase() === user.name.trim().toLowerCase()) ||
-      // 3. User is first in members list
-      (clubData?.members && clubData.members.length > 0 && effectiveUserId && clubData.members[0] === effectiveUserId) ||
-      // 4. Club only has 1 member and user belongs to this club (creator is always the sole member)
-      (user?.clubId && clubData?.id && user.clubId === clubData.id && (!clubData.membersCount || clubData.membersCount <= 1)) ||
-      // 5. Club has no captainId set at all, but user has clubId
+      // 2. User is first in members list (when captainId is not set)
+      (!clubData?.captainId && clubData?.members && clubData.members.length > 0 && effectiveUserId && clubData.members[0] === effectiveUserId) ||
+      // 3. Club only has 1 member and user belongs to this club (creator is always the sole member)
+      (!clubData?.captainId && user?.clubId && clubData?.id && user.clubId === clubData.id && (!clubData.membersCount || clubData.membersCount <= 1)) ||
+      // 4. Club has no captainId set at all, but user has clubId
       (user?.clubId && clubData?.id && user.clubId === clubData.id && !clubData.captainId)
     )
   );
@@ -80,7 +144,9 @@ export default function MyClubScreen() {
   );
 
   const loadClub = React.useCallback(async () => {
+    const currentUser = userRef.current;
     if (targetClubId) {
+      setIsLoadingClub(true);
       try {
         const data = await dbService.getClubById(targetClubId);
         if (data) {
@@ -104,20 +170,14 @@ export default function MyClubScreen() {
             const memberProfiles = await Promise.all(
               memberIds.map(async (mId: string) => {
                 if (!mId) return null;
-                const isCap = Boolean(
-                  data.captainId && (
-                    mId === data.captainId || 
-                    (user && (user.email === data.captainId || user.uid === data.captainId)) ||
-                    (data.captainName && user?.name && data.captainName.toLowerCase() === user.name.toLowerCase())
-                  )
-                );
-                if (user && (user.uid === mId || user.email === mId)) {
+                const isCap = Boolean(data.captainId && mId === data.captainId);
+                if (currentUser && (currentUser.uid === mId || currentUser.email === mId)) {
                   return {
                     uid: mId,
-                    name: user.name || 'Siz',
-                    avatar: user.avatar,
-                    position: user.position || 'OS',
-                    rating: user.rating || 5.0,
+                    name: currentUser.name || 'Siz',
+                    avatar: currentUser.avatar,
+                    position: currentUser.position || 'OS',
+                    rating: currentUser.rating || 5.0,
                     isCaptain: isCap,
                   };
                 }
@@ -130,7 +190,7 @@ export default function MyClubScreen() {
                       avatar: p.avatar,
                       position: p.position || 'OS',
                       rating: p.rating || 5.0,
-                      isCaptain: mId === data.captainId || p.name === data.captainName,
+                      isCaptain: mId === data.captainId,
                     };
                   }
                 } catch {}
@@ -156,11 +216,11 @@ export default function MyClubScreen() {
           }
         } else {
           // Hayalet kulüp temizleme: kulüp silinmişse kullanıcının profilini temizle
-          if (user?.clubId && targetClubId === user.clubId) {
+          if (currentUser?.clubId && targetClubId === currentUser.clubId) {
             await saveUser({
-              clubId: undefined,
-              clubName: undefined,
-              clubLogo: undefined,
+              clubId: null,
+              clubName: null,
+              clubLogo: null,
             }).catch(() => {});
           }
           setClubData(null);
@@ -169,10 +229,15 @@ export default function MyClubScreen() {
         }
       } catch (e) {
         console.error('Kulüp getirme hatası:', e);
-        Alert.alert('Hata', 'Kulüp bilgileri yüklenemedi. Lütfen bağlantınızı kontrol edin.');
+        appAlert.alert('Hata', 'Kulüp bilgileri yüklenemedi. Lütfen bağlantınızı kontrol edin.');
+      } finally {
+        setIsLoadingClub(false);
       }
+    } else {
+      setClubData(null);
+      setIsLoadingClub(false);
     }
-  }, [targetClubId, user, saveUser]);
+  }, [targetClubId, saveUser]);
 
   useEffect(() => {
     loadClub();
@@ -186,8 +251,6 @@ export default function MyClubScreen() {
       setRefreshing(false);
     }
   };
-
-  const clubId = clubData?.id || user?.clubId;
 
   const openDeleteClubModal = () => {
     setConfirmModal({
@@ -218,7 +281,7 @@ export default function MyClubScreen() {
         actionType: 'leave_captain_delete',
       });
     } else {
-      const options = otherMembers.slice(0, 3).map((member: any) => ({
+      const options = otherMembers.map((member: any) => ({
         text: member.name || 'Kulüp Üyesi',
         onPress: () => {
           setConfirmModal({
@@ -236,7 +299,7 @@ export default function MyClubScreen() {
       
       options.push({ text: 'İptal', style: 'cancel', onPress: () => {} } as any);
 
-      Alert.alert(
+      appAlert.choose(
         'Yeni Kaptan Seç',
         'Lütfen kaptanlığı devretmek istediğiniz üyeyi seçin:',
         options
@@ -279,9 +342,7 @@ export default function MyClubScreen() {
           await dbService.leaveClub(clubToAct, currentUserId);
         }
       }
-    } catch (e) {
-      console.error('Kulüp işlemi hatası:', e);
-    } finally {
+
       try {
         await saveUser({
           clubId: null,
@@ -293,18 +354,23 @@ export default function MyClubScreen() {
       }
       setClubData(null);
       setMembersList([]);
-      setActionLoading(false);
       router.replace('/(tabs)/clubs');
+    } catch (e: any) {
+      console.error('Kulüp işlemi hatası:', e);
+      appAlert.alert('İşlem Başarısız', e?.message || 'Kulüp işlemi sırasında bir hata oluştu. Lütfen tekrar deneyin.');
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleJoinThisClub = async () => {
+    if (actionLoading) return;
     if (!user?.uid) {
-      Alert.alert('Giriş Yapın', 'Kulübe katılmak için lütfen giriş yapın.');
+      appAlert.alert('Giriş Yapın', 'Kulübe katılmak için lütfen giriş yapın.');
       return;
     }
     if (user?.clubId) {
-      Alert.alert(
+      appAlert.alert(
         'Mevcut Kulübünüz Var',
         'Başka bir kulübe katılabilmek için önce mevcut kulübünüzden ayrılmanız veya kulübünüzü silmeniz gerekmektedir.'
       );
@@ -313,7 +379,7 @@ export default function MyClubScreen() {
     if (!clubData?.id) return;
 
     if (clubData.joinPolicy === 'closed') {
-      Alert.alert('Katılıma Kapalı', 'Bu kulüp şu an yeni üye alımına kapalıdır.');
+      appAlert.alert('Katılıma Kapalı', 'Bu kulüp şu an yeni üye alımına kapalıdır.');
       return;
     }
 
@@ -324,34 +390,30 @@ export default function MyClubScreen() {
     }
 
     if (clubData.joinPolicy === 'request') {
-      Alert.alert(
+      appAlert.confirm(
         'Katılım İsteği',
         `"${clubData.name}" onaylı katılım sistemine sahiptir. Kaptana katılım isteği gönderilsin mi?`,
-        [
-          { text: 'Vazgeç', style: 'cancel' },
-          {
-            text: 'İstek Gönder',
-            onPress: async () => {
-              try {
-                if (clubData?.id && user?.uid) {
-                  setActionLoading(true);
-                  await dbService.requestToJoinClub(clubData.id, {
-                    uid: user.uid,
-                    name: user.name || 'Oyuncu',
-                    avatar: user.avatar,
-                    position: user.position,
-                    rating: user.rating,
-                  });
-                  Alert.alert('İstek Gönderildi 📩', 'Katılım isteğiniz kulüp kaptanına iletildi.');
-                }
-              } catch {
-                Alert.alert('Hata', 'Katılım isteği iletilirken bir sorun oluştu.');
-              } finally {
-                setActionLoading(false);
-              }
-            },
-          },
-        ]
+        async () => {
+          if (actionLoading) return;
+          try {
+            if (clubData?.id && user?.uid) {
+              setActionLoading(true);
+              await dbService.requestToJoinClub(clubData.id, {
+                uid: user.uid,
+                name: user.name || 'Oyuncu',
+                avatar: user.avatar,
+                position: user.position,
+                rating: user.rating,
+              });
+              appAlert.alert('İstek Gönderildi 📩', 'Katılım isteğiniz kulüp kaptanına iletildi.');
+            }
+          } catch {
+            appAlert.alert('Hata', 'Katılım isteği iletilirken bir sorun oluştu.');
+          } finally {
+            setActionLoading(false);
+          }
+        },
+        { confirmText: 'İstek Gönder', cancelText: 'Vazgeç' }
       );
       return;
     }
@@ -361,21 +423,22 @@ export default function MyClubScreen() {
       await dbService.joinClub(clubData.id, user.uid, clubData.name);
       await saveUser({ clubId: clubData.id, clubName: clubData.name, clubLogo: clubData.logo });
       await loadClub();
-      Alert.alert('Tebrikler! ⚽️', `${clubData.name} kulübüne katıldınız!`);
+      appAlert.alert('Tebrikler! ⚽️', `${clubData.name} kulübüne katıldınız!`);
     } catch {
-      Alert.alert('Hata', 'Kulübe katılırken bir hata oluştu.');
+      appAlert.alert('Hata', 'Kulübe katılırken bir hata oluştu.');
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleJoinByInviteCode = async () => {
+    if (actionLoading) return;
     if (!user?.uid) {
-      Alert.alert('Giriş Yapın', 'Kulübe katılmak için lütfen giriş yapın.');
+      appAlert.alert('Giriş Yapın', 'Kulübe katılmak için lütfen giriş yapın.');
       return;
     }
     if (!joinInviteInput.trim()) {
-      Alert.alert('Eksik Kod', 'Lütfen davet kodunu giriniz.');
+      appAlert.alert('Eksik Kod', 'Lütfen davet kodunu giriniz.');
       return;
     }
     try {
@@ -384,30 +447,31 @@ export default function MyClubScreen() {
       await saveUser({ clubId: joined.id, clubName: joined.name, clubLogo: joined.logo });
       setJoinModalVisible(false);
       await loadClub();
-      Alert.alert('Tebrikler! ⚽️', `"${joined.name}" kulübüne başarıyla katıldınız!`);
+      appAlert.alert('Tebrikler! ⚽️', `"${joined.name}" kulübüne başarıyla katıldınız!`);
     } catch (err: any) {
-      Alert.alert('Hata', err?.message || 'Geçersiz davet kodu.');
+      appAlert.alert('Hata', err?.message || 'Geçersiz davet kodu.');
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleUpdatePolicy = async (newPolicy: 'open' | 'request' | 'invite' | 'closed') => {
-    if (!clubData?.id) return;
+    if (!clubData?.id || actionLoading) return;
     try {
       setActionLoading(true);
       await dbService.updateClubJoinPolicy(clubData.id, newPolicy);
       setClubData(prev => prev ? { ...prev, joinPolicy: newPolicy } : null);
       setPolicyModalVisible(false);
-      Alert.alert('Başarılı', 'Kulüp katılım politikası güncellendi.');
+      appAlert.alert('Başarılı', 'Kulüp katılım politikası güncellendi.');
     } catch {
-      Alert.alert('Hata', 'Politika güncellenirken bir sorun oluştu.');
+      appAlert.alert('Hata', 'Politika güncellenirken bir sorun oluştu.');
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleChallengeResponse = async (challenge: ClubChallengeModel, action: 'accept' | 'reject') => {
+    if (actionLoading) return;
     try {
       setActionLoading(true);
       const res = await dbService.respondToClubChallenge(
@@ -415,38 +479,37 @@ export default function MyClubScreen() {
         action, 
         { uid: user?.uid || 'cap', name: user?.name || 'Kaptan' }
       );
+      await loadClub();
       if (action === 'accept' && res?.matchId) {
-        Alert.alert('⚔️ Meydan Okuma Kabul Edildi!', 'Resmi maç oluşturuldu. Maç odasına yönlendiriliyorsunuz.', [
+        appAlert.alert('⚔️ Meydan Okuma Kabul Edildi!', 'Resmi maç oluşturuldu. Maç odasına yönlendiriliyorsunuz.', [
           {
             text: 'Maç Odasına Git',
             onPress: () => router.push({ pathname: '/match-room', params: { matchId: res.matchId } })
           }
         ]);
-        router.push({ pathname: '/match-room', params: { matchId: res.matchId } });
       } else {
-        Alert.alert('Meydan Okuma Reddedildi', 'Teklif reddedildi.');
-        await loadClub();
+        appAlert.alert('Meydan Okuma Reddedildi', 'Teklif reddedildi.');
       }
     } catch (e: any) {
       console.error('Meydan okuma yanıtlama hatası:', e);
-      Alert.alert('Hata', 'İşlem gerçekleştirilemedi.');
+      appAlert.alert('Hata', 'İşlem gerçekleştirilemedi.');
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleJoinRequestResponse = async (applicant: { uid: string; name: string }, action: 'accept' | 'reject') => {
-    if (!clubData?.id) return;
+    if (!clubData?.id || actionLoading) return;
     try {
       setActionLoading(true);
       await dbService.respondToJoinRequest(clubData.id, applicant, action);
       await loadClub();
-      Alert.alert(
+      appAlert.alert(
         action === 'accept' ? 'Üye Kabul Edildi' : 'İstek Reddedildi',
         `"${applicant.name}" ${action === 'accept' ? 'kulübe eklendi.' : 'katılım isteği reddedildi.'}`
       );
     } catch {
-      Alert.alert('Hata', 'İşlem gerçekleştirilemedi.');
+      appAlert.alert('Hata', 'İşlem gerçekleştirilemedi.');
     } finally {
       setActionLoading(false);
     }
@@ -455,7 +518,7 @@ export default function MyClubScreen() {
   const copyInviteCode = async () => {
     if (clubData?.inviteCode) {
       await Clipboard.setStringAsync(clubData.inviteCode);
-      Alert.alert('Kopyalandı! 📋', `Davet kodu panoya kopyalandı:\n\n${clubData.inviteCode}`);
+      appAlert.alert('Kopyalandı! 📋', `Davet kodu panoya kopyalandı:\n\n${clubData.inviteCode}`);
     }
   };
 
@@ -484,17 +547,21 @@ export default function MyClubScreen() {
         </View>
       )}
       <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} />
-      <ChallengeModal visible={challengeModalVisible} onClose={() => setChallengeModalVisible(false)} />
+      <ChallengeModal 
+        visible={challengeModalVisible} 
+        onClose={() => setChallengeModalVisible(false)} 
+        targetClub={!isViewingOwnClub ? clubData : null}
+      />
       <InvitePlayerModal visible={inviteModalVisible} onClose={() => setInviteModalVisible(false)} />
-      <ClubActionModal visible={clubActionModalVisible} onClose={() => setClubActionModalVisible(false)} />
+      <ClubActionModal visible={clubActionModalVisible} onClose={() => setClubActionModalVisible(false)} onSuccess={loadClub} />
       
       {/* TopAppBar */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity onPress={() => router.back()} accessibilityLabel="Geri" accessibilityRole="button">
+        <View style={[styles.headerLeft, { flex: 1, marginRight: 12 }]}>
+          <TouchableOpacity onPress={() => safeBack(router, '/(tabs)/clubs')} accessibilityLabel="Geri" accessibilityRole="button">
             <MaterialIcons name="arrow-back" size={24} color={theme.primary} />
           </TouchableOpacity>
-          <Text style={styles.brandTitle}>
+          <Text style={[styles.brandTitle, { flex: 1 }]} numberOfLines={1}>
             {isViewingOwnClub ? 'KULÜBÜM' : (clubData?.name || 'KULÜP DETAYI')}
           </Text>
         </View>
@@ -511,7 +578,12 @@ export default function MyClubScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
       >
-        {hasClub ? (
+        {isLoadingClub && !clubData ? (
+          <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 80, gap: 12 }}>
+            <ActivityIndicator size="large" color={theme.primary} />
+            <Text style={{ fontFamily: Fonts.body, fontSize: 13, color: theme.textMuted }}>Kulüp bilgileri yükleniyor...</Text>
+          </View>
+        ) : hasClub ? (
           <>
             {/* Hero Section: Kulübüm */}
             <View style={styles.heroSection}>
@@ -527,11 +599,11 @@ export default function MyClubScreen() {
                   )}
                 </View>
                 <View style={styles.clubInfo}>
-                  <Text style={styles.clubName}>{clubData?.name || user?.clubName || 'Vanguard FC'}</Text>
+                  <Text style={styles.clubName}>{clubData?.name || (isViewingOwnClub ? user?.clubName : '') || 'Kulüp'}</Text>
                   <View style={styles.badgesRow}>
                     <View style={styles.badgeDark}>
                       <MaterialIcons name="group" size={14} color={theme.secondary} />
-                      <Text style={styles.badgeDarkText}>ÜYE: {clubData?.membersCount || 1}/50</Text>
+                      <Text style={styles.badgeDarkText}>ÜYE: {clubData?.membersCount || 1}/{clubData?.maxMembers || 50}</Text>
                     </View>
                     <View style={styles.badgePrimary}>
                       <MaterialIcons name="military-tech" size={14} color={theme.primary} />
@@ -552,7 +624,7 @@ export default function MyClubScreen() {
                 <Text style={styles.statLabel}>GALİBİYET ORANI</Text>
                 <View style={styles.statValueRow}>
                   <Text style={[styles.statValue, { color: theme.primary }]}>
-                    %{clubData?.points ? Math.min(100, Math.round((clubData.points / 120) * 100)) : 75}
+                    %{clubData?.points && clubData.points > 100 ? Math.min(100, Math.round(((clubData.points - 100) / Math.max(20, clubData.points - 80)) * 100)) : 0}
                   </Text>
                   <MaterialIcons name="trending-up" size={16} color={theme.primary} />
                 </View>
@@ -560,7 +632,7 @@ export default function MyClubScreen() {
               <View style={styles.statBoxHalf}>
                  <Text style={styles.statLabel}>KULÜP PUANI</Text>
                  <View style={styles.statValueRow}>
-                   <Text style={[styles.statValue, { color: theme.secondary }]}>{clubData?.points || 120} PK</Text>
+                   <Text style={[styles.statValue, { color: theme.secondary }]}>{clubData?.points || 100} PK</Text>
                    <MaterialIcons name="emoji-events" size={16} color={theme.secondary} />
                  </View>
               </View>
@@ -604,8 +676,8 @@ export default function MyClubScreen() {
                 )}
               </View>
 
-              {/* Invite Code row */}
-              {clubData?.inviteCode ? (
+              {/* Invite Code row (Yalnızca kulüp üyeleri görebilir) */}
+              {isViewingOwnClub && clubData?.inviteCode ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.background, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: theme.borderSubtle }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <MaterialIcons name="vpn-key" size={16} color={theme.primary} />
@@ -648,15 +720,23 @@ export default function MyClubScreen() {
                       </Text>
                       <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
                         <TouchableOpacity
-                          style={{ flex: 1, backgroundColor: `${theme.primary}20`, borderWidth: 1, borderColor: theme.primary, borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}
+                          style={[
+                            { flex: 1, backgroundColor: `${theme.primary}20`, borderWidth: 1, borderColor: theme.primary, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+                            actionLoading && { opacity: 0.6 }
+                          ]}
                           onPress={() => handleChallengeResponse(ch, 'accept')}
+                          disabled={actionLoading}
                           activeOpacity={0.8}
                         >
                           <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.primary }}>KABUL ET (MAÇA GİT)</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                          style={{ flex: 1, backgroundColor: `${theme.error}15`, borderWidth: 1, borderColor: theme.error, borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}
+                          style={[
+                            { flex: 1, backgroundColor: `${theme.error}15`, borderWidth: 1, borderColor: theme.error, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+                            actionLoading && { opacity: 0.6 }
+                          ]}
                           onPress={() => handleChallengeResponse(ch, 'reject')}
+                          disabled={actionLoading}
                           activeOpacity={0.8}
                         >
                           <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.error }}>REDDET</Text>
@@ -697,15 +777,17 @@ export default function MyClubScreen() {
                       </View>
                       <View style={{ flexDirection: 'row', gap: 8 }}>
                         <TouchableOpacity
-                          style={{ backgroundColor: theme.primary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
+                          style={[{ backgroundColor: theme.primary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }, actionLoading && { opacity: 0.6 }]}
                           onPress={() => handleJoinRequestResponse(req, 'accept')}
+                          disabled={actionLoading}
                           activeOpacity={0.8}
                         >
                           <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.background }}>KABUL</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                          style={{ backgroundColor: `${theme.error}20`, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
+                          style={[{ backgroundColor: `${theme.error}20`, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }, actionLoading && { opacity: 0.6 }]}
                           onPress={() => handleJoinRequestResponse(req, 'reject')}
+                          disabled={actionLoading}
                           activeOpacity={0.8}
                         >
                           <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.error }}>RED</Text>
@@ -778,19 +860,21 @@ export default function MyClubScreen() {
                     </Text>
                   </View>
                 </View>
-                <TouchableOpacity onPress={() => setInviteModalVisible(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.primary }}>+ Davet Et</Text>
-                </TouchableOpacity>
+                {isViewingOwnClub && (
+                  <TouchableOpacity onPress={() => setInviteModalVisible(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 12, color: theme.primary }}>+ Davet Et</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               <View style={styles.membersGrid}>
                 {(membersList.length > 0 ? membersList : [
                   {
                     uid: clubData?.captainId || 'cap',
-                    name: clubData?.captainName || user?.name || 'Kaptan',
-                    avatar: user?.avatar,
-                    position: user?.position || 'FORVET',
-                    rating: user?.rating || 7.5,
+                    name: clubData?.captainName || (isViewingOwnClub ? user?.name : 'Kaptan') || 'Kaptan',
+                    avatar: isViewingOwnClub ? user?.avatar : undefined,
+                    position: isViewingOwnClub ? (user?.position || 'OS') : 'OS',
+                    rating: isViewingOwnClub ? (user?.rating || 5.0) : 5.0,
                     isCaptain: true,
                   }
                 ]).map((member, idx) => (
@@ -844,20 +928,43 @@ export default function MyClubScreen() {
 
               {isViewingOwnClub ? (
                 isCaptain ? (
-                  hasOtherMembers ? (
-                    <View style={{ flexDirection: 'row', gap: 10 }}>
-                      <TouchableOpacity 
-                        style={[styles.dangerBtn, { flex: 1, borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.12)' }]}
-                        activeOpacity={0.8}
-                        onPress={openCaptainLeaveModal}
-                        disabled={actionLoading}
-                      >
-                        <MaterialIcons name="exit-to-app" size={18} color="#f59e0b" />
-                        <Text style={[styles.dangerBtnText, { color: '#f59e0b' }]}>AYRIL (DEVRET)</Text>
-                      </TouchableOpacity>
+                  <View style={{ gap: 10 }}>
+                    <TouchableOpacity 
+                      style={[styles.primaryActionBtn, { width: '100%', backgroundColor: `${theme.primary}20`, borderWidth: 1.5, borderColor: theme.primary }]}
+                      activeOpacity={0.85}
+                      onPress={handleOpenEditClubModal}
+                      disabled={actionLoading}
+                    >
+                      <MaterialIcons name="edit" size={20} color={theme.primary} />
+                      <Text style={[styles.primaryActionBtnText, { color: theme.primary }]}>KULÜP BİLGİLERİNİ DÜZENLE</Text>
+                    </TouchableOpacity>
 
+                    {hasOtherMembers ? (
+                      <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <TouchableOpacity 
+                          style={[styles.dangerBtn, { flex: 1, borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.12)' }]}
+                          activeOpacity={0.8}
+                          onPress={openCaptainLeaveModal}
+                          disabled={actionLoading}
+                        >
+                          <MaterialIcons name="exit-to-app" size={18} color="#f59e0b" />
+                          <Text style={[styles.dangerBtnText, { color: '#f59e0b' }]}>AYRIL (DEVRET)</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                          style={[styles.dangerBtn, { flex: 1, borderColor: theme.error, backgroundColor: `${theme.error}15` }]}
+                          activeOpacity={0.8}
+                          onPress={openDeleteClubModal}
+                          disabled={actionLoading}
+                        >
+                          <MaterialIcons name="delete-forever" size={18} color={theme.error} />
+                          <Text style={[styles.dangerBtnText, { color: theme.error }]}>KULÜBÜ SİL</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      /* Kulüpte başka üye yoksa devret butonu gösterilmez, doğrudan tek tuş Kulübü Sil çıkar */
                       <TouchableOpacity 
-                        style={[styles.dangerBtn, { flex: 1, borderColor: theme.error, backgroundColor: `${theme.error}15` }]}
+                        style={[styles.dangerBtn, { width: '100%', borderColor: theme.error, backgroundColor: `${theme.error}15` }]}
                         activeOpacity={0.8}
                         onPress={openDeleteClubModal}
                         disabled={actionLoading}
@@ -865,19 +972,8 @@ export default function MyClubScreen() {
                         <MaterialIcons name="delete-forever" size={18} color={theme.error} />
                         <Text style={[styles.dangerBtnText, { color: theme.error }]}>KULÜBÜ SİL</Text>
                       </TouchableOpacity>
-                    </View>
-                  ) : (
-                    /* Kulüpte başka üye yoksa devret butonu gösterilmez, doğrudan tek tuş Kulübü Sil çıkar */
-                    <TouchableOpacity 
-                      style={[styles.dangerBtn, { width: '100%', borderColor: theme.error, backgroundColor: `${theme.error}15` }]}
-                      activeOpacity={0.8}
-                      onPress={openDeleteClubModal}
-                      disabled={actionLoading}
-                    >
-                      <MaterialIcons name="delete-forever" size={18} color={theme.error} />
-                      <Text style={[styles.dangerBtnText, { color: theme.error }]}>KULÜBÜ SİL</Text>
-                    </TouchableOpacity>
-                  )
+                    )}
+                  </View>
                 ) : (
                   <TouchableOpacity 
                     style={[styles.dangerBtn, { borderColor: theme.error, backgroundColor: `${theme.error}15` }]}
@@ -926,6 +1022,29 @@ export default function MyClubScreen() {
               )}
             </View>
           </>
+        ) : paramClubId ? (
+          /* Kulüp Bulunamadı (Silinmiş veya Geçersiz Kulüp) */
+          <View style={styles.emptyClubContainer}>
+            <View style={styles.emptyShieldWrap}>
+              <MaterialIcons name="shield" size={80} color={theme.surfaceContainerHighest} />
+              <MaterialIcons name="error-outline" size={28} color={theme.error} style={styles.emptyLockIcon} />
+            </View>
+            <Text style={styles.emptyTitle}>KULÜP BULUNAMADI</Text>
+            <Text style={styles.emptyDesc}>
+              Aradığınız kulüp silinmiş veya mevcut değil. Diğer kulüpleri keşfetmek için kulüpler listesine dönebilirsiniz.
+            </Text>
+            <View style={styles.emptyBtnGroup}>
+              <TouchableOpacity
+                style={styles.primaryActionBtn}
+                onPress={() => safeBack(router, '/(tabs)/clubs')}
+                accessibilityLabel="Geri Dön"
+                accessibilityRole="button"
+              >
+                <MaterialIcons name="arrow-back" size={20} color={theme.onPrimary} />
+                <Text style={styles.primaryActionBtnText}>GERİ DÖN</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         ) : (
           /* Empty State: Kulübü Olmayan Kullanıcı */
           <View style={styles.emptyClubContainer}>
@@ -1063,7 +1182,7 @@ export default function MyClubScreen() {
             </View>
             <Text style={styles.confirmModalTitle}>DAVET KODU GEREKLİ</Text>
             <Text style={styles.confirmModalDesc}>
-              "{clubData?.name}" kulübüne katılabilmek için kulübün özel 8 haneli davet kodunu giriniz:
+              {`"${clubData?.name || 'Kulüp'}" kulübüne katılabilmek için kulübün özel 8 haneli davet kodunu giriniz:`}
             </Text>
 
             <TextInput
@@ -1093,18 +1212,127 @@ export default function MyClubScreen() {
               <TouchableOpacity
                 style={styles.confirmCancelBtn}
                 onPress={() => setJoinModalVisible(false)}
+                disabled={actionLoading}
               >
                 <Text style={styles.confirmCancelBtnText}>Vazgeç</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.confirmSubmitBtn, { backgroundColor: theme.primary }]}
+                style={[styles.confirmSubmitBtn, { backgroundColor: theme.primary }, actionLoading && { opacity: 0.6 }]}
                 onPress={handleJoinByInviteCode}
+                disabled={actionLoading}
               >
                 <Text style={[styles.confirmSubmitBtnText, { color: theme.background }]}>Katıl</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
+      </AppModal>
+
+      {/* Kulüp Bilgilerini Düzenle Modalı (Kaptan İçin) */}
+      <AppModal
+        visible={editClubModalVisible}
+        transparent
+        animationType="slide"
+        onClose={() => setEditClubModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.confirmModalOverlay}
+        >
+          <View style={[styles.confirmModalBox, { maxWidth: 420, maxHeight: '88%', padding: 20 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <MaterialIcons name="edit" size={24} color={theme.primary} />
+                <Text style={styles.confirmModalTitle}>KULÜP BİLGİLERİNİ DÜZENLE</Text>
+              </View>
+              <TouchableOpacity onPress={() => setEditClubModalVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <MaterialIcons name="close" size={22} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ width: '100%' }} showsVerticalScrollIndicator={false}>
+              <Text style={styles.editInputLabel}>KULÜP ADI *</Text>
+              <TextInput
+                value={editClubName}
+                onChangeText={setEditClubName}
+                placeholder="Örn: Kadıköy Boğaları"
+                placeholderTextColor={theme.textMuted}
+                style={styles.editTextInput}
+              />
+
+              <Text style={styles.editInputLabel}>KULÜP AÇIKLAMASI</Text>
+              <TextInput
+                value={editClubDesc}
+                onChangeText={setEditClubDesc}
+                placeholder="Kulüp felsefesi, oyun tarzı..."
+                placeholderTextColor={theme.textMuted}
+                multiline
+                numberOfLines={3}
+                style={[styles.editTextInput, { height: 72, textAlignVertical: 'top' }]}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.editInputLabel}>ŞEHİR</Text>
+                  <TextInput
+                    value={editClubCity}
+                    onChangeText={setEditClubCity}
+                    placeholder="İstanbul"
+                    placeholderTextColor={theme.textMuted}
+                    style={styles.editTextInput}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.editInputLabel}>İLÇE</Text>
+                  <TextInput
+                    value={editClubDistrict}
+                    onChangeText={setEditClubDistrict}
+                    placeholder="Kadıköy"
+                    placeholderTextColor={theme.textMuted}
+                    style={styles.editTextInput}
+                  />
+                </View>
+              </View>
+
+              <Text style={styles.editInputLabel}>MÜSAİT GÜN / SAAT</Text>
+              <TextInput
+                value={editClubAvailableDate}
+                onChangeText={setEditClubAvailableDate}
+                placeholder="Örn: Çarşamba 21:00, Hafta Sonu Akşam"
+                placeholderTextColor={theme.textMuted}
+                style={styles.editTextInput}
+              />
+
+              <Text style={styles.editInputLabel}>SAHA / TESİS ADI</Text>
+              <TextInput
+                value={editClubVenueName}
+                onChangeText={setEditClubVenueName}
+                placeholder="Örn: Moda Halısaha Tesisleri"
+                placeholderTextColor={theme.textMuted}
+                style={styles.editTextInput}
+              />
+            </ScrollView>
+
+            <View style={[styles.confirmModalBtnRow, { marginTop: 16, width: '100%' }]}>
+              <TouchableOpacity
+                style={styles.confirmCancelBtn}
+                onPress={() => setEditClubModalVisible(false)}
+                disabled={savingClubEdit}
+              >
+                <Text style={styles.confirmCancelBtnText}>Vazgeç</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmSubmitBtn, { backgroundColor: theme.primary }, savingClubEdit && { opacity: 0.7 }]}
+                onPress={handleSaveClubDetails}
+                disabled={savingClubEdit}
+              >
+                <Text style={styles.confirmSubmitBtnText}>
+                  {savingClubEdit ? 'Kaydediliyor...' : 'Kaydet'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </AppModal>
     </SafeAreaView>
   );
@@ -1578,5 +1806,24 @@ const useStyles = (theme: any) => StyleSheet.create({
     fontFamily: Fonts.headlineBold,
     fontSize: 14,
     color: '#ffffff',
+  },
+  editInputLabel: {
+    fontFamily: Fonts.headlineBold,
+    fontSize: 11,
+    color: theme.textMuted,
+    letterSpacing: 0.5,
+    marginBottom: 4,
+    marginTop: 10,
+  },
+  editTextInput: {
+    backgroundColor: theme.surfaceContainerHighest,
+    borderWidth: 1,
+    borderColor: theme.borderSubtle,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: theme.text,
+    fontFamily: Fonts.body,
+    fontSize: 13,
   },
 });

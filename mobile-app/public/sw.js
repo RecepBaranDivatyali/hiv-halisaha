@@ -32,6 +32,21 @@ self.addEventListener('fetch', (event) => {
   }
 
   const url = new URL(event.request.url);
+
+  // Only handle same-origin requests so external CORS API/CDN responses do not bloat cache
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  // Bypass Web Admin, Privacy Policy and Delete Account routes
+  if (
+    url.pathname.startsWith('/admin') ||
+    url.pathname.startsWith('/privacy') ||
+    url.pathname.startsWith('/delete-account')
+  ) {
+    return;
+  }
+
   // Bypass Firestore and Firebase APIs
   if (
     url.hostname.includes('firestore.googleapis.com') ||
@@ -41,10 +56,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Network-first strategy (ensures fresh _expo/static/ chunks and eliminates ChunkLoadError)
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+        if (
+          networkResponse &&
+          networkResponse.status === 200 &&
+          (networkResponse.type === 'basic' || networkResponse.type === 'cors')
+        ) {
           const responseClone = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseClone).catch(() => {});

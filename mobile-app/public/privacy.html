@@ -56,10 +56,71 @@
       color: #8eff71;
       text-decoration: none;
     }
+    a {
+      color: #8eff71;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    .top-nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .btn-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background-color: #18181b;
+      border: 1px solid #27272a;
+      color: #e2e8f0;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 8px;
+      text-decoration: none;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .btn-back:hover {
+      border-color: #8eff71;
+      color: #8eff71;
+      text-decoration: none;
+    }
+    .action-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 24px;
+    }
+    .btn-delete-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background-color: rgba(142, 255, 113, 0.12);
+      border: 1px solid rgba(142, 255, 113, 0.35);
+      color: #8eff71;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 10px 16px;
+      border-radius: 8px;
+      text-decoration: none;
+    }
+    .btn-delete-link:hover {
+      background-color: rgba(142, 255, 113, 0.2);
+      text-decoration: none;
+    }
   </style>
 </head>
 <body>
   <div class="container">
+    <div class="top-nav">
+      <a href="/" class="btn-back">← Uygulamaya Dön</a>
+      <a href="/delete-account" style="font-size: 13px; font-weight: 600;">Hesap ve Veri Silme</a>
+    </div>
     <h1>H.İ.V Halısaha Gizlilik Politikası</h1>
     <div class="date">Son Güncelleme: 1 Ekim 2026</div>
 
@@ -86,13 +147,17 @@
     <p>Kullanıcı verileri, uluslararası güvenlik standartlarına sahip Google Cloud / Firebase veritabanlarında güvenli bir şekilde saklanmaktadır. Kişisel verileriniz hiçbir koşulda ticari veya reklam amaçlı olarak üçüncü şahıslara veya şirketlere satılmaz.</p>
 
     <h2>4. Hesap ve Veri Silme Talepleri</h2>
-    <p>Kullanıcılar diledikleri zaman hesaplarını ve toplanan tüm kişisel verilerini silebilirler. Hesabınızı mobil uygulama içerisindeki "Ayarlar > Hesabımı Sil" adımıyla anında silebilir veya aşağıdaki iletişim adresimizden doğrudan veri silme talebinde bulunabilirsiniz.</p>
+    <p>Kullanıcılar diledikleri zaman hesaplarını ve toplanan tüm kişisel verilerini silebilirler. Hesabınızı mobil uygulama içerisindeki "Ayarlar > Hesabımı Sil" adımıyla anında silebilir, <a href="/delete-account">Hesap ve Veri Silme Formu</a> üzerinden çevrimiçi başvuru oluşturabilir veya aşağıdaki iletişim adresimizden doğrudan veri silme talebinde bulunabilirsiniz.</p>
 
     <div class="contact-box">
       <h3 style="margin-top: 0; color: #fff;">5. İletişim</h3>
       <p style="margin-bottom: 6px;">Gizlilik politikası ile ilgili tüm soru, görüş ve talepleriniz için:</p>
       <p style="margin: 4px 0;"><strong>Geliştirici:</strong> Recep Baran Divatyalı</p>
       <p style="margin: 4px 0;"><strong>E-posta:</strong> <a href="mailto:barandivatyali@gmail.com">barandivatyali@gmail.com</a></p>
+      <div class="action-links">
+        <a href="/delete-account" class="btn-delete-link">Hesap Silme Talebi Oluştur →</a>
+        <a href="/" class="btn-back">← Uygulamaya Dön</a>
+      </div>
     </div>
   </div>
 </body>

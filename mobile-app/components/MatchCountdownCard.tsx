@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
@@ -30,6 +30,9 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
   const router = useRouter();
   const { theme } = useTheme();
   const styles = useStyles(theme);
+  const onMatchPastRef = useRef(onMatchPast);
+  onMatchPastRef.current = onMatchPast;
+  const hasTriggeredPastRef = useRef(false);
   const [timeLeft, setTimeLeft] = useState({ 
     days: 0,
     hours: isCompleted ? 0 : targetHours, 
@@ -40,6 +43,10 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
   });
 
   useEffect(() => {
+    hasTriggeredPastRef.current = false;
+  }, [matchId, dateTime]);
+
+  useEffect(() => {
     if (isCompleted) {
       setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, isLive: false, isPast: true });
       return;
@@ -47,6 +54,7 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
 
     const targetTimestamp = parseTargetTimestamp(dateTime, targetHours);
     const endTimestamp = getMatchEndTimestamp(dateTime);
+    let timer: ReturnType<typeof setInterval> | null = null;
 
     const updateTimer = () => {
       const now = Date.now();
@@ -55,7 +63,14 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
       if (now >= endTimestamp) {
         // Maçın bitiş dakikası geldi -> Değerlendirme durumuna geç
         setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, isLive: false, isPast: true });
-        onMatchPast?.();
+        if (timer) {
+          clearInterval(timer);
+          timer = null;
+        }
+        if (!hasTriggeredPastRef.current) {
+          hasTriggeredPastRef.current = true;
+          onMatchPastRef.current?.();
+        }
       } else if (diffSec <= 0) {
         // Maç başladı ve bitiş saatine kadar canlı oynanıyor
         const elapsed = Math.floor(Math.abs(diffSec) / 60);
@@ -70,12 +85,14 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
     };
 
     updateTimer();
-    const timer = setInterval(updateTimer, 1000);
-    return () => clearInterval(timer);
-  }, [targetHours, dateTime, isCompleted, onMatchPast]);
+    timer = setInterval(updateTimer, 1000);
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [targetHours, dateTime, isCompleted]);
 
   const format2Digits = (num: number) => num.toString().padStart(2, '0');
-  const displayTime = dateTime.includes(',') ? (dateTime.split(',').pop()?.trim() || dateTime) : dateTime;
+  const displayTime = dateTime;
 
   return (
     <View style={[styles.card, timeLeft.isPast && styles.cardPastReview]}>
@@ -146,7 +163,7 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
               activeOpacity={0.85}
               onPress={() => router.push(matchId ? { pathname: '/rate-match', params: { matchId } } : '/rate-match')}
             >
-              <MaterialIcons name="grade" size={18} color={theme.background} />
+              <MaterialIcons name="grade" size={18} color={theme.onPrimary} />
               <Text style={styles.reviewPrimaryBtnText}>MAÇI DEĞERLENDİR</Text>
             </TouchableOpacity>
 
@@ -187,7 +204,7 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
               onPress={() => router.push(matchId ? { pathname: '/match-room', params: { matchId } } : '/match-room')}
             >
               <Text style={styles.goBtnText}>ODAYA GİT</Text>
-              <MaterialIcons name="chevron-right" size={16} color={theme.background} />
+              <MaterialIcons name="chevron-right" size={16} color={theme.onPrimary} />
             </TouchableOpacity>
           </View>
         </>
@@ -223,7 +240,7 @@ export const MatchCountdownCard: React.FC<MatchCountdownCardProps> = ({
               onPress={() => router.push(matchId ? { pathname: '/match-room', params: { matchId } } : '/match-room')}
             >
               <Text style={styles.goBtnText}>ODAYA GİT</Text>
-              <MaterialIcons name="chevron-right" size={16} color={theme.background} />
+              <MaterialIcons name="chevron-right" size={16} color={theme.onPrimary} />
             </TouchableOpacity>
           </View>
         </>
@@ -367,7 +384,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   goBtnText: { 
     fontFamily: Fonts.headlineBold, 
     fontSize: 9, 
-    color: theme.background 
+    color: theme.onPrimary 
   },
 
   // Yemeksepeti-style Değerlendir Kartı Stilleri
@@ -419,7 +436,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   reviewPrimaryBtnText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 12,
-    color: theme.background,
+    color: theme.onPrimary,
     letterSpacing: 0.5,
   },
   reviewSecondaryBtn: {

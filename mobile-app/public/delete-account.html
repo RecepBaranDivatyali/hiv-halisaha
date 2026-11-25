@@ -64,10 +64,114 @@
       color: #8eff71;
       text-decoration: none;
     }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #94a3b8;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    input[type="email"], select, textarea {
+      width: 100%;
+      box-sizing: border-box;
+      background-color: #0e0e0e;
+      border: 1px solid #334155;
+      color: #ffffff;
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    input[type="email"]:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #8eff71;
+      box-shadow: 0 0 0 2px rgba(142, 255, 113, 0.2);
+    }
+    button.btn-submit {
+      background-color: #8eff71;
+      color: #064200;
+      font-weight: 800;
+      font-size: 14px;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      width: 100%;
+      transition: filter 0.2s, transform 0.1s;
+    }
+    button.btn-submit:hover {
+      filter: brightness(1.1);
+    }
+    button.btn-submit:active {
+      transform: scale(0.99);
+    }
+    .alert-success {
+      display: none;
+      background: rgba(142, 255, 113, 0.1);
+      border: 1px solid #8eff71;
+      border-radius: 10px;
+      padding: 18px;
+      margin-top: 18px;
+    }
+    .alert-success h4 {
+      margin: 0 0 8px 0;
+      color: #8eff71;
+      font-size: 16px;
+    }
+    .alert-error {
+      display: none;
+      background: rgba(255, 115, 81, 0.1);
+      border: 1px solid #ff7351;
+      border-radius: 10px;
+      padding: 18px;
+      margin-top: 18px;
+    }
+    .alert-error h4 {
+      margin: 0 0 8px 0;
+      color: #ff7351;
+      font-size: 16px;
+    }
+    .top-nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .btn-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background-color: #18181b;
+      border: 1px solid #27272a;
+      color: #e2e8f0;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 8px;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .btn-back:hover {
+      border-color: #8eff71;
+      color: #8eff71;
+    }
   </style>
 </head>
 <body>
   <div class="container">
+    <div class="top-nav">
+      <a href="/" class="btn-back">← Uygulamaya Dön</a>
+      <a href="/privacy" style="font-size: 13px; font-weight: 600;">Gizlilik Politikası</a>
+    </div>
     <h1>H.İ.V Halısaha — Hesap ve Veri Silme</h1>
     <div class="badge">Geliştirici: Recep Baran Divatyalı | Uygulama: H.İ.V Halısaha</div>
 
@@ -87,12 +191,63 @@
     </div>
 
     <div class="card">
-      <h3 style="margin-top:0; color:#fff;">Yöntem 2: E-posta Yoluyla Silme Talebi (Uygulama Yüklü Değilse)</h3>
-      <p>Uygulamaya erişiminiz yoksa doğrudan e-posta yoluyla silme talebinde bulunabilirsiniz:</p>
-      <ul>
-        <li>Kayıtlı e-posta adresinizden <a href="mailto:barandivatyali@gmail.com">barandivatyali@gmail.com</a> adresine <strong>"Hesap Silme Talebi"</strong> başlıklı bir e-posta gönderin.</li>
-        <li>Talebiniz incelenerek en geç <strong>24-48 saat</strong> içerisinde hesabınız ve tüm ilişkili verileriniz kalıcı olarak silinecek ve tarafınıza teyit e-postası gönderilecektir.</li>
-      </ul>
+      <h3 style="margin-top:0; color:#fff;">Yöntem 2: Web Formu veya E-posta ile Silme Talebi (Doğrudan Başvuru)</h3>
+      <p>Google Play Store ve KVKK hesap silme standartları gereğince, uygulamayı açmadan doğrudan aşağıdaki web formunu doldurarak hesabınızın ve tüm verilerinizin silinmesini talep edebilirsiniz:</p>
+
+      <form id="deleteRequestForm" onsubmit="handleDeleteSubmit(event)">
+        <div class="form-group">
+          <label for="userEmail">Kayıtlı E-posta Adresiniz *</label>
+          <input type="email" id="userEmail" required placeholder="ornek@email.com">
+        </div>
+
+        <div class="form-group">
+          <label for="deleteReason">Hesap Silme Nedeni *</label>
+          <select id="deleteReason" required>
+            <option value="">Lütfen bir neden seçin</option>
+            <option value="Artık halısaha maçlarına katılmıyorum">Artık halısaha maçlarına katılmıyorum</option>
+            <option value="Gizlilik ve kişisel veri endişeleri">Gizlilik ve kişisel veri endişeleri</option>
+            <option value="Yeni bir hesap açacağım">Yeni bir hesap açacağım</option>
+            <option value="Uygulama ile ilgili teknik sorunlar yaşadım">Uygulama ile ilgili teknik sorunlar yaşadım</option>
+            <option value="Diğer">Diğer</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="additionalNotes">Ek Açıklama (İsteğe Bağlı)</label>
+          <textarea id="additionalNotes" rows="3" placeholder="Varsa eklemek istediğiniz detaylar veya geri bildiriminiz..."></textarea>
+        </div>
+
+        <button type="submit" class="btn-submit">Hesap Silme Talebi Gönder</button>
+      </form>
+
+      <div id="successBox" class="alert-success">
+        <h4>✓ Hesap Silme Talebiniz Başarıyla Alındı</h4>
+        <p style="margin: 0 0 10px 0;">Talep Referans Numaranız: <strong class="highlight" id="refNumber">HIV-DEL-000000</strong></p>
+        <p style="font-size: 13px; margin: 0 0 12px 0; color: #cbd5e1;">
+          <strong id="confirmedEmail"></strong> adresiyle kayıtlı kullanıcı profiliniz ve tüm maç verileriniz en geç <strong>24-48 saat</strong> içerisinde sistemlerimizden kalıcı olarak silinecektir.
+        </p>
+        <p style="font-size: 12px; margin: 0; color: #94a3b8;">
+          Talebinizi e-posta uygulamanızla da teyit etmek isterseniz:
+          <a id="mailtoLink" href="#" style="text-decoration: underline; font-weight: bold;">Doğrudan E-posta Gönder</a>
+        </p>
+      </div>
+
+      <div id="errorBox" class="alert-error" role="alert">
+        <h4>✕ Talep Sunucuya İletilemedi</h4>
+        <p id="errorMessage" style="font-size: 13px; margin: 0 0 10px 0; color: #fecaca;">
+          Bağlantı veya sunucu hatası nedeniyle hesap silme talebiniz kaydedilemedi. Lütfen tekrar deneyin veya doğrudan e-posta ile başvurun.
+        </p>
+        <p style="font-size: 13px; margin: 0; color: #e2e8f0;">
+          Alternatif doğrudan başvuru:
+          <a id="errorMailtoLink" href="mailto:barandivatyali@gmail.com?subject=Hesap%20Silme%20Talebi" style="text-decoration: underline; font-weight: bold;">barandivatyali@gmail.com</a>
+        </p>
+      </div>
+
+      <div style="margin-top: 20px; border-top: 1px solid #27272a; padding-top: 14px;">
+        <p style="font-size: 13px; color: #94a3b8; margin: 0;">
+          Dilerseniz doğrudan <a href="mailto:barandivatyali@gmail.com?subject=Hesap%20Silme%20Talebi">barandivatyali@gmail.com</a> adresine kayıtlı e-postanızdan "Hesap Silme Talebi" başlığıyla yazarak da başvurabilirsiniz.
+        </p>
+      </div>
     </div>
 
     <h2>Silinen Veri Türleri</h2>
@@ -113,5 +268,79 @@
       <p style="margin: 0;"><strong>Destek E-postası:</strong> <a href="mailto:barandivatyali@gmail.com">barandivatyali@gmail.com</a></p>
     </div>
   </div>
+
+  <script>
+    async function handleDeleteSubmit(e) {
+      e.preventDefault();
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'İşleniyor...';
+      }
+
+      const email = document.getElementById('userEmail').value.trim();
+      const reason = document.getElementById('deleteReason').value;
+      const notes = document.getElementById('additionalNotes').value.trim();
+      const errorBox = document.getElementById('errorBox');
+      const errorMessage = document.getElementById('errorMessage');
+      const errorMailtoLink = document.getElementById('errorMailtoLink');
+      const successBox = document.getElementById('successBox');
+
+      errorBox.style.display = 'none';
+      successBox.style.display = 'none';
+
+      const randomRef = 'HIV-DEL-' + Math.floor(100000 + Math.random() * 900000);
+      const mailSubject = encodeURIComponent('Hesap Silme Talebi [' + randomRef + ']');
+      const mailBody = encodeURIComponent(
+        'Merhaba,\n\nH.İ.V Halısaha hesabı ve verilerimin silinmesini talep ediyorum.\n\n' +
+        'Kayıtlı E-posta: ' + email + '\n' +
+        'Talep No: ' + randomRef + '\n' +
+        'Neden: ' + reason + '\n' +
+        (notes ? 'Ek Açıklama: ' + notes + '\n' : '') +
+        '\nTeşekkürler.'
+      );
+      const mailtoHref = 'mailto:barandivatyali@gmail.com?subject=' + mailSubject + '&body=' + mailBody;
+
+      // Gerçek Firestore REST API Kaydı
+      try {
+        const res = await fetch('https://firestore.googleapis.com/v1/projects/hivhalisaha/databases/(default)/documents/deletion_requests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              email: { stringValue: email },
+              reason: { stringValue: reason },
+              details: { stringValue: notes || '' },
+              refCode: { stringValue: randomRef },
+              status: { stringValue: 'pending' },
+              createdAt: { stringValue: new Date().toISOString() }
+            }
+          })
+        });
+
+        if (!res.ok) {
+          throw new Error('HTTP ' + res.status);
+        }
+
+        document.getElementById('refNumber').textContent = randomRef;
+        document.getElementById('confirmedEmail').textContent = email;
+        document.getElementById('mailtoLink').href = mailtoHref;
+
+        document.getElementById('deleteRequestForm').style.display = 'none';
+        successBox.style.display = 'block';
+      } catch (err) {
+        console.error('Firestore deletion request save error:', err);
+        errorMessage.textContent =
+          'Talebiniz sunucuya kaydedilirken bir hata oluştu (' + (err && err.message ? err.message : 'Bağlantı hatası') + '). ' +
+          'Lütfen tekrar deneyin veya aşağıdaki e-posta bağlantısı üzerinden doğrudan başvurun.';
+        errorMailtoLink.href = mailtoHref;
+        errorBox.style.display = 'block';
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Hesap Silme Talebi Gönder';
+        }
+      }
+    }
+  </script>
 </body>
 </html>

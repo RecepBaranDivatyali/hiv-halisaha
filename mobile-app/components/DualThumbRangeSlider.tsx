@@ -41,22 +41,26 @@ export function DualThumbRangeSlider({
   const trackWidthRef = useRef(0);
   const [, forceUpdate] = useState(0);
 
-  // All mutable state lives in refs so PanResponder always reads latest values
+  // All mutable state & props live in refs so PanResponder always reads latest values
   const minRef = useRef(minValue);
   const maxRef = useRef(maxValue);
   minRef.current = minValue;
   maxRef.current = maxValue;
 
+  const propsRef = useRef({ min, max, step, minGap, onChange });
+  propsRef.current = { min, max, step, minGap, onChange };
+
   const activeThumb = useRef<'min' | 'max' | null>(null);
   const dragStartValue = useRef(0);
 
-  const rangeSpan = max - min;
+  const rangeSpan = Math.max(1e-6, max - min);
 
   const valueToX = useCallback(
     (val: number) => {
       const w = trackWidthRef.current;
-      if (!w) return 0;
-      return ((val - min) / rangeSpan) * (w - THUMB_SIZE);
+      if (!w || w <= THUMB_SIZE || rangeSpan <= 0) return 0;
+      const ratio = Math.min(1, Math.max(0, (val - min) / rangeSpan));
+      return ratio * (w - THUMB_SIZE);
     },
     [min, rangeSpan]
   );
@@ -69,12 +73,17 @@ export function DualThumbRangeSlider({
       onMoveShouldSetPanResponderCapture: () => true,
 
       onPanResponderGrant: (evt) => {
+        const w = trackWidthRef.current;
+        if (!w || w <= THUMB_SIZE) return;
+
+        const { min: pMin, max: pMax } = propsRef.current;
+        const span = Math.max(1e-6, pMax - pMin);
         const touchX = evt.nativeEvent.locationX;
         const curMin = minRef.current;
         const curMax = maxRef.current;
 
-        const minX = valueToX(curMin) + THUMB_SIZE / 2;
-        const maxX = valueToX(curMax) + THUMB_SIZE / 2;
+        const minX = ((curMin - pMin) / span) * (w - THUMB_SIZE) + THUMB_SIZE / 2;
+        const maxX = ((curMax - pMin) / span) * (w - THUMB_SIZE) + THUMB_SIZE / 2;
 
         const dMin = Math.abs(touchX - minX);
         const dMax = Math.abs(touchX - maxX);
@@ -92,23 +101,27 @@ export function DualThumbRangeSlider({
 
       onPanResponderMove: (_evt, gestureState) => {
         const w = trackWidthRef.current;
-        if (!w) return;
+        if (!w || w <= THUMB_SIZE) return;
+
+        const { min: pMin, max: pMax, step: pStep, minGap: pGap, onChange: pOnChange } = propsRef.current;
+        const span = pMax - pMin;
+        if (span <= 0) return;
 
         const curMin = minRef.current;
         const curMax = maxRef.current;
-        const deltaVal = (gestureState.dx / (w - THUMB_SIZE)) * rangeSpan;
+        const deltaVal = (gestureState.dx / (w - THUMB_SIZE)) * span;
         const rawVal = dragStartValue.current + deltaVal;
-        const snapped = snap(rawVal, min, step);
+        const snapped = snap(rawVal, pMin, pStep);
 
         if (activeThumb.current === 'min') {
-          const clamped = Math.max(min, Math.min(snapped, curMax - minGap));
-          if (Math.abs(clamped - curMin) >= step * 0.4) {
-            onChange(parseFloat(clamped.toFixed(1)), curMax);
+          const clamped = Math.max(pMin, Math.min(snapped, curMax - pGap));
+          if (Math.abs(clamped - curMin) >= pStep * 0.4) {
+            pOnChange(parseFloat(clamped.toFixed(1)), curMax);
           }
         } else if (activeThumb.current === 'max') {
-          const clamped = Math.max(curMin + minGap, Math.min(max, snapped));
-          if (Math.abs(clamped - curMax) >= step * 0.4) {
-            onChange(curMin, parseFloat(clamped.toFixed(1)));
+          const clamped = Math.max(curMin + pGap, Math.min(pMax, snapped));
+          if (Math.abs(clamped - curMax) >= pStep * 0.4) {
+            pOnChange(curMin, parseFloat(clamped.toFixed(1)));
           }
         }
       },
@@ -134,6 +147,10 @@ export function DualThumbRangeSlider({
   const leftMax = valueToX(maxValue);
   const activeLeft = leftMin + THUMB_SIZE / 2;
   const activeWidth = Math.max(0, leftMax - leftMin);
+  const scaleLabels = [0, 0.25, 0.5, 0.75, 1].map((t) => {
+    const val = min + (max - min) * t;
+    return Number.isInteger(val) ? String(val) : val.toFixed(1);
+  });
 
   return (
     <View style={styles.wrapper}>
@@ -141,13 +158,14 @@ export function DualThumbRangeSlider({
       <View
         style={[
           styles.trackHitArea,
-          Platform.OS === 'web' ? ({ userSelect: 'none', cursor: 'pointer' } as any) : null,
+          Platform.OS === 'web' ? ({ userSelect: 'none', cursor: 'pointer', touchAction: 'none' } as any) : null,
         ]}
         onLayout={handleLayout}
         {...panResponder.panHandlers}
       >
         {/* Grey background track */}
         <View
+          pointerEvents="none"
           style={[
             styles.trackBg,
             {
@@ -160,6 +178,7 @@ export function DualThumbRangeSlider({
 
         {/* Active (colored) segment between thumbs */}
         <View
+          pointerEvents="none"
           style={[
             styles.trackActive,
             {
@@ -197,8 +216,8 @@ export function DualThumbRangeSlider({
 
       {/* Scale Labels */}
       <View style={styles.scaleRow}>
-        {['0', '2.5', '5', '7.5', '10'].map((label) => (
-          <Text key={label} style={[styles.scaleLabel, { color: theme.textMuted }]}>
+        {scaleLabels.map((label, idx) => (
+          <Text key={`${label}-${idx}`} style={[styles.scaleLabel, { color: theme.textMuted }]}>
             {label}
           </Text>
         ))}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, Text, ScrollView, useWindowDimensions, TouchableOpacity, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -7,7 +7,6 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/use-auth';
 import { Bouncable } from '@/components/Bouncable';
-import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
 
 export default function OnboardingScreen() {
   const router = useRouter();
@@ -15,10 +14,25 @@ export default function OnboardingScreen() {
   const { completeOnboarding } = useAuth();
   const { width } = useWindowDimensions();
   const [layoutWidth, setLayoutWidth] = useState(0);
-  const effectiveWidth = layoutWidth > 0 ? layoutWidth : (Platform.OS === 'web' && width > 520 ? 393 : width);
-  const styles = useStyles(theme, effectiveWidth);
+  const effectiveWidth = layoutWidth > 0 ? layoutWidth : (Platform.OS === 'web' && width > 520 ? Math.min(width, 480) : width);
+  const styles = useStyles(theme);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const scrollRef = React.useRef<ScrollView>(null);
+  const currentIndexRef = useRef(0);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
+
+  useEffect(() => {
+    if (effectiveWidth > 0) {
+      scrollRef.current?.scrollTo({
+        x: currentIndexRef.current * effectiveWidth,
+        animated: false,
+      });
+    }
+  }, [effectiveWidth]);
 
   const slides = [
     {
@@ -55,8 +69,17 @@ export default function OnboardingScreen() {
   };
 
   const handleFinish = async () => {
-    await completeOnboarding();
-    router.replace('/login');
+    if (isCompleting) return;
+    setIsCompleting(true);
+    try {
+      await completeOnboarding();
+      router.replace('/login');
+    } catch (e) {
+      console.warn('Onboarding completion error:', e);
+      router.replace('/login');
+    } finally {
+      setIsCompleting(false);
+    }
   };
 
   return (
@@ -79,16 +102,21 @@ export default function OnboardingScreen() {
         scrollEventThrottle={16}
         style={{ flex: 1 }}
       >
-        {slides.map((slide, index) => (
-          <View key={slide.id} style={[styles.slide, { width: effectiveWidth }]}>
-            <Animated.View entering={FadeInDown.delay(index * 200).springify()} style={[styles.iconBox, { backgroundColor: `${slide.color}15`, borderColor: `${slide.color}30` }]}>
+        {slides.map((slide) => (
+          <ScrollView
+            key={slide.id}
+            style={{ width: effectiveWidth, flex: 1 }}
+            contentContainerStyle={styles.slide}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={[styles.iconBox, { backgroundColor: `${slide.color}15`, borderColor: `${slide.color}30` }]}>
               <MaterialIcons name={slide.icon as any} size={80} color={slide.color} />
-            </Animated.View>
-            <Animated.View entering={FadeInRight.delay(index * 200 + 200).springify()} style={styles.textContainer}>
+            </View>
+            <View style={styles.textContainer}>
               <Text style={styles.title}>{slide.title}</Text>
               <Text style={styles.subtitle}>{slide.subtitle}</Text>
-            </Animated.View>
-          </View>
+            </View>
+          </ScrollView>
         ))}
       </ScrollView>
 
@@ -108,11 +136,18 @@ export default function OnboardingScreen() {
         </View>
 
         <View style={styles.actionRow}>
-          <TouchableOpacity onPress={handleFinish} style={styles.skipBtn} accessibilityLabel="Atla" accessibilityRole="button">
+          <TouchableOpacity 
+            onPress={handleFinish} 
+            style={[styles.skipBtn, isCompleting && { opacity: 0.5 }]} 
+            accessibilityLabel="Atla" 
+            accessibilityRole="button"
+            disabled={isCompleting}
+          >
             <Text style={styles.skipText}>ATLA</Text>
           </TouchableOpacity>
           <Bouncable 
-            style={styles.nextBtn} 
+            style={[styles.nextBtn, isCompleting && { opacity: 0.6 }]} 
+            disabled={isCompleting}
             onPress={() => {
               if (currentIndex >= slides.length - 1) {
                 handleFinish();
@@ -135,17 +170,16 @@ export default function OnboardingScreen() {
   );
 }
 
-const useStyles = (theme: any, width: number) => StyleSheet.create({
+const useStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.background,
   },
   slide: {
-    width,
-    flex: 1,
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 40,
+    padding: 36,
   },
   iconBox: {
     width: 160,
@@ -158,6 +192,8 @@ const useStyles = (theme: any, width: number) => StyleSheet.create({
   },
   textContainer: {
     alignItems: 'center',
+    opacity: 1,
+    width: '100%',
   },
   title: {
     fontFamily: Fonts.headlineBold,

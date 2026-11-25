@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Alert, ScrollView, Platform } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { AppModal as Modal } from '@/components/AppModal';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -7,6 +7,7 @@ import { Fonts } from '@/constants/theme';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/use-auth';
 import { dbService } from '@/services/dbService';
+import { appAlert } from '@/services/appAlert';
 
 interface MatchPaymentModalProps {
   visible: boolean;
@@ -56,6 +57,9 @@ export const MatchPaymentModal: React.FC<MatchPaymentModalProps> = ({
   }, []);
 
   const isExempt = isGoalkeeper && isGkFree;
+  const isAlreadyPaid = currentStatus === 'paid';
+  const isPendingApproval = currentStatus === 'pending_approval';
+  const hasOrganizerIban = Boolean(organizerIban?.trim());
 
   // Format IBAN for clean display
   const formatIban = (iban: string) => {
@@ -64,17 +68,29 @@ export const MatchPaymentModal: React.FC<MatchPaymentModalProps> = ({
   };
 
   const handleCopyIban = async () => {
-    if (!organizerIban) return;
-    const clean = organizerIban.replace(/\s+/g, '').toUpperCase();
-    await Clipboard.setStringAsync(clean);
+    const trimmed = organizerIban?.trim();
+    if (!trimmed) return;
+    const clean = trimmed.replace(/\s+/g, '').toUpperCase();
+    try {
+      await Clipboard.setStringAsync(clean);
+    } catch {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(clean).catch(() => {});
+      }
+    }
     setCopied(true);
     if (copiedTimeoutRef.current) clearTimeout(copiedTimeoutRef.current);
     copiedTimeoutRef.current = setTimeout(() => setCopied(false), 2500);
   };
 
   const handleNotifyIbanPayment = async () => {
+    if (submitting || isAlreadyPaid) return;
+    if (isPendingApproval) {
+      appAlert.alert('Onay Bekliyor', 'Ödeme bildiriminiz zaten kaptana iletildi ve onay bekliyor.');
+      return;
+    }
     if (!userSlotKey) {
-      Alert.alert('Kadroda Değilsiniz', 'Ödeme bildirebilmek için önce sahada bir mevkiye katılmalısınız.');
+      appAlert.alert('Kadroda Değilsiniz', 'Ödeme bildirebilmek için önce sahada bir mevkiye katılmalısınız.');
       return;
     }
 
@@ -83,32 +99,37 @@ export const MatchPaymentModal: React.FC<MatchPaymentModalProps> = ({
       await dbService.updateSlotPayment(matchId, userSlotKey, false, 'pending_approval', 'iban');
 
       // Send automatic message to match room chat
-      const senderName = user?.name || 'Oyuncu';
-      await dbService.sendMessage(`match_${matchId}`, {
-        senderId: user?.uid || 'anon',
-        senderName: senderName,
-        senderAvatar: user?.avatar,
-        text: `💸 [Ödeme]: ${senderName}, ${amount} ₺ maç ücretini kaptanın IBAN'ına gönderdiğini bildirdi (Onay Bekliyor).`
-      });
+      try {
+        const senderName = user?.name || 'Oyuncu';
+        await dbService.sendMessage(`match_${matchId}`, {
+          senderId: user?.uid || 'anon',
+          senderName: senderName,
+          senderAvatar: user?.avatar,
+          text: `💸 [Ödeme]: ${senderName}, ${amount} ₺ maç ücretini kaptanın IBAN'ına gönderdiğini bildirdi (Onay Bekliyor).`
+        });
+      } catch (chatErr) {
+        console.warn('Ödeme sohbet mesajı gönderilemedi:', chatErr);
+      }
 
       if (onSuccess) onSuccess('pending_approval');
+      onClose();
 
-      Alert.alert(
+      appAlert.alert(
         '✓ Bildirim Gönderildi!',
-        `Kaptana ödemeyi FAST ile gönderdiğiniz bildirildi.\n\nKaptan banka hesabını kontrol edip onayladığında kadro durumunuz yeşil "ÖDENDİ" olacaktır.`,
-        [{ text: 'Tamam', onPress: onClose }]
+        'Kaptana ödemeyi FAST ile gönderdiğiniz bildirildi.\n\nKaptan banka hesabını kontrol edip onayladığında kadro durumunuz yeşil "ÖDENDİ" olacaktır.'
       );
     } catch (e) {
       console.error('Ödeme bildirme hatası:', e);
-      Alert.alert('Hata', 'Ödeme bildirimi iletilirken bir sorun oluştu.');
+      appAlert.alert('Hata', 'Ödeme bildirimi iletilirken bir sorun oluştu.');
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleSelectCashOnPitch = async () => {
+    if (submitting || isAlreadyPaid) return;
     if (!userSlotKey) {
-      Alert.alert('Kadroda Değilsiniz', 'Ödeme tercihi bildirebilmek için önce sahada bir mevkiye katılmalısınız.');
+      appAlert.alert('Kadroda Değilsiniz', 'Ödeme tercihi bildirebilmek için önce sahada bir mevkiye katılmalısınız.');
       return;
     }
 
@@ -117,24 +138,28 @@ export const MatchPaymentModal: React.FC<MatchPaymentModalProps> = ({
       await dbService.updateSlotPayment(matchId, userSlotKey, false, 'cash_on_pitch', 'cash');
 
       // Send automatic message to match room chat
-      const senderName = user?.name || 'Oyuncu';
-      await dbService.sendMessage(`match_${matchId}`, {
-        senderId: user?.uid || 'anon',
-        senderName: senderName,
-        senderAvatar: user?.avatar,
-        text: `💵 [Nakit]: ${senderName}, maç ücretini (${amount} ₺) sahada elden nakit ödeyeceğini belirtti.`
-      });
+      try {
+        const senderName = user?.name || 'Oyuncu';
+        await dbService.sendMessage(`match_${matchId}`, {
+          senderId: user?.uid || 'anon',
+          senderName: senderName,
+          senderAvatar: user?.avatar,
+          text: `💵 [Nakit]: ${senderName}, maç ücretini (${amount} ₺) sahada elden nakit ödeyeceğini belirtti.`
+        });
+      } catch (chatErr) {
+        console.warn('Nakit sohbet mesajı gönderilemedi:', chatErr);
+      }
 
       if (onSuccess) onSuccess('cash_on_pitch');
+      onClose();
 
-      Alert.alert(
+      appAlert.alert(
         '✓ Tercih Kaydedildi',
-        `Maç ücretini sahada elden nakit ödeyeceğiniz kaydedildi. Maç öncesi kaptana ödemeyi teslim etmeyi unutmayın.`,
-        [{ text: 'Tamam', onPress: onClose }]
+        'Maç ücretini sahada elden nakit ödeyeceğiniz kaydedildi. Maç öncesi kaptana ödemeyi teslim etmeyi unutmayın.'
       );
     } catch (e) {
       console.error('Nakit tercihi kaydetme hatası:', e);
-      Alert.alert('Hata', 'Nakit tercihi kaydedilirken bir sorun oluştu.');
+      appAlert.alert('Hata', 'Nakit tercihi kaydedilirken bir sorun oluştu.');
     } finally {
       setSubmitting(false);
     }
@@ -192,6 +217,14 @@ export const MatchPaymentModal: React.FC<MatchPaymentModalProps> = ({
                   Organizatör kaleciler için ücret muafiyeti tanımladı. İyi kurtarışlar dileriz! 🧤
                 </Text>
               </View>
+            ) : isAlreadyPaid ? (
+              <View style={styles.exemptInfoBox}>
+                <MaterialIcons name="check-circle" size={36} color={theme.primary} />
+                <Text style={[styles.exemptInfoTitle, { color: theme.primary }]}>Ödemeniz Onaylandı ✅</Text>
+                <Text style={styles.exemptInfoDesc}>
+                  Kaptan maç ücreti ödemenizi onayladı. Tekrar ödeme bildirimi göndermenize gerek yoktur.
+                </Text>
+              </View>
             ) : (
               <>
                 {/* 1. SEÇENEK: KAPTANIN IBAN'INA GÖNDER */}
@@ -201,7 +234,7 @@ export const MatchPaymentModal: React.FC<MatchPaymentModalProps> = ({
                     <Text style={styles.sectionTitle}>1. KAPTANIN IBAN&apos;INA GÖNDER (FAST)</Text>
                   </View>
 
-                  {organizerIban ? (
+                  {hasOrganizerIban ? (
                     <View style={styles.ibanCard}>
                       <View style={styles.ibanTopRow}>
                         <View>
@@ -225,8 +258,8 @@ export const MatchPaymentModal: React.FC<MatchPaymentModalProps> = ({
                         onPress={handleCopyIban}
                         activeOpacity={0.8}
                       >
-                        <MaterialIcons name={copied ? "check" : "content-copy"} size={16} color={copied ? theme.onPrimary : theme.background} />
-                        <Text style={[styles.copyIbanText, copied && { color: theme.onPrimary }]}>
+                        <MaterialIcons name={copied ? "check" : "content-copy"} size={16} color={copied ? (theme.onSecondary || theme.onPrimary) : theme.onPrimary} />
+                        <Text style={[styles.copyIbanText, copied && { color: theme.onSecondary || theme.onPrimary }]}>
                           {copied ? 'IBAN KOPYALANDI!' : 'IBAN\'I KOPYALA'}
                         </Text>
                       </TouchableOpacity>
@@ -234,19 +267,23 @@ export const MatchPaymentModal: React.FC<MatchPaymentModalProps> = ({
                       <View style={styles.tipBox}>
                         <MaterialIcons name="info-outline" size={14} color={theme.textMuted} />
                         <Text style={styles.tipText}>
-                          FAST ile gönderirken açıklama kısmına <Text style={{ color: theme.primary, fontWeight: 'bold' }}>"{user?.name || 'Adınız'}"</Text> yazmayı unutmayın.
+                          FAST ile gönderirken açıklama kısmına <Text style={{ color: theme.primary, fontWeight: 'bold' }}>{`"${user?.name || 'Adınız'}"`}</Text> yazmayı unutmayın.
                         </Text>
                       </View>
 
                       <TouchableOpacity 
-                        style={[styles.notifyBtn, submitting && { opacity: 0.7 }]}
+                        style={[styles.notifyBtn, (submitting || isPendingApproval) && { opacity: 0.7 }]}
                         onPress={handleNotifyIbanPayment}
-                        disabled={submitting}
+                        disabled={submitting || isPendingApproval}
                         activeOpacity={0.85}
                       >
-                        <MaterialIcons name="send" size={16} color={theme.background} />
+                        <MaterialIcons name={isPendingApproval ? "hourglass-top" : "send"} size={16} color={theme.onSecondary || theme.onPrimary} />
                         <Text style={styles.notifyBtnText}>
-                          {submitting ? 'İLETİLİYOR...' : 'ÖDEMEYİ GÖNDERDİM (KAPTANA BİLDİR)'}
+                          {submitting
+                            ? 'İLETİLİYOR...'
+                            : isPendingApproval
+                              ? 'ÖDEME ONAYI BEKLENİYOR...'
+                              : 'ÖDEMEYİ GÖNDERDİM (KAPTANA BİLDİR)'}
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -493,7 +530,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   copyIbanText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 12,
-    color: theme.background,
+    color: theme.onPrimary,
   },
   tipBox: {
     flexDirection: 'row',
@@ -521,7 +558,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   notifyBtnText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 12,
-    color: theme.background,
+    color: theme.onSecondary || '#ffffff',
     letterSpacing: 0.5,
   },
   noIbanBox: {

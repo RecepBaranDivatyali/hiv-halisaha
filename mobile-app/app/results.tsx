@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, RefreshControl, FlatList } from 'react-native';
+import { StyleSheet, View, Text, Image, TouchableOpacity, RefreshControl, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
@@ -10,6 +10,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { dbService } from '@/services/dbService';
 import { Skeleton } from '@/components/Skeleton';
 import { PlayerProfileModal, PlayerProfileData } from '@/components/PlayerProfileModal';
+import { pickParam, safeBack } from '@/utils/navigation';
 
 export default function ResultsScreen() {
   const { theme } = useTheme();
@@ -30,8 +31,21 @@ export default function ResultsScreen() {
     minRating?: string;
     maxRating?: string;
   }>();
-  const searchTab = (params.tab || 'Oyuncu') as string;
-  const posName = params.pos ? `(${params.pos})` : '';
+  const searchTab = pickParam(params.tab) || 'Oyuncu';
+  const posParam = pickParam(params.pos);
+  const cityParam = pickParam(params.city);
+  const districtParam = pickParam(params.district);
+  const levelParam = pickParam(params.level);
+  const difficultyParam = pickParam(params.difficulty);
+  const modeParam = pickParam(params.mode);
+  const arenaParam = pickParam(params.arena);
+  const timeFrameParam = pickParam(params.timeFrame);
+  const reservationStatusParam = pickParam(params.reservationStatus);
+  const playerStatusParam = pickParam(params.playerStatus);
+  const minRatingParam = pickParam(params.minRating);
+  const maxRatingParam = pickParam(params.maxRating);
+
+  const posName = posParam ? `(${posParam})` : '';
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -46,37 +60,39 @@ export default function ResultsScreen() {
     setLoading(true);
     setError(null);
     try {
+      const parsedMin = minRatingParam !== undefined ? parseFloat(minRatingParam) : NaN;
+      const parsedMax = maxRatingParam !== undefined ? parseFloat(maxRatingParam) : NaN;
       if (searchTab === 'Oyuncu') {
         const list = await dbService.searchPlayers({
-          city: params.city,
-          district: params.district,
-          position: params.pos,
-          level: params.level,
-          minRating: params.minRating ? parseFloat(params.minRating) : undefined,
-          maxRating: params.maxRating ? parseFloat(params.maxRating) : undefined,
-          onlyLookingForMatch: params.playerStatus === 'looking',
-          timeFrame: params.timeFrame,
+          city: cityParam,
+          district: districtParam,
+          position: posParam,
+          level: levelParam,
+          minRating: Number.isFinite(parsedMin) ? parsedMin : undefined,
+          maxRating: Number.isFinite(parsedMax) ? parsedMax : undefined,
+          onlyLookingForMatch: playerStatusParam === 'looking',
+          timeFrame: timeFrameParam,
         });
         setPlayers(list);
       } else if (searchTab === 'Maç') {
         const list = await dbService.searchMatches({
-          city: params.city,
-          district: params.district,
-          mode: params.mode,
-          position: params.pos,
-          difficulty: params.difficulty,
-          arena: params.arena,
-          timeFrame: params.timeFrame,
-          hasReservation: params.reservationStatus as any,
+          city: cityParam,
+          district: districtParam,
+          mode: modeParam,
+          position: posParam,
+          difficulty: difficultyParam,
+          arena: arenaParam,
+          timeFrame: timeFrameParam,
+          hasReservation: reservationStatusParam as any,
         });
         setMatches(list);
       } else if (searchTab === 'Rakip') {
         const list = await dbService.getClubs({
-          city: params.city,
-          district: params.district,
-          difficulty: params.difficulty,
-          hasReservation: params.reservationStatus === 'reserved' ? true : params.reservationStatus === 'no_reservation' ? false : undefined,
-          timeFrame: params.timeFrame,
+          city: cityParam,
+          district: districtParam,
+          difficulty: difficultyParam,
+          hasReservation: reservationStatusParam === 'reserved' ? true : reservationStatusParam === 'no_reservation' ? false : undefined,
+          timeFrame: timeFrameParam,
         });
         setOpponents(list);
       }
@@ -86,7 +102,7 @@ export default function ResultsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [searchTab, params.city, params.district, params.pos, params.level, params.minRating, params.maxRating, params.mode, params.difficulty, params.arena, params.timeFrame, params.reservationStatus, params.playerStatus]);
+  }, [searchTab, cityParam, districtParam, posParam, levelParam, minRatingParam, maxRatingParam, modeParam, difficultyParam, arenaParam, timeFrameParam, reservationStatusParam, playerStatusParam]);
 
   useEffect(() => {
     fetchResults();
@@ -106,7 +122,7 @@ export default function ResultsScreen() {
       {/* TopAppBar */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity style={styles.iconBtnHover} onPress={() => router.back()} accessibilityLabel="Geri" accessibilityRole="button">
+          <TouchableOpacity style={styles.iconBtnHover} onPress={() => safeBack(router, '/(tabs)/search')} accessibilityLabel="Geri" accessibilityRole="button">
             <MaterialIcons name="arrow-back" size={24} color={theme.primary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Arama Sonuçları</Text>
@@ -128,7 +144,7 @@ export default function ResultsScreen() {
               EŞLEŞEN <Text style={{ color: theme.primary }}>{tabTitle} {posName}</Text>
             </Text>
             <Text style={styles.statusDesc}>
-              {loading ? 'Aranıyor...' : `${resultsCount} Sonuç Bulundu (${params.city || 'Tüm Şehirler'}${params.timeFrame ? ` • ${params.timeFrame}` : ''})`}
+              {loading ? 'Aranıyor...' : `${resultsCount} Sonuç Bulundu (${cityParam || 'Tüm Şehirler'}${timeFrameParam ? ` • ${timeFrameParam}` : ''})`}
             </Text>
           </View>
         }
@@ -179,7 +195,7 @@ export default function ResultsScreen() {
                   gap: 6,
                   marginTop: 6,
                 }}
-                onPress={() => router.back()}
+                onPress={() => safeBack(router, '/(tabs)/search')}
               >
                 <MaterialIcons name="tune" size={16} color={theme.background} />
                 <Text style={{ fontFamily: Fonts.headlineBold, color: theme.background, fontSize: 13 }}>
@@ -192,8 +208,10 @@ export default function ResultsScreen() {
         renderItem={({ item, index: idx }) => {
           if (searchTab === 'Oyuncu') {
             const player = item;
+            const numericRating = Number(player.rating);
+            const displayRating = Number.isFinite(numericRating) && numericRating > 0 ? numericRating.toFixed(1) : '5.0';
             return (
-              <Animated.View entering={FadeInRight.delay(idx * 80).springify()}>
+              <Animated.View entering={FadeInRight.delay(Math.min(idx, 6) * 50).springify()}>
                 <Bouncable 
                   style={[styles.playerCard, player.isLookingForMatch && styles.playerCardHighlight]} 
                   onPress={() => {
@@ -212,13 +230,13 @@ export default function ResultsScreen() {
                         </View>
                       )}
                     </View>
-                    <Text style={styles.playerPos}>{player.position || 'Oyuncu'} • {player.city || 'İSTANBUL'}{player.district ? ` / ${player.district}` : ''}</Text>
+                    <Text style={styles.playerPos}>{player.position || 'Oyuncu'} • {player.city || 'Belirtilmedi'}{player.district ? ` / ${player.district}` : ''}</Text>
                     {player.isLookingForMatch && player.availableNote ? (
-                      <Text style={styles.playerAvailableNote} numberOfLines={1}>💬 "{player.availableNote}"</Text>
+                      <Text style={styles.playerAvailableNote} numberOfLines={1}>{`💬 "${player.availableNote}"`}</Text>
                     ) : null}
                   </View>
                   <View style={styles.playerRatingBox}>
-                    <Text style={styles.playerRating}>{player.rating || '8.5'}</Text>
+                    <Text style={styles.playerRating}>{displayRating}</Text>
                     <MaterialIcons name="star" size={12} color={theme.primary} />
                   </View>
                 </Bouncable>
@@ -229,7 +247,7 @@ export default function ResultsScreen() {
           if (searchTab === 'Rakip') {
             const opp = item;
             return (
-              <Animated.View entering={FadeInRight.delay(idx * 80).springify()}>
+              <Animated.View entering={FadeInRight.delay(Math.min(idx, 6) * 50).springify()}>
                 <Bouncable style={[styles.playerCard, { borderLeftWidth: 3, borderLeftColor: opp.hasReservation ? '#22c55e' : (opp.color || theme.primary) }]} onPress={() => router.push({ pathname: '/my-club', params: { clubId: opp.id } })}>
                   <View style={[styles.playerAvatar, { backgroundColor: `${opp.color || theme.primary}20`, alignItems: 'center', justifyContent: 'center' }]}>
                     <MaterialIcons name="shield" size={24} color={opp.color || theme.primary} />
@@ -249,13 +267,13 @@ export default function ResultsScreen() {
                         </View>
                       )}
                     </View>
-                    <Text style={styles.playerPos}>Seviye: {opp.level || 1} • {opp.membersCount || 10} Üye • {opp.city || 'Ankara'}</Text>
+                    <Text style={styles.playerPos}>Seviye: {opp.level ?? 1} • {opp.membersCount ?? 0} Üye • {opp.city || 'Belirtilmedi'}</Text>
                     {opp.reservationDetails ? (
                       <Text style={styles.playerAvailableNote} numberOfLines={1}>🏟️ {opp.reservationDetails}</Text>
                     ) : null}
                   </View>
                   <View style={[styles.playerRatingBox, { backgroundColor: theme.surfaceContainerHighest }]}>
-                    <Text style={styles.playerRating}>{opp.points || 100} PK</Text>
+                    <Text style={styles.playerRating}>{opp.points ?? 0} PK</Text>
                   </View>
                 </Bouncable>
               </Animated.View>
@@ -265,7 +283,7 @@ export default function ResultsScreen() {
           if (searchTab === 'Maç') {
             const match = item;
             return (
-              <Animated.View entering={FadeInRight.delay(idx * 80).springify()}>
+              <Animated.View entering={FadeInRight.delay(Math.min(idx, 6) * 50).springify()}>
                 <Bouncable style={[styles.playerCard, { borderLeftWidth: 3, borderLeftColor: match.hasReservation ? '#22c55e' : match.isPitchFlexible ? '#f59e0b' : theme.primary }]} onPress={() => router.push({ pathname: '/match-room', params: { matchId: match.id } })}>
                   <View style={[styles.playerAvatar, { backgroundColor: `${theme.primary}15`, alignItems: 'center', justifyContent: 'center' }]}>
                     <MaterialIcons name="sports-soccer" size={24} color={match.hasReservation ? '#22c55e' : theme.primary} />

@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, RefreshControl, Alert } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
 import { useRouter } from 'expo-router';
 import { SideMenu } from '@/components/SideMenu';
 import { useAuth } from '@/hooks/use-auth';
+import { checkIsAdmin } from '@/context/AuthContext';
 import { useImagePicker } from '@/hooks/use-image-picker';
 import { BadgeDetailModal, BadgeData } from '@/components/BadgeDetailModal';
 import { NotificationCenterModal } from '@/components/NotificationCenterModal';
@@ -13,6 +14,8 @@ import { useMatches, isUserInMatchItem } from '@/hooks/use-matches';
 import { useTheme } from '@/context/ThemeContext';
 import { AppGuideModal } from '@/components/AppGuideModal';
 import { isMatchEnded, parseTargetTimestamp } from '@/services/dateUtils';
+import { appAlert } from '@/services/appAlert';
+import { auth } from '@/services/firebaseConfig';
 
 export default function ProfileScreen() {
   const { theme } = useTheme();
@@ -159,6 +162,11 @@ export default function ProfileScreen() {
     },
   ];
 
+  const displayRating = user?.rating ?? 5.0;
+  const ratingPercent = Math.max(10, Math.min(100, (displayRating / 10) * 100));
+  const isVerifiedAccount = Boolean(auth.currentUser?.emailVerified || user?.uid === 'store_reviewer_demo_user');
+  const isAdminUser = checkIsAdmin(user?.email, user?.role);
+
   const handleAvatarChange = async () => {
     try {
       const newUri = await promptPicker();
@@ -166,12 +174,12 @@ export default function ProfileScreen() {
         await saveUser({ avatar: newUri });
       }
     } catch {
-      Alert.alert('Hata', 'Profil fotoğrafı güncellenirken bir hata oluştu.');
+      appAlert.alert('Hata', 'Profil fotoğrafı güncellenirken bir hata oluştu.');
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <SideMenu 
         visible={menuVisible} 
         onClose={() => setMenuVisible(false)} 
@@ -209,6 +217,18 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
       >
+        {/* Ban Uyarısı */}
+        {user?.isBanned === true && (
+          <View style={[styles.alertBox, { borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.12)', marginBottom: 20 }]}>
+            <MaterialIcons name="gavel" size={24} color="#ef4444" style={styles.alertIcon} />
+            <View style={styles.alertInfo}>
+              <Text style={[styles.alertTitle, { color: '#ef4444' }]}>HESAP ASKIYA ALINDI</Text>
+              <Text style={styles.alertDesc}>
+                {user?.banReason || 'Platform kurallarına uymadığınız tespit edildiği için hesabınız geçici olarak askıya alınmıştır.'}
+              </Text>
+            </View>
+          </View>
+        )}
         
         {/* Player Info: Hero Section */}
         <View style={styles.heroSection}>
@@ -226,7 +246,7 @@ export default function ProfileScreen() {
                   style={styles.avatarImg} 
                 />
                 <View style={styles.cameraIconWrap}>
-                  <MaterialIcons name="photo-camera" size={16} color={theme.textMuted} />
+                  <MaterialIcons name="photo-camera" size={14} color={theme.onPrimary} />
                 </View>
               </View>
               <View style={styles.lvlBadge}>
@@ -234,18 +254,50 @@ export default function ProfileScreen() {
               </View>
             </TouchableOpacity>
 
+            {user?.isLookingForMatch && (
+              <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                backgroundColor: `${theme.primary}1F`,
+                borderWidth: 1,
+                borderColor: theme.primary,
+                paddingVertical: 4,
+                paddingHorizontal: 12,
+                borderRadius: 20,
+                marginBottom: 10,
+              }}>
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: theme.primary }} />
+                <Text style={{ color: theme.text, fontSize: 11, fontFamily: Fonts.headlineBold }}>
+                  MAÇ ARIYOR • {user.availableDate || 'Aktif'}
+                </Text>
+              </View>
+            )}
+
             <Text style={styles.positionText}>{user?.position || 'FORVET'}</Text>
             <Text style={styles.playerName}>{user?.name || 'Oyuncu'}</Text>
 
             <View style={styles.tagsRow}>
               <View style={styles.tagItem}>
                 <MaterialIcons name="location-on" size={14} color={theme.secondary} />
-                <Text style={styles.tagText}>{user?.city || 'İSTANBUL'}</Text>
+                <Text style={styles.tagText}>
+                  {user?.district ? `${user.city || 'İSTANBUL'} / ${user.district}` : (user?.city || 'İSTANBUL')}
+                </Text>
               </View>
               <View style={styles.tagItem}>
-                <MaterialIcons name="verified" size={14} color={theme.primary} />
-                <Text style={styles.tagText}>DOĞRULANMIŞ</Text>
+                <MaterialIcons
+                  name={isVerifiedAccount ? 'verified' : 'mark-email-unread'}
+                  size={14}
+                  color={isVerifiedAccount ? theme.primary : theme.warning}
+                />
+                <Text style={styles.tagText}>{isVerifiedAccount ? 'DOĞRULANMIŞ' : 'ONAY BEKLİYOR'}</Text>
               </View>
+              {isAdminUser && (
+                <View style={[styles.tagItem, { backgroundColor: `${theme.primary}20`, borderColor: theme.primary, borderWidth: 1 }]}>
+                  <MaterialIcons name="admin-panel-settings" size={14} color={theme.primary} />
+                  <Text style={[styles.tagText, { color: theme.primary, fontFamily: Fonts.headlineBold }]}>YÖNETİCİ</Text>
+                </View>
+              )}
             </View>
 
             {/* Quick Profile & IBAN Edit Button */}
@@ -266,7 +318,7 @@ export default function ProfileScreen() {
                 <View>
                   <Text style={styles.ratingSubtitle}>GENEL PUAN</Text>
                   <View style={styles.ratingValueRow}>
-                    <Text style={styles.ratingValue}>{(user?.rating ?? 5.0).toFixed(1)}</Text>
+                    <Text style={styles.ratingValue}>{displayRating.toFixed(1)}</Text>
                     <Text style={styles.ratingValueMax}>/10</Text>
                   </View>
                 </View>
@@ -275,15 +327,101 @@ export default function ProfileScreen() {
                 </View>
               </View>
               <View style={styles.barGraphRow}>
-                <View style={[styles.barGraphItem, { backgroundColor: `${theme.primary}33`, height: '40%' }]} />
-                <View style={[styles.barGraphItem, { backgroundColor: `${theme.primary}66`, height: '60%' }]} />
-                <View style={[styles.barGraphItem, { backgroundColor: `${theme.primary}99`, height: '80%' }]} />
-                <View style={[styles.barGraphItem, { backgroundColor: `${theme.primary}cc`, height: '90%' }]} />
-                <View style={[styles.barGraphItem, { backgroundColor: theme.primary, height: '100%' }]} />
+                {[0.4, 0.55, 0.7, 0.85, 1.0].map((mult, idx) => {
+                  const opacities = ['33', '66', '99', 'cc', ''];
+                  return (
+                    <View
+                      key={idx}
+                      style={[
+                        styles.barGraphItem,
+                        {
+                          backgroundColor: `${theme.primary}${opacities[idx]}`,
+                          height: `${Math.max(12, Math.round(ratingPercent * mult))}%`,
+                        },
+                      ]}
+                    />
+                  );
+                })}
               </View>
             </View>
 
           </View>
+        </View>
+
+        {/* Kulüp Kartı / Bilgisi */}
+        <View style={styles.sectionMargin}>
+          {user?.clubName ? (
+            <TouchableOpacity 
+              style={{
+                backgroundColor: theme.surface,
+                borderRadius: 14,
+                padding: 16,
+                borderWidth: 1,
+                borderColor: `${theme.secondary}40`,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+              activeOpacity={0.85}
+              onPress={() => router.push('/my-club')}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 }}>
+                <View style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: `${theme.secondary}20`,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: theme.secondary,
+                }}>
+                  <MaterialIcons name="shield" size={24} color={theme.secondary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 10, color: theme.secondary, textTransform: 'uppercase', letterSpacing: 1 }}>
+                    KULÜBÜM
+                  </Text>
+                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 16, color: theme.text }} numberOfLines={1}>
+                    {user.clubName}
+                  </Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 11, color: theme.secondary }}>YÖNET</Text>
+                <MaterialIcons name="chevron-right" size={20} color={theme.secondary} />
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity 
+              style={{
+                backgroundColor: `${theme.surfaceContainerHighest}60`,
+                borderRadius: 14,
+                padding: 14,
+                borderWidth: 1,
+                borderColor: theme.borderSubtle,
+                borderStyle: 'dashed',
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+              activeOpacity={0.85}
+              onPress={() => router.push('/(tabs)/clubs')}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <MaterialIcons name="group-add" size={22} color={theme.primary} />
+                <View>
+                  <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.text }}>
+                    Bir Halısaha Kulübüne Katıl
+                  </Text>
+                  <Text style={{ fontFamily: Fonts.body, fontSize: 11, color: theme.textMuted }}>
+                    Takım kurarak diğer kulüplere meydan oku!
+                  </Text>
+                </View>
+              </View>
+              <MaterialIcons name="arrow-forward" size={18} color={theme.primary} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Güvenilirlik Uyarısı — Yalnızca puanı 90'ın altına düşen kullanıcılarda görünür */}
@@ -306,40 +444,96 @@ export default function ProfileScreen() {
             <Text style={styles.sectionTitle}>SEZON İSTATİSTİKLERİ</Text>
           </View>
           <View style={styles.statsGrid}>
-            <View style={styles.statCard}>
-              <MaterialIcons name="sports-soccer" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
-              <Text style={styles.statCardLabel} numberOfLines={1}>MAÇLAR</Text>
-              <Text style={[styles.statCardValue, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit>{user?.stats?.matchesPlayed ?? 0}</Text>
-            </View>
-            <View style={styles.statCard}>
-              <MaterialIcons name="bolt" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
-              <Text style={styles.statCardLabel} numberOfLines={1}>GOL</Text>
-              <Text style={[styles.statCardValue, { color: theme.primary }]} numberOfLines={1} adjustsFontSizeToFit>{user?.stats?.goals ?? 0}</Text>
-            </View>
-            <View style={styles.statCard}>
-              <MaterialIcons name="sports-score" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
-              <Text style={styles.statCardLabel} numberOfLines={1}>ASİST</Text>
-              <Text style={[styles.statCardValue, { color: theme.secondary }]} numberOfLines={1} adjustsFontSizeToFit>{user?.stats?.assists ?? 0}</Text>
-            </View>
-            <View style={styles.statCard}>
-              <MaterialIcons name="military-tech" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
-              <Text style={styles.statCardLabel} numberOfLines={1}>MVP</Text>
-              <Text style={[styles.statCardValue, { color: theme.primary }]} numberOfLines={1} adjustsFontSizeToFit>{user?.stats?.mvpCount ?? 0}</Text>
-            </View>
             <TouchableOpacity 
               style={styles.statCard}
               activeOpacity={0.8}
-              onPress={() => Alert.alert(
-                `Güvenilirlik Puanı (%${user?.stats?.reliabilityScore ?? 100})`,
+              onPress={() => appAlert.alert('Oynanan Maçlar', `Bu sezon toplam ${matchesPlayed} halısaha maçına katıldınız.`)}
+            >
+              <MaterialIcons name="sports-soccer" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
+              <Text style={styles.statCardLabel} numberOfLines={1}>MAÇLAR</Text>
+              <Text style={[styles.statCardValue, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit>{matchesPlayed}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.statCard}
+              activeOpacity={0.8}
+              onPress={() => appAlert.alert('Galibiyetler', `Toplam ${wins} maçtan galibiyetle ayrıldınız.`)}
+            >
+              <MaterialIcons name="emoji-events" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
+              <Text style={styles.statCardLabel} numberOfLines={1}>GALİBİYET</Text>
+              <Text style={[styles.statCardValue, { color: '#10b981' }]} numberOfLines={1} adjustsFontSizeToFit>{wins}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.statCard}
+              activeOpacity={0.8}
+              onPress={() => appAlert.alert('Kazanma Oranı', `Oynadığınız maçlardaki galibiyet oranınız %${winRate}.`)}
+            >
+              <MaterialIcons name="trending-up" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                <Text style={styles.statCardLabel} numberOfLines={1}>KAZANMA</Text>
+                <MaterialIcons name="info-outline" size={11} color={theme.textMuted} />
+              </View>
+              <Text style={[styles.statCardValue, { color: theme.primary }]} numberOfLines={1} adjustsFontSizeToFit>%{winRate}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.statCard}
+              activeOpacity={0.8}
+              onPress={() => appAlert.alert('Toplam Gol', `Bu sezon rakip filelere gönderdiğiniz toplam gol sayısı: ${goals}.`)}
+            >
+              <MaterialIcons name="bolt" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
+              <Text style={styles.statCardLabel} numberOfLines={1}>GOL</Text>
+              <Text style={[styles.statCardValue, { color: theme.primary }]} numberOfLines={1} adjustsFontSizeToFit>{goals}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.statCard}
+              activeOpacity={0.8}
+              onPress={() => appAlert.alert('Toplam Asist', `Takım arkadaşlarınıza yaptığınız toplam gol pası: ${stats.assists ?? 0}.`)}
+            >
+              <MaterialIcons name="sports-score" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
+              <Text style={styles.statCardLabel} numberOfLines={1}>ASİST</Text>
+              <Text style={[styles.statCardValue, { color: theme.secondary }]} numberOfLines={1} adjustsFontSizeToFit>{stats.assists ?? 0}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.statCard}
+              activeOpacity={0.8}
+              onPress={() => appAlert.alert('MVP Seçilme', `Tamamlanan maçlarda ${mvpCount} kez 'Maçın Adamı (MVP)' seçildiniz.`)}
+            >
+              <MaterialIcons name="military-tech" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
+              <Text style={styles.statCardLabel} numberOfLines={1}>MVP</Text>
+              <Text style={[styles.statCardValue, { color: theme.primary }]} numberOfLines={1} adjustsFontSizeToFit>{mvpCount}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.statCard}
+              activeOpacity={0.8}
+              onPress={() => appAlert.alert('Clean Sheet (Temiz Sayfa)', `Gol yemeden tamamlanan maç sayısı: ${cleanSheets}. Savunma ve kaleci başarısını yansıtır.`)}
+            >
+              <MaterialIcons name="security" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                <Text style={styles.statCardLabel} numberOfLines={1}>CLEAN SHEET</Text>
+                <MaterialIcons name="info-outline" size={11} color={theme.textMuted} />
+              </View>
+              <Text style={[styles.statCardValue, { color: theme.secondary }]} numberOfLines={1} adjustsFontSizeToFit>{cleanSheets}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.statCard}
+              activeOpacity={0.8}
+              onPress={() => appAlert.alert(
+                `Güvenilirlik Puanı (%${reliability})`,
                 'Bu metrik, katıldığınız maçlara zamanında ve eksiksiz katılımınızı gösterir.\n\n• Maçlara zamanında katılmak puanınızı artırır.\n• Son dakika maçtan çıkmak veya gelmemek puanı düşürür.\n• %90 altına düşen oyuncular maç ararken uyarı alabilir.'
               )}
             >
               <MaterialIcons name="shield" size={80} color={`${theme.text}0d`} style={styles.statCardBgIcon} />
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
                 <Text style={styles.statCardLabel} numberOfLines={1}>GÜVENİLİRLİK</Text>
                 <MaterialIcons name="info-outline" size={11} color={theme.textMuted} />
               </View>
-              <Text style={[styles.statCardValue, { color: theme.primary }]} numberOfLines={1} adjustsFontSizeToFit>%{user?.stats?.reliabilityScore ?? 100}</Text>
+              <Text style={[styles.statCardValue, { color: theme.primary }]} numberOfLines={1} adjustsFontSizeToFit>%{reliability}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -406,8 +600,8 @@ export default function ProfileScreen() {
                   onPress={() => router.push('/(tabs)/matches')}
                   activeOpacity={0.85}
                 >
-                  <MaterialIcons name="search" size={16} color={theme.background} />
-                  <Text style={{ fontFamily: Fonts.headlineBold, color: theme.background, fontSize: 12 }}>
+                  <MaterialIcons name="search" size={16} color={theme.onPrimary} />
+                  <Text style={{ fontFamily: Fonts.headlineBold, color: theme.onPrimary, fontSize: 12 }}>
                     MAÇLARI KEŞFET
                   </Text>
                 </TouchableOpacity>
@@ -438,7 +632,7 @@ export default function ProfileScreen() {
                     <View style={styles.matchItemLeft}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         <Text style={styles.matchItemDate} numberOfLines={1}>
-                          {match.dateTime?.toUpperCase()} • {match.city?.toUpperCase()}
+                          {match.dateTime?.toLocaleUpperCase('tr-TR')} • {match.city?.toLocaleUpperCase('tr-TR')}
                         </Text>
                         {needsReview && (
                           <View style={{ backgroundColor: `${theme.primary}25`, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
@@ -547,8 +741,8 @@ const useStyles = (theme: any) => StyleSheet.create({
     borderRadius: 64},
   cameraIconWrap: {
     position: 'absolute',
-    bottom: 4,
-    right: 4,
+    top: 2,
+    right: 2,
     width: 28,
     height: 28,
     borderRadius: 14,
@@ -568,7 +762,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   lvlBadgeText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 14,
-    color: theme.background,
+    color: theme.onPrimary,
     fontStyle: 'italic',
     fontWeight: '900'},
   positionText: {
@@ -590,7 +784,9 @@ const useStyles = (theme: any) => StyleSheet.create({
   tagsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
     marginBottom: 32},
   tagItem: {
     flexDirection: 'row',

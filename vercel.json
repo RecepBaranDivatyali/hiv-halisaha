@@ -8,7 +8,7 @@
       "destination": "/admin/index.html"
     },
     {
-      "source": "/admin/:path*",
+      "source": "/admin/((?!assets/|favicon\\.png).*)",
       "destination": "/admin/index.html"
     },
     {
@@ -28,7 +28,7 @@
       "destination": "/delete-account.html"
     },
     {
-      "source": "/((?!admin|_expo|assets|favicon\\.ico|manifest\\.json|sw\\.js|icons|privacy|delete-account).*)",
+      "source": "/((?!admin|_expo|assets|favicon\\.ico|favicon\\.png|manifest\\.json|sw\\.js|icons|privacy|delete-account).*)",
       "destination": "/index.html"
     }
   ],

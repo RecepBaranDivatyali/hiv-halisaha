@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, TextInput, KeyboardAvoidingView, Platform, Alert, Keyboard } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, TextInput, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
@@ -7,6 +7,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/use-auth';
 import { dbService, MessageModel } from '@/services/dbService';
+import { appAlert } from '@/services/appAlert';
+import { pickParam, safeBack } from '@/utils/navigation';
 
 export default function ChatDetailScreen() {
   const router = useRouter();
@@ -14,21 +16,43 @@ export default function ChatDetailScreen() {
   const { user } = useAuth();
   const styles = useStyles(theme);
   const scrollViewRef = useRef<ScrollView>(null);
-  const params = useLocalSearchParams<{ conversationId?: string; userName?: string; avatar?: string; recipientId?: string; title?: string }>();
+  const params = useLocalSearchParams<{
+    conversationId?: string | string[];
+    userName?: string | string[];
+    avatar?: string | string[];
+    recipientId?: string | string[];
+    title?: string | string[];
+  }>();
 
-  const otherUserName = params.userName || params.title || 'Sohbet';
-  const otherAvatar = params.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuD61ghtvJ5sJMQ7y3fD6Z_Ofd2S-DzwZ9il8dq6Fso8NMmg-Tkq63ki6TyBmTGKXf_ywAxfY8d0QQXSdPpDl6ppdLL89aww_eFnmBSi_-QELpMWokrZFoAKoHyiqaFQ566c3N-JvTKbu2r8ZTFl1P3T2VEJ8tn1uNe9kzEfLPmbOut5nd7pdEu76Bc4M5oqcDoKZ9p4rnuG4YBC1M4ICV9DM5_xplUAGZS-xailrob1N-XgNYCXmqen_ioHfxLib6k6uReyvMAKisex';
+  const conversationIdParam = pickParam(params.conversationId);
+  const userNameParam = pickParam(params.userName);
+  const avatarParam = pickParam(params.avatar);
+  const recipientIdParam = pickParam(params.recipientId);
+  const titleParam = pickParam(params.title);
 
-  const chatId = params.conversationId || (params.recipientId ? [user?.uid || 'anon', params.recipientId].sort().join('_') : 'general_chat');
+  const otherUserName = userNameParam || titleParam || 'Sohbet';
+  const otherAvatar = avatarParam || 'https://lh3.googleusercontent.com/aida-public/AB6AXuD61ghtvJ5sJMQ7y3fD6Z_Ofd2S-DzwZ9il8dq6Fso8NMmg-Tkq63ki6TyBmTGKXf_ywAxfY8d0QQXSdPpDl6ppdLL89aww_eFnmBSi_-QELpMWokrZFoAKoHyiqaFQ566c3N-JvTKbu2r8ZTFl1P3T2VEJ8tn1uNe9kzEfLPmbOut5nd7pdEu76Bc4M5oqcDoKZ9p4rnuG4YBC1M4ICV9DM5_xplUAGZS-xailrob1N-XgNYCXmqen_ioHfxLib6k6uReyvMAKisex';
+
+  const chatId = conversationIdParam || (recipientIdParam && user?.uid ? [user.uid, recipientIdParam].sort().join('_') : '');
 
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [messages, setMessages] = useState<MessageModel[]>([]);
 
   useEffect(() => {
+    if (!chatId) {
+      setMessages([]);
+      return;
+    }
+
+    let isMounted = true;
+    let scrollTimer: ReturnType<typeof setTimeout> | null = null;
+
     const unsub = dbService.subscribeMessages(chatId, (newMsgs) => {
+      if (!isMounted) return;
       setMessages(newMsgs);
-      setTimeout(() => {
+      if (scrollTimer) clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 100);
     });
@@ -41,6 +65,8 @@ export default function ChatDetailScreen() {
     });
 
     return () => {
+      isMounted = false;
+      if (scrollTimer) clearTimeout(scrollTimer);
       if (unsub) unsub();
       keyboardListener.remove();
     };
@@ -48,15 +74,19 @@ export default function ChatDetailScreen() {
 
   const handleSend = async () => {
     if (!inputText.trim() || isSending) return;
-    const textToSend = inputText.trim();
+    if (!chatId || !user?.uid) {
+      appAlert.alert('Hata', 'Aktif bir sohbet kanalı veya kullanıcı oturumu bulunamadı.');
+      return;
+    }
+    const textToSend = inputText.trim().slice(0, 1000);
     setInputText('');
     setIsSending(true);
 
     try {
       await dbService.sendMessage(chatId, {
-        senderId: user?.uid || 'anon',
+        senderId: user.uid,
         senderName: user?.name || 'Oyuncu',
-        senderAvatar: user?.avatar,
+        senderAvatar: user?.avatar || '',
         text: textToSend
       });
       setTimeout(() => {
@@ -64,7 +94,8 @@ export default function ChatDetailScreen() {
       }, 50);
     } catch (e) {
       console.log('Mesaj gönderme hatası:', e);
-      Alert.alert('Hata', 'Mesaj gönderilemedi.');
+      setInputText(textToSend);
+      appAlert.alert('Hata', 'Mesaj gönderilemedi.');
     } finally {
       setIsSending(false);
     }
@@ -84,32 +115,51 @@ export default function ChatDetailScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
         style={styles.container}
       >
         {/* TopAppBar */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <TouchableOpacity style={styles.iconBtnHover} onPress={() => router.back()} accessibilityLabel="Geri" accessibilityRole="button">
+            <TouchableOpacity style={styles.iconBtnHover} onPress={() => safeBack(router, '/conversations')} accessibilityLabel="Geri" accessibilityRole="button">
               <MaterialIcons name="arrow-back" size={24} color={theme.text} />
             </TouchableOpacity>
             <View style={styles.headerProfileInfo}>
               <View style={styles.headerAvatarWrap}>
                 <Image source={{ uri: otherAvatar }} style={styles.headerAvatar} />
               </View>
-              <View>
-                <Text style={styles.headerTitle}>{otherUserName}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.headerTitle} numberOfLines={1}>{otherUserName}</Text>
                 <Text style={styles.headerSubtitle}>CANLI SOHBET</Text>
               </View>
             </View>
           </View>
           <View style={styles.headerRight}>
-            <TouchableOpacity style={[styles.iconBtnHover, { backgroundColor: theme.surfaceContainerHighest, borderRadius: 8 }]} onPress={() => Alert.alert('Arama', 'Sesli arama özelliği yakında eklenecektir.')} accessibilityLabel="Ara" accessibilityRole="button">
+            <TouchableOpacity style={[styles.iconBtnHover, { backgroundColor: theme.surfaceContainerHighest, borderRadius: 8 }]} onPress={() => appAlert.alert('Arama', 'Sesli arama özelliği yakında eklenecektir.')} accessibilityLabel="Ara" accessibilityRole="button">
               <MaterialIcons name="call" size={20} color={theme.text} />
             </TouchableOpacity>
           </View>
         </View>
 
+        {!chatId ? (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 }}>
+            <MaterialIcons name="chat-bubble-outline" size={48} color={theme.textMuted} />
+            <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 16, color: theme.text }}>
+              Sohbet Odası Bulunamadı
+            </Text>
+            <Text style={{ fontFamily: Fonts.body, fontSize: 13, color: theme.textMuted, textAlign: 'center' }}>
+              Geçerli bir sohbet seçilmedi. Sohbet listesine dönüp bir konuşma seçebilirsiniz.
+            </Text>
+            <TouchableOpacity
+              style={{ marginTop: 8, backgroundColor: theme.primary, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 }}
+              onPress={() => safeBack(router, '/conversations')}
+            >
+              <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 13, color: theme.onPrimary }}>SOHBETLERE DÖN</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+        <>
         <ScrollView 
           ref={scrollViewRef}
           contentContainerStyle={styles.chatScroll} 
@@ -174,17 +224,20 @@ export default function ChatDetailScreen() {
             value={inputText}
             onChangeText={setInputText}
             onSubmitEditing={handleSend}
+            maxLength={1000}
           />
           <TouchableOpacity 
-            style={[styles.sendBtn, !inputText.trim() && { opacity: 0.5 }]} 
+            style={[styles.sendBtn, (!inputText.trim() || isSending) && { opacity: 0.5 }]} 
             onPress={handleSend}
-            disabled={!inputText.trim()}
+            disabled={!inputText.trim() || isSending}
             accessibilityLabel="Gönder"
             accessibilityRole="button"
           >
             <MaterialIcons name="send" size={20} color={theme.onPrimary} />
           </TouchableOpacity>
         </View>
+        </>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -206,6 +259,7 @@ const useStyles = (theme: any) => StyleSheet.create({
     backgroundColor: theme.surface
   },
   headerLeft: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12
@@ -215,6 +269,7 @@ const useStyles = (theme: any) => StyleSheet.create({
     borderRadius: 8
   },
   headerProfileInfo: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10

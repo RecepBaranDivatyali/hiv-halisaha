@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -8,7 +8,6 @@ import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SideMenu } from '@/components/SideMenu';
 import { CreateMatchModal } from '@/components/CreateMatchModal';
 import { NotificationCenterModal } from '@/components/NotificationCenterModal';
-import { ToastNotification, ToastMessage } from '@/components/ToastNotification';
 import { MatchCountdownCard } from '@/components/MatchCountdownCard';
 import { AppGuideModal } from '@/components/AppGuideModal';
 import { MatchSeekingModal } from '@/components/MatchSeekingModal';
@@ -39,8 +38,8 @@ export default function HomeScreen() {
   const [notifModalVisible, setNotifModalVisible] = useState(false);
   const [guideVisible, setGuideVisible] = useState(false);
   const [isGuideDismissed, setIsGuideDismissed] = useState(false);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
   const [ratedMatches, setRatedMatches] = useState<string[]>(user?.dismissedReviews || []);
+  const matchCreatedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (user?.dismissedReviews?.length) {
@@ -50,18 +49,28 @@ export default function HomeScreen() {
 
   const showMatchCreatedFeedback = useCallback(() => {
     setCreatedMatchSuccessVisible(true);
-    const timer = setTimeout(() => {
+    if (matchCreatedTimerRef.current) {
+      clearTimeout(matchCreatedTimerRef.current);
+    }
+    matchCreatedTimerRef.current = setTimeout(() => {
       setCreatedMatchSuccessVisible(false);
+      matchCreatedTimerRef.current = null;
     }, 1800);
-    return timer;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (matchCreatedTimerRef.current) {
+        clearTimeout(matchCreatedTimerRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
     if (params.matchCreated) {
       reloadMatches();
-      const timer = showMatchCreatedFeedback();
+      showMatchCreatedFeedback();
       router.setParams({ matchCreated: undefined });
-      return () => clearTimeout(timer);
     }
   }, [params.matchCreated, reloadMatches, showMatchCreatedFeedback, router]);
 
@@ -74,10 +83,11 @@ export default function HomeScreen() {
 
     AsyncStorage.getItem('@hiv_rated_matches').then(val => {
       if (val) {
-        setRatedMatches(JSON.parse(val));
+        const list: string[] = JSON.parse(val);
+        setRatedMatches(prev => Array.from(new Set([...prev, ...list, ...(user?.dismissedReviews || [])])));
       }
     }).catch(() => {});
-  }, []);
+  }, [user?.dismissedReviews]);
 
   // Maç Arama Sinyali Tarih Aşımı (Expiry) Kontrolü
   useEffect(() => {
@@ -95,7 +105,7 @@ export default function HomeScreen() {
       }
 
       if (isExpired) {
-        saveUser({ ...user, isLookingForMatch: false });
+        saveUser({ isLookingForMatch: false });
         if (user.uid) {
           dbService.setUserLookingForMatch(user.uid, false).catch(() => {});
         }
@@ -108,9 +118,9 @@ export default function HomeScreen() {
       AsyncStorage.getItem('@hiv_rated_matches').then(val => {
         if (val) {
           const list: string[] = JSON.parse(val);
-          setRatedMatches(Array.from(new Set([...list, ...(user?.dismissedReviews || [])])));
+          setRatedMatches(prev => Array.from(new Set([...prev, ...list, ...(user?.dismissedReviews || [])])));
         } else if (user?.dismissedReviews?.length) {
-          setRatedMatches(user.dismissedReviews);
+          setRatedMatches(prev => Array.from(new Set([...prev, ...user.dismissedReviews!])));
         }
       }).catch(() => {});
     }, [user?.dismissedReviews])
@@ -150,7 +160,10 @@ export default function HomeScreen() {
     try {
       await reloadMatches();
       const val = await AsyncStorage.getItem('@hiv_rated_matches');
-      if (val) setRatedMatches(JSON.parse(val));
+      if (val) {
+        const list: string[] = JSON.parse(val);
+        setRatedMatches(prev => Array.from(new Set([...prev, ...list, ...(user?.dismissedReviews || [])])));
+      }
     } catch (e) {
       console.error('Ana sayfa maçları yenileme hatası:', e);
     } finally {
@@ -222,6 +235,12 @@ export default function HomeScreen() {
   const unratedFinishedMatches = userFinishedMatches.filter(m => {
     if (!m.id || seenMatchIds.has(m.id)) return false;
     seenMatchIds.add(m.id);
+    if (m.status === 'cancelled') return false;
+    const playerCount = Math.max(
+      Number(m.joinedPlayersCount || 0),
+      m.slots && typeof m.slots === 'object' ? Object.values(m.slots).filter(Boolean).length : 0
+    );
+    if (playerCount < 2) return false;
     if (ratedMatches.includes(m.id)) return false;
     if (user?.dismissedReviews?.includes(m.id)) return false;
     return true;
@@ -255,7 +274,7 @@ export default function HomeScreen() {
     : 0;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <SideMenu 
         visible={menuVisible} 
         onClose={() => setMenuVisible(false)} 
@@ -264,7 +283,6 @@ export default function HomeScreen() {
       />
       <NotificationCenterModal visible={notifModalVisible} onClose={() => setNotifModalVisible(false)} />
       <AppGuideModal visible={guideVisible} onClose={() => setGuideVisible(false)} />
-      <ToastNotification toast={toast} onDismiss={() => setToast(null)} />
       <CreateMatchModal
         visible={createMatchVisible}
         onClose={() => setCreateMatchVisible(false)}
@@ -370,7 +388,7 @@ export default function HomeScreen() {
                     onPress={() => router.push({ pathname: '/match-room', params: { matchId: m.id } })}
                   >
                     <Text style={styles.compactUpcomingBtnText}>ODAYA GİT</Text>
-                    <MaterialIcons name="chevron-right" size={14} color={theme.background} />
+                    <MaterialIcons name="chevron-right" size={14} color={theme.onSecondary} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -394,7 +412,7 @@ export default function HomeScreen() {
               activeOpacity={0.85} 
               onPress={() => setCreateMatchVisible(true)}
             >
-              <MaterialIcons name="add" size={16} color={theme.background} />
+              <MaterialIcons name="add" size={16} color={theme.onPrimary} />
               <Text style={styles.emptyUpcomingTopBtnText}>MAÇ KUR</Text>
             </TouchableOpacity>
           </View>
@@ -407,7 +425,6 @@ export default function HomeScreen() {
               style={styles.compactReviewBannerLeft}
               activeOpacity={0.8}
               onPress={() => {
-                handleDismissReview(m.id);
                 router.push(m.id ? { pathname: '/rate-match', params: { matchId: m.id } } : '/rate-match');
               }}
             >
@@ -429,11 +446,10 @@ export default function HomeScreen() {
                 style={styles.compactReviewBtn}
                 activeOpacity={0.85}
                 onPress={() => {
-                  handleDismissReview(m.id);
                   router.push(m.id ? { pathname: '/rate-match', params: { matchId: m.id } } : '/rate-match');
                 }}
               >
-                <MaterialIcons name="star" size={12} color={theme.background} />
+                <MaterialIcons name="star" size={12} color={theme.onPrimary} />
                 <Text style={styles.compactReviewBtnText}>DEĞERLENDİR</Text>
               </TouchableOpacity>
 
@@ -494,11 +510,12 @@ export default function HomeScreen() {
           >
             <TouchableOpacity
               style={{ position: 'absolute', top: 8, right: 8, padding: 6, zIndex: 10 }}
-              onPress={async () => {
+              onPress={async (e) => {
+                e?.stopPropagation?.();
                 if (user?.uid) {
                   await dbService.updateUserProfile(user.uid, { isLookingForMatch: false });
-                  saveUser({ ...user, isLookingForMatch: false });
                 }
+                await saveUser({ isLookingForMatch: false });
               }}
             >
               <MaterialIcons name="close" size={18} color={theme.textMuted} />
@@ -556,7 +573,7 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.impactCard}>
-          {matches.length === 0 && (user?.stats?.matchesPlayed ?? 0) === 0 && myMatches.length === 0 ? (
+          {(user?.stats?.matchesPlayed ?? 0) === 0 && myMatches.length === 0 ? (
             <View style={styles.impactEmptyBox}>
               <MaterialIcons name="bar-chart" size={32} color={theme.surfaceContainerHighest} />
               <Text style={styles.impactEmptyText}>Maçlara katıldıkça veya maç kurdukça istatistiklerin burada görünecek</Text>
@@ -575,11 +592,15 @@ export default function HomeScreen() {
                   <MaterialIcons name="sports-score" size={24} color={theme.secondary} />
                   <View style={styles.statInfo}>
                     <Text style={styles.statVal}>{weeklyGoals}</Text>
-                    <Text style={styles.statLabel}>HAFTALIK GOL</Text>
+                    <Text style={styles.statLabel}>TOPLAM GOL</Text>
                   </View>
                 </View>
               </View>
-              <View style={styles.statCardFull}>
+              <TouchableOpacity
+                style={styles.statCardFull}
+                activeOpacity={0.8}
+                onPress={() => router.push('/(tabs)/profile')}
+              >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   <MaterialIcons name="emoji-events" size={24} color={theme.tertiary} />
                   <View>
@@ -588,7 +609,7 @@ export default function HomeScreen() {
                   </View>
                 </View>
                 <MaterialIcons name="chevron-right" size={20} color={theme.border} />
-              </View>
+              </TouchableOpacity>
               <View style={styles.progressBarBg}>
                 <View style={[styles.progressBarFill, { width: `${winRate}%` }]} />
               </View>
@@ -796,7 +817,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   emptyUpcomingTopBtnText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 11,
-    color: theme.background,
+    color: theme.onPrimary,
     letterSpacing: 0.5,
   },
   statCard: {
@@ -897,7 +918,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   compactReviewBtnText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 10,
-    color: theme.background,
+    color: theme.onPrimary,
     letterSpacing: 0.3,
   },
   compactReviewDismissBtn: {
@@ -968,7 +989,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   compactUpcomingBtnText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 10,
-    color: theme.background,
+    color: theme.onSecondary,
     letterSpacing: 0.3,
   },
 
@@ -1085,7 +1106,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   beaconActionBtnText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 11,
-    color: theme.background,
+    color: theme.onPrimary,
   },
 
   // Maç Oluşturuldu Başarı Bildirimi (Ana Ekran Üstü Katman)

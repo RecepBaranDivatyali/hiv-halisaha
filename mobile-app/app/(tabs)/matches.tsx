@@ -73,7 +73,7 @@ export default function MatchesScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <SideMenu 
         visible={menuVisible} 
         onClose={() => setMenuVisible(false)} 
@@ -85,9 +85,13 @@ export default function MatchesScreen() {
       <CreateMatchModal 
         visible={createModalVisible} 
         onClose={() => setCreateModalVisible(false)}
-        onSuccess={async () => {
+        onSuccess={async (created) => {
           await reloadMatches();
-          router.replace({ pathname: '/(tabs)', params: { matchCreated: '1' } });
+          if (created?.id) {
+            router.push({ pathname: '/match-room', params: { matchId: created.id } });
+          } else {
+            router.replace({ pathname: '/(tabs)', params: { matchCreated: '1' } });
+          }
         }}
       />
 
@@ -217,7 +221,7 @@ export default function MatchesScreen() {
                 (user?.name && user.name.trim().length >= 2 && match.organizer?.toLowerCase() === user.name.trim().toLowerCase())
               );
               const isCaptainB = Boolean(user?.uid && match.captainBId === user.uid);
-              const isJoined = Boolean(user?.uid && match.slots && Object.values(match.slots).some(slot => slot?.uid === user.uid));
+              const isJoined = isUserMatch(match);
               
               const badgeColor = isOrganizer ? theme.primary : isCaptainB ? theme.secondary : isJoined ? theme.secondary : theme.textMuted;
               const badgeBg = isOrganizer ? `${theme.primary}25` : isCaptainB ? `${theme.secondary}25` : isJoined ? `${theme.secondary}25` : `${theme.border}33`;
@@ -226,7 +230,7 @@ export default function MatchesScreen() {
               const iconColor = isOrganizer ? theme.primary : isCaptainB ? theme.secondary : isJoined ? theme.secondary : theme.textMuted;
 
               return (
-                <Animated.View key={match.id || idx} entering={FadeInRight.delay(idx * 100).springify()}>
+                <Animated.View key={match.id || idx} entering={FadeInRight.delay(Math.min(idx, 6) * 50).springify()}>
                   <View style={[styles.matchCard, { borderLeftColor: cardBorder }]}>
                     {/* Üst Başlık Satırı: Saha Rozeti (Sol) ve Durum Rozeti (Sağ) */}
                     <View style={styles.matchCardTopHeader}>
@@ -241,7 +245,12 @@ export default function MatchesScreen() {
                             <MaterialIcons name="location-searching" size={11} color="#f59e0b" />
                             <Text style={styles.flexMiniBadgeText}>Saha Aranıyor</Text>
                           </View>
-                        ) : null}
+                        ) : (
+                          <View style={styles.flexMiniBadge}>
+                            <MaterialIcons name="schedule" size={11} color="#f59e0b" />
+                            <Text style={styles.flexMiniBadgeText}>Rezervasyon Alınmadı</Text>
+                          </View>
+                        )}
                       </View>
                       <View style={[styles.matchStatusBadge, { backgroundColor: badgeBg }]}>
                         <Text style={[styles.matchStatusText, { color: badgeColor }]}>
@@ -302,7 +311,7 @@ export default function MatchesScreen() {
                 </Text>
               </View>
             ) : actualPastMatches.map((match, idx) => (
-              <Animated.View key={match.id || idx} entering={FadeInRight.delay(idx * 100).springify()}>
+              <Animated.View key={match.id || idx} entering={FadeInRight.delay(Math.min(idx, 6) * 50).springify()}>
                 <View style={[styles.matchCard, { borderLeftColor: theme.secondary }]}>
                   <View style={styles.matchCardTopHeader}>
                     <View />
@@ -325,9 +334,11 @@ export default function MatchesScreen() {
                         <Text style={[styles.rosterStatus, { color: theme.primary }]}>{match.score || '-'}</Text>
                         <Text style={styles.timeTag}>Maç Skoru</Text>
                       </View>
-                      <TouchableOpacity style={styles.detailBtn} onPress={() => router.push({ pathname: '/rate-match', params: { matchId: match.id } })}>
-                        <Text style={styles.detailBtnText}>PUANLA</Text>
-                      </TouchableOpacity>
+                      {match.status !== 'cancelled' && ((match.joinedPlayersCount || Object.keys(match.slots || {}).length) >= 2) && (
+                        <TouchableOpacity style={styles.detailBtn} onPress={() => router.push({ pathname: '/rate-match', params: { matchId: match.id } })}>
+                          <Text style={styles.detailBtnText}>PUANLA</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   </View>
                 </View>

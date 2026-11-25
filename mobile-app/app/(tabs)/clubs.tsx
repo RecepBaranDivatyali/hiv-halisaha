@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, TextInput, Image, Alert, RefreshControl } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, TextInput, Image, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Fonts } from '@/constants/theme';
@@ -14,6 +14,9 @@ import { useAuth } from '@/hooks/use-auth';
 import { dbService, ClubModel } from '@/services/dbService';
 import { AppGuideModal } from '@/components/AppGuideModal';
 import Animated, { FadeInRight } from 'react-native-reanimated';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '@/services/firebaseConfig';
+import { appAlert } from '@/services/appAlert';
 
 export default function ClubsScreen() {
   const { theme } = useTheme();
@@ -29,23 +32,30 @@ export default function ClubsScreen() {
   const [clubActionTab, setClubActionTab] = useState<'create' | 'join'>('create');
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [joiningClubId, setJoiningClubId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [clubsList, setClubsList] = useState<ClubModel[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [selectedCityFilter, setSelectedCityFilter] = useState('Tümü');
 
   useEffect(() => {
-    if (!user?.uid) return;
-    const { collection, query, where, onSnapshot } = require('firebase/firestore');
-    const { db } = require('@/services/firebaseConfig');
-    
+    if (!user?.uid) {
+      setUnreadCount(0);
+      return;
+    }
     const q = query(
       collection(db, 'users', user.uid, 'notifications'),
       where('read', '==', false)
     );
-    const unsubscribe = onSnapshot(q, (snapshot: any) => {
-      setUnreadCount(snapshot.docs.length);
-    });
+    const unsubscribe = onSnapshot(
+      q, 
+      (snapshot: any) => {
+        setUnreadCount(snapshot.docs.length);
+      },
+      (err: any) => {
+        console.warn('Kulüp bildirimleri dinlenirken hata:', err);
+      }
+    );
     return () => unsubscribe();
   }, [user?.uid]);
 
@@ -67,7 +77,7 @@ export default function ClubsScreen() {
         setClubsList([]);
       }
     } catch {
-      Alert.alert('Hata', 'Kulüp verileri yüklenemedi.');
+      appAlert.alert('Hata', 'Kulüp verileri yüklenemedi.');
     } finally {
       setIsLoading(false);
     }
@@ -84,15 +94,16 @@ export default function ClubsScreen() {
   };
 
   const handleJoinClub = async (club: ClubModel) => {
+    if (joiningClubId) return;
     if (!user?.uid) {
-      Alert.alert('Giriş Yapın', 'Kulübe katılmak için lütfen giriş yapın.');
+      appAlert.alert('Giriş Yapın', 'Kulübe katılmak için lütfen giriş yapın.');
       return;
     }
     if (user?.clubId) {
       if (user.clubId === club.id) {
-        Alert.alert('Zaten Üyesiniz', `Zaten ${club.name} kulübünün bir üyesisiniz.`);
+        appAlert.alert('Zaten Üyesiniz', `Zaten ${club.name} kulübünün bir üyesisiniz.`);
       } else {
-        Alert.alert(
+        appAlert.alert(
           'Mevcut Kulübünüz Var',
           'Başka bir kulübe katılabilmek için önce mevcut kulübünüzden ayrılmanız veya kulübünüzü silmeniz gerekmektedir.'
         );
@@ -100,89 +111,91 @@ export default function ClubsScreen() {
       return;
     }
     if ((club.membersCount ?? 0) >= (club.maxMembers ?? 50)) {
-      Alert.alert('Kulüp Dolu', 'Bu kulüp maksimum üye kapasitesine ulaşmıştır.');
+      appAlert.alert('Kulüp Dolu', 'Bu kulüp maksimum üye kapasitesine ulaşmıştır.');
       return;
     }
 
     if (club.joinPolicy === 'closed') {
-      Alert.alert('Katılıma Kapalı', 'Bu kulüp şu an yeni üye alımına kapalıdır.');
+      appAlert.alert('Katılıma Kapalı', 'Bu kulüp şu an yeni üye alımına kapalıdır.');
       return;
     }
 
     if (club.joinPolicy === 'invite') {
-      Alert.alert(
+      appAlert.confirm(
         'Davet Kodu Gerekli',
         `"${club.name}" kulübüne katılabilmek için kulübün davet kodunu girmeniz gerekmektedir.`,
-        [
-          { text: 'Vazgeç', style: 'cancel' },
-          {
-            text: 'Davet Kodunu Gir',
-            onPress: () => {
-              setClubActionTab('join');
-              setClubActionVisible(true);
-            },
-          },
-        ]
+        () => {
+          setClubActionTab('join');
+          setClubActionVisible(true);
+        },
+        { confirmText: 'Davet Kodunu Gir', cancelText: 'Vazgeç' }
       );
       return;
     }
 
     if (club.joinPolicy === 'request') {
-      Alert.alert(
+      appAlert.confirm(
         'Katılım İsteği',
         `"${club.name}" onaylı katılım sistemine sahiptir. Kaptana katılım isteği gönderilsin mi?`,
-        [
-          { text: 'Vazgeç', style: 'cancel' },
-          {
-            text: 'İstek Gönder',
-            onPress: async () => {
-              try {
-                if (club.id && user?.uid) {
-                  await dbService.requestToJoinClub(club.id, {
-                    uid: user.uid,
-                    name: user.name || 'Oyuncu',
-                    avatar: user.avatar,
-                    position: user.position,
-                    rating: user.rating,
-                  });
-                  Alert.alert('İstek Gönderildi 📩', 'Katılım isteğiniz kulüp kaptanına iletildi.');
-                }
-              } catch {
-                Alert.alert('Hata', 'Katılım isteği iletilirken bir hata oluştu.');
-              }
-            },
-          },
-        ]
+        async () => {
+          if (joiningClubId) return;
+          setJoiningClubId(club.id || club.name);
+          try {
+            if (club.id && user?.uid) {
+              await dbService.requestToJoinClub(club.id, {
+                uid: user.uid,
+                name: user.name || 'Oyuncu',
+                avatar: user.avatar,
+                position: user.position,
+                rating: user.rating,
+              });
+              appAlert.alert('İstek Gönderildi 📩', 'Katılım isteğiniz kulüp kaptanına iletildi.');
+            }
+          } catch {
+            appAlert.alert('Hata', 'Katılım isteği iletilirken bir hata oluştu.');
+          } finally {
+            setJoiningClubId(null);
+          }
+        },
+        { confirmText: 'İstek Gönder', cancelText: 'Vazgeç' }
       );
       return;
     }
 
+    setJoiningClubId(club.id || club.name);
     try {
       if (club.id) {
         const uid = user.uid;
         await dbService.joinClub(club.id, uid, club.name);
         await saveUser({ clubId: club.id, clubName: club.name, clubLogo: club.logo });
-        Alert.alert('Tebrikler! ⚽️', `${club.name} kulübüne katıldınız!`);
+        appAlert.alert('Tebrikler! ⚽️', `${club.name} kulübüne katıldınız!`);
         router.push('/my-club');
       }
     } catch {
-      Alert.alert('Hata', 'Kulübe katılırken bir sorun oluştu.');
+      appAlert.alert('Hata', 'Kulübe katılırken bir sorun oluştu.');
+    } finally {
+      setJoiningClubId(null);
     }
   };
 
-  const filteredClubs = clubsList
-    .filter(c => {
+  const sortedAllClubs = useMemo(
+    () => [...clubsList].sort((a, b) => (b.points || 0) - (a.points || 0)),
+    [clubsList]
+  );
+
+  const filteredClubs = useMemo(() => {
+    return sortedAllClubs.filter(c => {
       const matchesSearch = 
         !searchQuery.trim() ||
         (c.name && c.name.toLocaleLowerCase('tr').includes(searchQuery.toLocaleLowerCase('tr'))) ||
         (c.desc && c.desc.toLocaleLowerCase('tr').includes(searchQuery.toLocaleLowerCase('tr')));
       const matchesCity = selectedCityFilter === 'Tümü' || (c.city && c.city.toLocaleLowerCase('tr') === selectedCityFilter.toLocaleLowerCase('tr'));
       return matchesSearch && matchesCity;
-    })
-    .sort((a, b) => (b.points || 0) - (a.points || 0));
+    });
+  }, [sortedAllClubs, searchQuery, selectedCityFilter]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <SideMenu 
         visible={menuVisible} 
         onClose={() => setMenuVisible(false)} 
@@ -308,7 +321,7 @@ export default function ClubsScreen() {
                 }}
                 activeOpacity={0.85}
               >
-                <MaterialIcons name="add-circle" size={18} color={theme.background} />
+                <MaterialIcons name="add-circle" size={18} color={theme.onPrimary} />
                 <Text style={styles.createClubPrimaryBtnText}>KULÜP KUR</Text>
               </TouchableOpacity>
               <TouchableOpacity 
@@ -439,7 +452,7 @@ export default function ClubsScreen() {
                       }}
                       activeOpacity={0.85}
                     >
-                      <MaterialIcons name="add-circle" size={18} color={theme.background} />
+                      <MaterialIcons name="add-circle" size={18} color={theme.onPrimary} />
                       <Text style={styles.emptyCreateBtnText}>İLK KULÜBÜ KUR</Text>
                     </TouchableOpacity>
                   ) : (
@@ -448,23 +461,27 @@ export default function ClubsScreen() {
                       onPress={() => router.push('/my-club')}
                       activeOpacity={0.85}
                     >
-                      <MaterialIcons name="shield" size={18} color={theme.background} />
+                      <MaterialIcons name="shield" size={18} color={theme.onPrimary} />
                       <Text style={styles.emptyCreateBtnText}>KULÜBÜME GİT</Text>
                     </TouchableOpacity>
                   )}
                 </View>
-              ) : filteredClubs.map((club, idx) => (
-                <Animated.View key={club.id || club.name} entering={FadeInRight.delay(idx * 70).springify()}>
-                  <TouchableOpacity 
-                    style={styles.clubCard}
-                    activeOpacity={0.85}
-                    onPress={() => {
-                      if (club.id) {
-                        router.push({ pathname: '/my-club', params: { clubId: club.id } });
-                      }
-                    }}
-                  >
-                    <View style={styles.clubCardTop}>
+              ) : filteredClubs.map((club, idx) => {
+                const globalIdx = sortedAllClubs.findIndex(c => (c.id && c.id === club.id) || c.name === club.name);
+                const rankNum = globalIdx !== -1 ? globalIdx + 1 : idx + 1;
+                const isJoiningThis = joiningClubId === (club.id || club.name);
+                return (
+                <Animated.View key={club.id || club.name} entering={FadeInRight.delay(Math.min(idx, 6) * 50).springify()}>
+                  <View style={styles.clubCard}>
+                    <TouchableOpacity 
+                      style={styles.clubCardTop}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        if (club.id) {
+                          router.push({ pathname: '/my-club', params: { clubId: club.id } });
+                        }
+                      }}
+                    >
                       <View style={{ position: 'relative' }}>
                         {club.logo ? (
                           <Image source={{ uri: club.logo }} style={styles.clubLogoImg} />
@@ -477,15 +494,15 @@ export default function ClubsScreen() {
                           position: 'absolute',
                           bottom: -4,
                           left: -4,
-                          backgroundColor: idx === 0 ? '#eab308' : idx === 1 ? '#94a3b8' : idx === 2 ? '#d97706' : (theme.surfaceContainerHighest || '#1e293b'),
+                          backgroundColor: rankNum === 1 ? '#eab308' : rankNum === 2 ? '#94a3b8' : rankNum === 3 ? '#d97706' : (theme.surfaceContainerHighest || '#1e293b'),
                           borderRadius: 8,
                           paddingHorizontal: 5,
                           paddingVertical: 1,
                           borderWidth: 1,
                           borderColor: theme.borderSubtle,
                         }}>
-                          <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 9, color: idx < 3 ? '#000000' : theme.text }}>
-                            {idx === 0 ? '🥇 #1' : idx === 1 ? '🥈 #2' : idx === 2 ? '🥉 #3' : `#${idx + 1}`}
+                          <Text style={{ fontFamily: Fonts.headlineBold, fontSize: 9, color: rankNum <= 3 ? '#000000' : theme.text }}>
+                            {rankNum === 1 ? '🥇 #1' : rankNum === 2 ? '🥈 #2' : rankNum === 3 ? '🥉 #3' : `#${rankNum}`}
                           </Text>
                         </View>
                       </View>
@@ -501,17 +518,23 @@ export default function ClubsScreen() {
                         <Text style={styles.clubDesc} numberOfLines={2}>{club.desc}</Text>
                       </View>
                       <MaterialIcons name="chevron-right" size={22} color={theme.textMuted} />
-                    </View>
+                    </TouchableOpacity>
                     <View style={styles.clubCardFooter}>
-                      <View>
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        onPress={() => {
+                          if (club.id) {
+                            router.push({ pathname: '/my-club', params: { clubId: club.id } });
+                          }
+                        }}
+                      >
                         <Text style={styles.clubPointsText}>{club.points || 0} PUAN</Text>
-                        <Text style={styles.clubRankSub}>LİG SIRASI: #{idx + 1}</Text>
-                      </View>
+                        <Text style={styles.clubRankSub}>LİG SIRASI: #{rankNum}</Text>
+                      </TouchableOpacity>
                       {user?.clubId && user.clubId !== club.id ? (
                         <TouchableOpacity 
                           style={[styles.actionJoinBtn, { backgroundColor: 'rgba(168, 85, 247, 0.15)', borderColor: '#a855f7' }]} 
-                          onPress={(e) => {
-                            e.stopPropagation();
+                          onPress={() => {
                             setSelectedClubForChallenge(club);
                             setChallengeModalVisible(true);
                           }}
@@ -526,20 +549,19 @@ export default function ClubsScreen() {
                         </View>
                       ) : (
                         <TouchableOpacity 
-                          style={styles.actionJoinBtn} 
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            handleJoinClub(club);
-                          }}
+                          style={[styles.actionJoinBtn, Boolean(joiningClubId) && { opacity: 0.6 }]} 
+                          disabled={Boolean(joiningClubId)}
+                          onPress={() => handleJoinClub(club)}
                         >
-                          <Text style={styles.actionJoinBtnText}>KATIL</Text>
+                          <Text style={styles.actionJoinBtnText}>{isJoiningThis ? 'KATILIYOR...' : 'KATIL'}</Text>
                           <MaterialIcons name="person-add" size={14} color={theme.primary} />
                         </TouchableOpacity>
                       )}
                     </View>
-                  </TouchableOpacity>
+                  </View>
                 </Animated.View>
-              ))}
+                );
+              })}
             </View>
           </View>
         </View>
@@ -769,7 +791,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   createClubPrimaryBtnText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 12,
-    color: theme.background,
+    color: theme.onPrimary,
   },
   joinClubSecondaryBtn: {
     flex: 1,
@@ -853,7 +875,7 @@ const useStyles = (theme: any) => StyleSheet.create({
   emptyCreateBtnText: {
     fontFamily: Fonts.headlineBold,
     fontSize: 12,
-    color: theme.background,
+    color: theme.onPrimary,
   },
 
   gridLayout: {
