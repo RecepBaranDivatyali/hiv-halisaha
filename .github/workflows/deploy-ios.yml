@@ -292,7 +292,8 @@ jobs:
             pbx = pbx.replace(/ProvisioningStyle\s*=\s*Automatic;/g, "ProvisioningStyle = Manual;");
 
             // Patch only the Release XCBuildConfiguration belonging to our app bundle ID
-            const configRegex = /([A-F0-9]{24}\s*\/\*\s*Release\s*\*\/\s*=\s*\{\s*isa\s*=\s*XCBuildConfiguration;\s*buildSettings\s*=\s*\{)([\s\S]*?)(\n\t\t\t\};\s*name\s*=\s*Release;\s*\};)/g;
+            // (allows CocoaPods baseConfigurationReference between isa and buildSettings)
+            const configRegex = /([A-F0-9]{24}\s*\/\*\s*Release\s*\*\/\s*=\s*\{\s*isa\s*=\s*XCBuildConfiguration;[^{}]*?buildSettings\s*=\s*\{)([\s\S]*?)(\n\s*\};\s*name\s*=\s*Release;\s*\};)/g;
             let matched = 0;
 
             pbx = pbx.replace(configRegex, (full, prefix, settings, suffix) => {
