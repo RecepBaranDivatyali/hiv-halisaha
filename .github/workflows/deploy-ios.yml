@@ -47,7 +47,6 @@ jobs:
         env:
           IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
-          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
@@ -56,7 +55,6 @@ jobs:
           for var in \
             IOS_CERTIFICATE_BASE64 \
             IOS_CERTIFICATE_PASSWORD \
-            IOS_PROVISIONING_PROFILE_BASE64 \
             APP_STORE_CONNECT_KEY_ID \
             APP_STORE_CONNECT_ISSUER_ID \
             APP_STORE_CONNECT_API_KEY_BASE64; do
@@ -147,6 +145,7 @@ jobs:
           IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
         run: |
           set -euo pipefail
@@ -159,9 +158,75 @@ jobs:
           PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
           PROFILE_PLIST="$RUNNER_TEMP/profile.plist"
 
-          # 1. Decode .p12 certificate and .mobileprovision profile
+          # 1. Decode .p12 certificate and resolve .mobileprovision (secret or auto-fetch via App Store Connect API)
           echo -n "$IOS_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
-          echo -n "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+          if [ -n "${IOS_PROVISIONING_PROFILE_BASE64:-}" ]; then
+            echo -n "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+            echo "Provisioning profile GitHub secret üzerinden yüklendi."
+          else
+            echo "IOS_PROVISIONING_PROFILE_BASE64 tanımlı değil — App Store Connect API üzerinden ${BUNDLE_ID} profili çekiliyor..."
+            PROFILE_PATH="$PROFILE_PATH" node -e '
+              const https = require("https");
+              const crypto = require("crypto");
+              const fs = require("fs");
+
+              const keyId = process.env.APP_STORE_CONNECT_KEY_ID;
+              const issuerId = process.env.APP_STORE_CONNECT_ISSUER_ID;
+              const keyBase64 = process.env.APP_STORE_CONNECT_API_KEY_BASE64;
+              const targetBundleId = process.env.BUNDLE_ID || "com.hiv.halisaha";
+              const outPath = process.env.PROFILE_PATH;
+
+              const privateKey = Buffer.from(keyBase64, "base64").toString("utf8");
+              const now = Math.floor(Date.now() / 1000);
+              const header = Buffer.from(JSON.stringify({ alg: "ES256", kid: keyId, typ: "JWT" })).toString("base64url");
+              const payload = Buffer.from(JSON.stringify({ iss: issuerId, iat: now, exp: now + 1200, aud: "appstoreconnect-v1" })).toString("base64url");
+              const data = `${header}.${payload}`;
+              const sig = crypto.sign("sha256", Buffer.from(data), { key: privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+              const token = `${data}.${sig}`;
+
+              const req = https.request("https://api.appstoreconnect.apple.com/v1/profiles?include=bundleId&limit=100", {
+                headers: {
+                  "Authorization": `Bearer ${token}`,
+                  "User-Agent": "HIV-iOS-Deploy"
+                }
+              }, (res) => {
+                let body = "";
+                res.on("data", chunk => body += chunk);
+                res.on("end", () => {
+                  if (res.statusCode !== 200) {
+                    console.error("App Store Connect API error:", res.statusCode, body);
+                    process.exit(1);
+                  }
+                  const json = JSON.parse(body);
+                  const bundleMap = new Map();
+                  for (const item of (json.included || [])) {
+                    if (item.type === "bundleIds" && item.attributes?.identifier) {
+                      bundleMap.set(item.id, item.attributes.identifier);
+                    }
+                  }
+                  const profiles = (json.data || []).filter(p => p.attributes?.profileState === "ACTIVE");
+                  const matched =
+                    profiles.find(p => bundleMap.get(p.relationships?.bundleId?.data?.id) === targetBundleId && p.attributes?.profileType === "IOS_APP_STORE") ||
+                    profiles.find(p => bundleMap.get(p.relationships?.bundleId?.data?.id) === targetBundleId) ||
+                    profiles.find(p => (p.attributes?.name || "").toLowerCase().includes("hiv"));
+
+                  if (!matched || !matched.attributes?.profileContent) {
+                    console.error(`App Store Connect üzerinde ${targetBundleId} için aktif App Store Provisioning Profile bulunamadı!`);
+                    console.error("Mevcut aktif profiller:", profiles.map(p => `${p.attributes?.name} (${bundleMap.get(p.relationships?.bundleId?.data?.id) || "?"})`).join(", "));
+                    process.exit(1);
+                  }
+
+                  fs.writeFileSync(outPath, Buffer.from(matched.attributes.profileContent, "base64"));
+                  console.log(`Profil otomatik indirildi: ${matched.attributes.name} (${matched.attributes.uuid})`);
+                });
+              });
+              req.on("error", (err) => {
+                console.error("App Store Connect API bağlantı hatası:", err);
+                process.exit(1);
+              });
+              req.end();
+            '
+          fi
 
           # 2. Create and configure temporary keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
